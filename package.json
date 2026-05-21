@@ -19,10 +19,13 @@
     "doc": "docs"
   },
   "scripts": {
+    "dev": "cd ecopulse && npm run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "lucide-react": "^1.16.0",
+    "react-router-dom": "^7.15.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.2",
@@ -40,6 +43,7 @@
     "hardhat-gas-reporter": "^2.3.0",
     "solidity-coverage": "^0.8.17",
     "tailwindcss": "^4.3.0",
-    "typechain": "^8.3.2"
+    "typechain": "^8.3.2",
+    "vite": "^8.0.14"
   }
 }
