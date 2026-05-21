@@ -1,33 +1,60 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ArrowRightLeft, TrendingUp, Award, Settings } from 'lucide-react';
+import { X } from 'lucide-react';
+import { NAV_LINKS } from '../utils/constants';
 
-const Sidebar = () => {
-  const links = [
-    { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-    { to: '/trading', label: 'Trading', icon: <ArrowRightLeft size={20} /> },
-    { to: '/forecasts', label: 'Forecasts', icon: <TrendingUp size={20} /> },
-    { to: '/credits', label: 'Credits', icon: <Award size={20} /> },
-    { to: '/settings', label: 'Settings', icon: <Settings size={20} /> },
-  ];
+const Sidebar = ({ onClose }) => {
+
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <h2 className="brand">EcoPulse</h2>
+    <aside className="h-full flex flex-col bg-slate-800 border-r border-slate-700 shadow-2xl">
+      <div className="p-6 flex items-center justify-between border-b border-slate-700/50">
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
+          EcoPulse
+        </h2>
+        {/* Mobile close button */}
+        <button 
+          onClick={onClose}
+          className="lg:hidden p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+        >
+          <X size={20} />
+        </button>
       </div>
-      <nav className="sidebar-nav">
-        {links.map((link) => (
+      
+      <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+        {NAV_LINKS.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
-            className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            onClick={onClose}
+            className={({ isActive }) =>
+              `flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group ${
+                isActive 
+                  ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
+                  : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'
+              }`
+            }
           >
-            {link.icon}
-            <span className="nav-label">{link.label}</span>
+            <div className={`transition-transform duration-300 group-hover:scale-110`}>
+              {link.icon}
+            </div>
+            <span className="text-[15px] tracking-wide">{link.label}</span>
           </NavLink>
         ))}
       </nav>
+      
+      <div className="p-4 border-t border-slate-700/50">
+        <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700">
+          <p className="text-xs text-slate-400 mb-1">Network Status</p>
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+            <span className="text-sm font-medium text-emerald-400">Connected</span>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 };
