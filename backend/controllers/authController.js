@@ -1,5 +1,13 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+
+// Helper function to generate JWT
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || '7d',
+  });
+};
 
 // @desc    Register a new user
 // @route   POST /api/v1/auth/register
@@ -67,10 +75,13 @@ const register = async (req, res) => {
       updatedAt: user.updatedAt,
     };
 
+    // Generate token
+    const token = generateToken(user._id);
+
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      data: { user: userResponse },
+      data: { user: userResponse, token },
     });
   } catch (error) {
     // Handle Mongoose validation errors
@@ -91,4 +102,82 @@ const register = async (req, res) => {
   }
 };
 
-module.exports = { register };
+// @desc    Authenticate user & get token
+// @route   POST /api/v1/auth/login
+// @access  Public
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validate request
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an email and password',
+      });
+    }
+
+    // Check for user (we need the password field for comparison)
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials',
+      });
+    }
+
+    // Check if password matches
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials',
+      });
+    }
+
+    // Generate token
+    const token = generateToken(user._id);
+
+    // Return user data without password
+    const userResponse = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      walletAddress: user.walletAddress,
+      role: user.role,
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged in successfully',
+      data: { user: userResponse, token },
+    });
+  } catch (error) {
+    console.error('Login error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during login',
+    });
+  }
+};
+
+// @desc    Get current logged in user
+// @route   GET /api/v1/auth/me
+// @access  Private
+const getMe = async (req, res) => {
+  try {
+    // req.user is set in the auth middleware
+    res.status(200).json({
+      success: true,
+      data: { user: req.user },
+    });
+  } catch (error) {
+    console.error('Get me error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching user profile',
+    });
+  }
+};
+
+module.exports = { register, login, getMe };
