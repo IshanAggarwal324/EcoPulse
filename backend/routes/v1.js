@@ -6,7 +6,10 @@ router.get('/', (req, res) => {
   res.json({ message: 'Welcome to EcoPulse API v1' });
 });
 
-// You will mount your feature routes here later, e.g.:
+// Feature Routes
+router.use('/auth', require('./auth'));
+
+// You will mount more feature routes here later, e.g.:
 // router.use('/users', require('./userRoutes'));
 // router.use('/nodes', require('./nodeRoutes'));
 
