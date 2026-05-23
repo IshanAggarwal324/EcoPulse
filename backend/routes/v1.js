@@ -8,9 +8,8 @@ router.get('/', (req, res) => {
 
 // Feature Routes
 router.use('/auth', require('./auth'));
+router.use('/nodes', require('./nodes'));
+router.use('/readings', require('./readings'));
 
-// You will mount more feature routes here later, e.g.:
-// router.use('/users', require('./userRoutes'));
-// router.use('/nodes', require('./nodeRoutes'));
 
 module.exports = router;
