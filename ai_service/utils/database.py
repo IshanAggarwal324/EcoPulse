@@ -1,8 +1,18 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import motor.motor_asyncio
+import os
+from dotenv import load_dotenv
 
-def get_historical_data(use_dummy: bool = True, days: int = 365) -> pd.DataFrame:
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+db = client.ecopulse
+readings_collection = db.readings
+
+async def get_historical_data(use_dummy: bool = False, days: int = 365) -> pd.DataFrame:
     if use_dummy:
         # Generate dummy data
         end_date = datetime.now()
@@ -22,9 +32,27 @@ def get_historical_data(use_dummy: bool = True, days: int = 365) -> pd.DataFrame
         df.set_index('timestamp', inplace=True)
         return df
     else:
-        # Placeholder for actual MongoDB loading logic
-        # client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://localhost:27017")
-        # db = client.ecopulse
-        # collection = db.readings
-        # ... fetch and convert to DataFrame
-        raise NotImplementedError("MongoDB integration not yet implemented. Use dummy data.")
+        # Fetch actual data from MongoDB
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        cursor = readings_collection.find({
+            "timestamp": {"$gte": start_date, "$lte": end_date}
+        }).sort("timestamp", 1)
+        
+        documents = await cursor.to_list(length=None)
+        
+        if not documents:
+            # Fallback to empty dataframe with correct columns if no data
+            return pd.DataFrame(columns=['timestamp', 'generation', 'consumption']).set_index('timestamp')
+            
+        df = pd.DataFrame(documents)
+        
+        # Ensure we just keep the fields we need
+        df = df[['timestamp', 'generation', 'consumption']]
+        df.set_index('timestamp', inplace=True)
+        
+        # Handle potential missing days/resampling here if needed
+        # df = df.resample('D').mean().interpolate()
+        
+        return df

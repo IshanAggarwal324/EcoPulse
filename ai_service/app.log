@@ -1,0 +1,8 @@
+2026-05-24 00:41:19,436 - routes.forecast - INFO - Loading pre-trained model and scaler from disk...
+2026-05-24 00:41:19,720 - tensorflow - WARNING - TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+2026-05-24 00:41:19,925 - routes.forecast - INFO - Successfully loaded artifacts.
+2026-05-24 00:41:22,952 - main - INFO - Path: /docs | Method: GET | Status: 200 | Time: 0.0166s
+2026-05-24 00:41:23,988 - main - INFO - Path: /openapi.json | Method: GET | Status: 200 | Time: 0.1409s
+2026-05-24 00:41:31,278 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 00:41:31,350 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 00:41:37,003 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 5.7495s
