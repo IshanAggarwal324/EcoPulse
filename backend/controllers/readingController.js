@@ -20,6 +20,12 @@ const createReading = async (req, res) => {
       energyConsumed: energyConsumed || 0,
     });
 
+    // Emit the new reading to all connected socket clients
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('newReading', reading);
+    }
+
     res.status(201).json({
       success: true,
       data: reading,
