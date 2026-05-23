@@ -7,19 +7,37 @@ import Forecasts from '../../frontend/pages/Forecasts';
 import Credits from '../../frontend/pages/Credits';
 import Settings from '../../frontend/pages/Settings';
 
+import { AuthProvider } from '../../frontend/context/AuthContext';
+import ProtectedRoute from '../../frontend/components/ProtectedRoute';
+import Login from '../../frontend/pages/Login';
+import Register from '../../frontend/pages/Register';
+
 function App() {
   return (
-    <BrowserRouter>
-      <AppLayout>
+    <AuthProvider>
+      <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/trading" element={<Trading />} />
-          <Route path="/forecasts" element={<Forecasts />} />
-          <Route path="/credits" element={<Credits />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/trading" element={<Trading />} />
+                    <Route path="/forecasts" element={<Forecasts />} />
+                    <Route path="/credits" element={<Credits />} />
+                    <Route path="/settings" element={<Settings />} />
+                  </Routes>
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
         </Routes>
-      </AppLayout>
-    </BrowserRouter>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
