@@ -7,14 +7,18 @@ const BlockchainStatus = ({ account }) => {
 
   useEffect(() => {
     const fetchNetworkInfo = async () => {
-      const network = await getNetwork();
-      if (network) {
-        setNetworkId(network.chainId.toString());
-      }
-      const provider = getProvider();
-      if (provider) {
-        const block = await provider.getBlockNumber();
-        setBlockNumber(block.toString());
+      try {
+        const network = await getNetwork();
+        if (network) {
+          setNetworkId(network.chainId.toString());
+        }
+        const provider = getProvider();
+        if (provider) {
+          const block = await provider.getBlockNumber();
+          setBlockNumber(block.toString());
+        }
+      } catch (err) {
+        console.warn("Network info fetch failed (likely RPC rate limit):", err.message);
       }
     };
 
