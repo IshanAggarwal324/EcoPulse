@@ -28,6 +28,18 @@ app.set('io', io);
 
 io.on('connection', (socket) => {
   console.log('Socket client connected:', socket.id);
+
+  // Listen for simulated readings from the node simulator
+  socket.on('simulateReading', (data) => {
+    const reading = {
+      nodeId: data.nodeId,
+      energyGenerated: data.energyGenerated || 0,
+      energyConsumed: data.energyConsumed || 0,
+      timestamp: new Date().toISOString(),
+    };
+    io.emit('newReading', reading);
+  });
+
   socket.on('disconnect', () => {
     console.log('Socket client disconnected:', socket.id);
   });

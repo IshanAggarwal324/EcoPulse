@@ -6,6 +6,7 @@ import StatusCard from '../components/ui/StatusCard';
 import io from 'socket.io-client';
 import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
+import EnergyChart from '../components/ui/EnergyChart';
 
 const Dashboard = () => {
   const [totalEnergy, setTotalEnergy] = useState(14200); // base in kWh
@@ -29,7 +30,7 @@ const Dashboard = () => {
       // Update live readings list
       setLiveReadings((prev) => {
         const updated = [reading, ...prev];
-        return updated.slice(0, 5); // keep last 5 readings
+        return updated.slice(0, 20); // keep last 20 readings for the chart
       });
     });
 
@@ -90,41 +91,49 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Monitoring Section */}
+        {/* Live Monitoring Chart Section */}
         <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col min-h-[400px]">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              <Rss className="text-emerald-400" /> Live Energy Feed
+              <Activity className="text-emerald-400" /> Live Grid Analytics
             </h3>
-            <span className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full">
+            <span className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-500/20">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Connected
+              Socket Connected
             </span>
           </div>
-          <div className="flex-1 w-full flex flex-col gap-3 overflow-y-auto">
-            {liveReadings.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-slate-500">
-                <p>Waiting for live readings...</p>
-              </div>
-            ) : (
-              liveReadings.map((reading, i) => (
-                <div key={i} className="flex items-center justify-between bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                      <Zap size={20} className="text-emerald-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-400">Node: {reading.nodeId.substring(0, 8)}...</p>
-                      <p className="text-xs text-slate-500">{new Date(reading.timestamp).toLocaleTimeString()}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-emerald-400 font-bold">+{reading.energyGenerated} kW</p>
-                    <p className="text-rose-400 font-bold">-{reading.energyConsumed} kW</p>
-                  </div>
+          
+          <div className="flex-1 w-full mb-6">
+            <EnergyChart data={liveReadings} />
+          </div>
+
+          <div className="pt-6 border-t border-slate-700/50">
+            <h4 className="text-sm font-medium text-slate-400 mb-4 uppercase tracking-wider">Recent Activity Logs</h4>
+            <div className="flex flex-col gap-3 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+              {liveReadings.length === 0 ? (
+                <div className="flex items-center justify-center text-slate-500 py-4">
+                  <p>Waiting for live readings...</p>
                 </div>
-              ))
-            )}
+              ) : (
+                liveReadings.slice(0, 3).map((reading, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-900/50 p-3 rounded-xl border border-slate-700/30">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500/10 rounded-lg">
+                        <Zap size={16} className="text-emerald-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-300 font-medium">Node: {reading.nodeId.substring(0, 8)}...</p>
+                        <p className="text-xs text-slate-500">{new Date(reading.timestamp).toLocaleTimeString()}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-emerald-400 font-bold text-sm">+{reading.energyGenerated} kW</p>
+                      <p className="text-rose-400 font-bold text-sm">-{reading.energyConsumed} kW</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 

@@ -66,3 +66,18 @@
 2026-05-24 10:01:13,767 - routes.forecast - INFO - Loading data sequence (dummy=True)
 2026-05-24 10:01:13,771 - routes.forecast - INFO - Predicting for 7 days
 2026-05-24 10:01:14,659 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 0.8939s
+2026-05-25 01:43:11,497 - routes.forecast - INFO - Loading pre-trained model and scaler from disk...
+2026-05-25 01:43:12,018 - tensorflow - WARNING - TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+2026-05-25 01:43:12,167 - routes.forecast - INFO - Successfully loaded artifacts.
+2026-05-25 01:43:27,212 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-25 01:43:27,325 - routes.forecast - INFO - Predicting for 7 days
+2026-05-25 01:43:31,869 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 4.7005s
+2026-05-25 01:43:31,892 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-25 01:43:31,897 - routes.forecast - INFO - Predicting for 7 days
+2026-05-25 01:43:32,839 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 0.9490s
+2026-05-25 01:43:46,896 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-25 01:43:46,912 - routes.forecast - INFO - Predicting for 7 days
+2026-05-25 01:43:49,528 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.6343s
+2026-05-25 01:43:49,540 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-25 01:43:49,544 - routes.forecast - INFO - Predicting for 7 days
+2026-05-25 01:43:50,227 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 0.6880s
