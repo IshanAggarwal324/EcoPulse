@@ -10,6 +10,6 @@ router.get('/', (req, res) => {
 router.use('/auth', require('./auth'));
 router.use('/nodes', require('./nodes'));
 router.use('/readings', require('./readings'));
-
+router.use('/forecast', require('./forecast'));
 
 module.exports = router;

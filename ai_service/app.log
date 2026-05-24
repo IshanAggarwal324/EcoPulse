@@ -6,3 +6,63 @@
 2026-05-24 00:41:31,278 - routes.forecast - INFO - Loading data sequence (dummy=True)
 2026-05-24 00:41:31,350 - routes.forecast - INFO - Predicting for 7 days
 2026-05-24 00:41:37,003 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 5.7495s
+2026-05-24 00:54:20,736 - routes.forecast - INFO - Loading pre-trained model and scaler from disk...
+2026-05-24 00:54:21,426 - tensorflow - WARNING - TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+2026-05-24 00:54:21,816 - routes.forecast - INFO - Successfully loaded artifacts.
+2026-05-24 00:54:32,230 - main - INFO - Path: /forecast | Method: POST | Status: 307 | Time: 0.0012s
+2026-05-24 00:54:32,326 - routes.forecast - INFO - Loading data sequence (dummy=False)
+2026-05-24 00:54:34,587 - routes.forecast - ERROR - Error generating forecast: No historical data available to generate a sequence.
+2026-05-24 00:54:34,590 - main - INFO - Path: /forecast/ | Method: POST | Status: 500 | Time: 2.3087s
+2026-05-24 00:54:34,670 - main - INFO - Path: /forecast | Method: POST | Status: 307 | Time: 0.0013s
+2026-05-24 00:54:34,714 - routes.forecast - INFO - Loading data sequence (dummy=False)
+2026-05-24 00:54:34,876 - routes.forecast - ERROR - Error generating forecast: No historical data available to generate a sequence.
+2026-05-24 00:54:34,878 - main - INFO - Path: /forecast/ | Method: POST | Status: 500 | Time: 0.1772s
+2026-05-24 00:55:19,525 - main - INFO - Path: /forecast | Method: POST | Status: 307 | Time: 0.0017s
+2026-05-24 00:55:19,549 - routes.forecast - INFO - Loading data sequence (dummy=False)
+2026-05-24 00:55:19,626 - routes.forecast - ERROR - Error generating forecast: No historical data available to generate a sequence.
+2026-05-24 00:55:19,628 - main - INFO - Path: /forecast/ | Method: POST | Status: 500 | Time: 0.0827s
+2026-05-24 00:55:19,656 - main - INFO - Path: /forecast | Method: POST | Status: 307 | Time: 0.0012s
+2026-05-24 00:55:19,681 - routes.forecast - INFO - Loading data sequence (dummy=False)
+2026-05-24 00:55:19,795 - routes.forecast - ERROR - Error generating forecast: No historical data available to generate a sequence.
+2026-05-24 00:55:19,800 - main - INFO - Path: /forecast/ | Method: POST | Status: 500 | Time: 0.1314s
+2026-05-24 10:00:12,925 - routes.forecast - INFO - Loading pre-trained model and scaler from disk...
+2026-05-24 10:00:13,533 - tensorflow - WARNING - TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+2026-05-24 10:00:13,700 - routes.forecast - INFO - Successfully loaded artifacts.
+2026-05-24 10:00:17,045 - main - INFO - Path: /docs | Method: GET | Status: 200 | Time: 0.0120s
+2026-05-24 10:00:17,909 - main - INFO - Path: /openapi.json | Method: GET | Status: 200 | Time: 0.0845s
+2026-05-24 10:00:23,289 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:23,422 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:27,915 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 4.6408s
+2026-05-24 10:00:27,963 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:27,981 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:30,760 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.8011s
+2026-05-24 10:00:45,234 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:45,247 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:47,887 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.6568s
+2026-05-24 10:00:47,915 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:47,941 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:50,406 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.4989s
+2026-05-24 10:00:50,421 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:50,434 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:53,231 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.8124s
+2026-05-24 10:00:53,254 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:53,280 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:00:55,768 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.5190s
+2026-05-24 10:00:59,068 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:00:59,101 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:01,729 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.6632s
+2026-05-24 10:01:01,765 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:01:01,790 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:04,284 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.5328s
+2026-05-24 10:01:04,315 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:01:04,329 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:07,236 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.9318s
+2026-05-24 10:01:07,280 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:01:07,313 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:09,749 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.4841s
+2026-05-24 10:01:11,374 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:01:11,388 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:13,757 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 2.3851s
+2026-05-24 10:01:13,767 - routes.forecast - INFO - Loading data sequence (dummy=True)
+2026-05-24 10:01:13,771 - routes.forecast - INFO - Predicting for 7 days
+2026-05-24 10:01:14,659 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 0.8939s

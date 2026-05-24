@@ -59,8 +59,10 @@ async def get_forecast(request: ForecastRequest):
         logger.info(f"Loading data sequence (dummy={request.use_dummy_data})")
         df = await get_historical_data(use_dummy=request.use_dummy_data, days=60) # Only need recent data
         
+        # Fallback to dummy data if real data is empty
         if df.empty:
-            raise ValueError("No historical data available to generate a sequence.")
+            logger.warning("No data in MongoDB, falling back to dummy data for forecast")
+            df = await get_historical_data(use_dummy=True, days=60)
 
         # 2. Prepare latest data for prediction
         look_back = 30

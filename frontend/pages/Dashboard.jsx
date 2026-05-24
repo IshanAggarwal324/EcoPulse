@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, Activity, Award, BarChart3, Sun, Wind, Home, Rss } from 'lucide-react';
+import { Zap, Activity, Award, BarChart3, Sun, Wind, Home, Rss, TrendingUp } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
@@ -9,6 +9,7 @@ const Dashboard = () => {
   const [totalEnergy, setTotalEnergy] = useState(14200); // base in kWh
   const [activeNodes, setActiveNodes] = useState(1248);
   const [liveReadings, setLiveReadings] = useState([]);
+  const [forecastStatus, setForecastStatus] = useState('Loading...');
   
   useEffect(() => {
     // Connect to the backend Socket.io server
@@ -29,6 +30,15 @@ const Dashboard = () => {
       });
     });
 
+    // Fetch initial forecast status
+    fetch('http://localhost:5000/api/v1/forecast')
+      .then(res => res.json())
+      .then(data => {
+        if(data && data.predictions) setForecastStatus('Ready');
+        else setForecastStatus('Offline');
+      })
+      .catch(() => setForecastStatus('Error'));
+
     return () => {
       socket.disconnect();
     };
@@ -37,7 +47,7 @@ const Dashboard = () => {
     { label: 'Total Energy', value: `${(totalEnergy / 1000).toFixed(2)} MWh`, icon: <Zap size={24} className="text-yellow-400" />, trend: 'Live', positive: true },
     { label: 'Active Nodes', value: activeNodes.toLocaleString(), icon: <Activity size={24} className="text-blue-400" />, trend: '+12', positive: true },
     { label: 'Carbon Credits', value: '8,420', icon: <Award size={24} className="text-emerald-400" />, trend: '+450', positive: true },
-    { label: 'Live Trades', value: '342', icon: <BarChart3 size={24} className="text-purple-400" />, trend: '-14%', positive: false },
+    { label: 'AI Forecast', value: forecastStatus, icon: <TrendingUp size={24} className="text-purple-400" />, trend: '7-Day', positive: forecastStatus === 'Ready' },
   ];
 
   const nodeStatus = [
