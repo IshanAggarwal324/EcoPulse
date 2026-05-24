@@ -4,10 +4,13 @@ import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
 import io from 'socket.io-client';
+import WalletConnect from '../components/WalletConnect';
+import BlockchainStatus from '../components/BlockchainStatus';
 
 const Dashboard = () => {
   const [totalEnergy, setTotalEnergy] = useState(14200); // base in kWh
   const [activeNodes, setActiveNodes] = useState(1248);
+  const [account, setAccount] = useState(null);
   const [liveReadings, setLiveReadings] = useState([]);
   const [forecastStatus, setForecastStatus] = useState('Loading...');
   
@@ -68,6 +71,16 @@ const Dashboard = () => {
           </button>
         }
       />
+
+      {/* Wallet & Blockchain Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <WalletConnect 
+          onConnect={(acc) => setAccount(acc)} 
+          onDisconnect={() => setAccount(null)} 
+          account={account} 
+        />
+        <BlockchainStatus account={account} />
+      </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

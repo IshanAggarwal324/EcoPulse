@@ -42,32 +42,28 @@ const WalletConnect = ({ onConnect, onDisconnect, account }) => {
   }, [account]);
 
   return (
-    <div className="p-4 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl flex flex-col justify-center h-full">
-      <h3 className="text-xl font-bold text-white mb-4">Wallet Connection</h3>
+    <div className="p-4 border rounded shadow-md bg-white">
+      <h2 className="text-xl font-bold mb-4">Wallet Configuration</h2>
       
-      {error && <p className="text-rose-400 text-sm mb-3">{error}</p>}
+      {error && <p className="text-red-500 mb-2">{error}</p>}
       
       {!account ? (
         <button 
           onClick={connectWallet} 
           disabled={loading}
-          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
         >
           {loading ? "Connecting..." : "Connect MetaMask"}
         </button>
       ) : (
-        <div className="space-y-3">
-          <p className="text-slate-300 text-sm">
-            <strong className="text-white">Address:</strong> {account.slice(0, 6)}...{account.slice(-4)}
-          </p>
-          <p className="text-slate-300 text-sm">
-            <strong className="text-white">CC Balance:</strong> <span className="text-emerald-400 font-bold">{balance} CC</span>
-          </p>
+        <div className="space-y-2">
+          <p><strong>Address:</strong> {account.slice(0, 6)}...{account.slice(-4)}</p>
+          <p><strong>CC Balance:</strong> {balance} CC</p>
           <button 
             onClick={disconnectWallet}
-            className="w-full bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mt-2"
           >
-            Disconnect Wallet
+            Disconnect
           </button>
         </div>
       )}
