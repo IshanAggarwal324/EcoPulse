@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { UserPlus } from 'lucide-react';
+import FormField from '../components/ui/FormField';
+import { validateRegisterForm, hasErrors } from '../utils/validation';
 import logo from '../../ecopulse/src/assets/logo.png';
 
 const Register = () => {
@@ -12,44 +14,54 @@ const Register = () => {
     confirmPassword: '',
     walletAddress: '',
   });
-  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const { register, user } = useAuth();
+
+  const { register } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in
-  if (user) {
-    return <Navigate to="/" />;
-  }
-
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setFormError('');
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
+    const errors = validateRegisterForm(formData);
+    setFieldErrors(errors);
+    if (hasErrors(errors)) return;
 
     setIsSubmitting(true);
 
-    // Filter out confirmPassword
     const { confirmPassword, ...registerData } = formData;
-    
-    const result = await register(registerData);
+    const payload = {
+      ...registerData,
+      name: registerData.name.trim(),
+      email: registerData.email.trim(),
+      walletAddress: registerData.walletAddress.trim() || undefined,
+    };
+
+    const result = await register(payload);
 
     if (result.success) {
-      navigate('/');
+      navigate('/', { replace: true });
     } else {
-      setError(result.message);
+      setFormError(result.message);
+      if (Array.isArray(result.errors)) {
+        const serverErrors = {};
+        result.errors.forEach((msg) => {
+          if (msg.toLowerCase().includes('email')) serverErrors.email = msg;
+          else if (msg.toLowerCase().includes('password')) serverErrors.password = msg;
+          else if (msg.toLowerCase().includes('name')) serverErrors.name = msg;
+        });
+        setFieldErrors((prev) => ({ ...prev, ...serverErrors }));
+      }
       setIsSubmitting(false);
     }
   };
@@ -60,9 +72,7 @@ const Register = () => {
         <div className="flex justify-center">
           <img src={logo} alt="EcoPulse Logo" className="h-20 w-auto" />
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
-          Join EcoPulse
-        </h2>
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-white">Join EcoPulse</h2>
         <p className="mt-2 text-center text-sm text-slate-400">
           Already have an account?{' '}
           <Link to="/login" className="font-medium text-emerald-400 hover:text-emerald-300">
@@ -73,115 +83,75 @@ const Register = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-700">
-          {error && (
-            <div className="mb-4 bg-red-900/50 border-l-4 border-red-500 p-4">
-              <div className="flex">
-                <div className="ml-3">
-                  <p className="text-sm text-red-200">{error}</p>
-                </div>
-              </div>
+          {formError && (
+            <div className="mb-4 bg-rose-900/40 border border-rose-500/40 rounded-lg p-4">
+              <p className="text-sm text-rose-200">{formError}</p>
             </div>
           )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-slate-300">
-                Full Name
-              </label>
-              <div className="mt-1">
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-600 bg-slate-900 text-white rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
-            </div>
+          <form className="space-y-5" onSubmit={handleSubmit} noValidate>
+            <FormField
+              label="Full name"
+              id="name"
+              value={formData.name}
+              onChange={handleChange}
+              error={fieldErrors.name}
+              required
+              autoComplete="name"
+            />
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-300">
-                Email address
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-600 bg-slate-900 text-white rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
-            </div>
+            <FormField
+              label="Email address"
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={handleChange}
+              error={fieldErrors.email}
+              required
+              autoComplete="email"
+            />
 
-            <div>
-              <label htmlFor="walletAddress" className="block text-sm font-medium text-slate-300">
-                Wallet Address (Optional)
-              </label>
-              <div className="mt-1">
-                <input
-                  id="walletAddress"
-                  name="walletAddress"
-                  type="text"
-                  value={formData.walletAddress}
-                  onChange={handleChange}
-                  placeholder="0x..."
-                  className="appearance-none block w-full px-3 py-2 border border-slate-600 bg-slate-900 text-white rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
-            </div>
+            <FormField
+              label="Wallet address"
+              id="walletAddress"
+              value={formData.walletAddress}
+              onChange={handleChange}
+              error={fieldErrors.walletAddress}
+              placeholder="0x... (optional)"
+              hint="Link your MetaMask wallet for carbon credit tracking"
+            />
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300">
-                Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  minLength="6"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-600 bg-slate-900 text-white rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
-            </div>
+            <FormField
+              label="Password"
+              id="password"
+              type="password"
+              value={formData.password}
+              onChange={handleChange}
+              error={fieldErrors.password}
+              required
+              autoComplete="new-password"
+              hint="At least 6 characters"
+            />
 
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300">
-                Confirm Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  minLength="6"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-600 bg-slate-900 text-white rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                />
-              </div>
-            </div>
+            <FormField
+              label="Confirm password"
+              id="confirmPassword"
+              type="password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              error={fieldErrors.confirmPassword}
+              required
+              autoComplete="new-password"
+            />
 
-            <div>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 transition-colors"
-              >
-                {isSubmitting ? 'Creating account...' : 'Create account'}
-                {!isSubmitting && <UserPlus className="ml-2 h-4 w-4" />}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full flex justify-center items-center py-2.5 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 transition-colors"
+            >
+              {isSubmitting ? 'Creating account...' : 'Create account'}
+              {!isSubmitting && <UserPlus className="ml-2 h-4 w-4" />}
+            </button>
           </form>
         </div>
       </div>
