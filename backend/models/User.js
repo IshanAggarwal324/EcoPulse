@@ -36,6 +36,11 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'admin', 'moderator'],
       default: 'user',
     },
+    preferences: {
+      emailNotifications: { type: Boolean, default: true },
+      gridAlerts: { type: Boolean, default: true },
+      energyUnit: { type: String, enum: ['kWh', 'MWh'], default: 'kWh' },
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically
