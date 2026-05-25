@@ -9,6 +9,7 @@ import Settings from '../../frontend/pages/Settings';
 
 import { AuthProvider } from '../../frontend/context/AuthContext';
 import ProtectedRoute from '../../frontend/components/ProtectedRoute';
+import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
 
@@ -17,8 +18,8 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+          <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
           <Route
             path="/*"
             element={
