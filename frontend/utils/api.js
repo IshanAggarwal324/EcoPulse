@@ -10,34 +10,72 @@ export class ApiError extends Error {
   }
 }
 
+let authHandlers = {
+  getAccessToken: () => null,
+  refreshSession: async () => false,
+  onSessionExpired: () => {},
+};
+
+export function configureApiAuth(handlers) {
+  authHandlers = { ...authHandlers, ...handlers };
+}
+
+async function parseResponse(response) {
+  return response.json().catch(() => ({}));
+}
+
 export async function fetchApi(path, options = {}) {
   const url = `${API_BASE}${path}`;
-  const headers = {
+  const skipAuth = options.skipAuth === true;
+
+  const buildHeaders = (token) => ({
     'Content-Type': 'application/json',
     ...(options.headers || {}),
-  };
-
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
+    ...(token && !skipAuth ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const data = await response.json().catch(() => ({}));
+  const execute = async (token, isRetry = false) => {
+    const response = await fetch(url, {
+      ...options,
+      headers: buildHeaders(options.token || token),
+      body: options.body,
+    });
 
-  if (!response.ok) {
-    throw new ApiError(
-      data.message || data.status || `Request failed (${response.status})`,
-      response.status,
-      data
-    );
-  }
+    const data = await parseResponse(response);
 
-  return data;
+    if (
+      response.status === 401 &&
+      !skipAuth &&
+      !isRetry &&
+      (data.code === 'TOKEN_EXPIRED' || data.code === 'TOKEN_INVALID')
+    ) {
+      const refreshed = await authHandlers.refreshSession();
+      if (refreshed) {
+        return execute(refreshed, true);
+      }
+      authHandlers.onSessionExpired();
+    }
+
+    if (!response.ok) {
+      throw new ApiError(
+        data.message || `Request failed (${response.status})`,
+        response.status,
+        data
+      );
+    }
+
+    return data;
+  };
+
+  const token = skipAuth ? null : authHandlers.getAccessToken();
+  return execute(token);
 }
+
+export const authApi = {
+  getMe: () => fetchApi('/auth/me'),
+  updateProfile: (body) => fetchApi('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
+  updatePassword: (body) => fetchApi('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
+};
 
 export const analyticsApi = {
   getSummary: (params = {}) => {

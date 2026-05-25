@@ -4,20 +4,19 @@ const User = require('../models/User');
 const protect = async (req, res, next) => {
   let token;
 
-  // Check if token exists in headers
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
+  if (req.headers.authorization?.startsWith('Bearer')) {
     try {
-      // Get token from header
       token = req.headers.authorization.split(' ')[1];
-
-      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Get user from the token payload and attach to request
-      // We exclude password
+      if (decoded.type && decoded.type !== 'access') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid token type. Use an access token.',
+          code: 'INVALID_TOKEN_TYPE',
+        });
+      }
+
       req.user = await User.findById(decoded.id).select('-password');
 
       if (!req.user) {
@@ -27,22 +26,39 @@ const protect = async (req, res, next) => {
         });
       }
 
-      next();
+      return next();
     } catch (error) {
-      console.error('Token verification failed:', error.message);
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({
+          success: false,
+          message: 'Access token expired',
+          code: 'TOKEN_EXPIRED',
+        });
+      }
+
       return res.status(401).json({
         success: false,
-        message: 'Not authorized, token failed',
+        message: 'Not authorized, token invalid',
+        code: 'TOKEN_INVALID',
       });
     }
   }
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'Not authorized, no token',
-    });
-  }
+  return res.status(401).json({
+    success: false,
+    message: 'Not authorized, no token',
+    code: 'NO_TOKEN',
+  });
 };
 
-module.exports = { protect };
+const authorize = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'You do not have permission to perform this action',
+    });
+  }
+  next();
+};
+
+module.exports = { protect, authorize };

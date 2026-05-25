@@ -1,183 +1,215 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const asyncHandler = require('../utils/asyncHandler');
+const { generateTokenPair, verifyRefreshToken } = require('../utils/tokens');
+const {
+  validateEmail,
+  validatePassword,
+  validateName,
+  validateWalletAddress,
+  collectErrors,
+} = require('../utils/validators');
 
-// Helper function to generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '7d',
+const toUserResponse = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  walletAddress: user.walletAddress,
+  role: user.role,
+  preferences: user.preferences,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});
+
+const register = asyncHandler(async (req, res) => {
+  const { name, email, password, walletAddress } = req.body;
+
+  const errors = collectErrors([
+    validateName(name),
+    validateEmail(email),
+    validatePassword(password),
+    walletAddress ? validateWalletAddress(walletAddress) : null,
+  ]);
+
+  if (errors) {
+    return res.status(400).json({ success: false, message: 'Validation failed', errors });
+  }
+
+  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  if (existingUser) {
+    return res.status(409).json({ success: false, message: 'A user with this email already exists' });
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password, salt);
+
+  const user = await User.create({
+    name: name.trim(),
+    email: email.toLowerCase().trim(),
+    password: hashedPassword,
+    walletAddress: walletAddress?.trim() || null,
   });
-};
 
-// @desc    Register a new user
-// @route   POST /api/v1/auth/register
-// @access  Public
-const register = async (req, res) => {
-  try {
-    const { name, email, password, walletAddress } = req.body;
+  const tokens = generateTokenPair(user._id);
 
-    // ── Request Validation ─────────────────────────────────────
-    const errors = [];
+  res.status(201).json({
+    success: true,
+    message: 'User registered successfully',
+    data: { user: toUserResponse(user), ...tokens },
+  });
+});
 
-    if (!name || name.trim().length < 2) {
-      errors.push('Name is required and must be at least 2 characters');
-    }
+const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-    if (!email) {
-      errors.push('Email is required');
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.push('Please provide a valid email address');
-    }
-
-    if (!password) {
-      errors.push('Password is required');
-    } else if (password.length < 6) {
-      errors.push('Password must be at least 6 characters');
-    }
-
-    if (errors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors,
-      });
-    }
-
-    // ── Duplicate Email Check ──────────────────────────────────
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: 'A user with this email already exists',
-      });
-    }
-
-    // ── Password Hashing ──────────────────────────────────────
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // ── Create & Store User ───────────────────────────────────
-    const user = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      password: hashedPassword,
-      walletAddress: walletAddress || null,
-    });
-
-    // Return user data without password
-    const userResponse = {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      walletAddress: user.walletAddress,
-      role: user.role,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
-
-    // Generate token
-    const token = generateToken(user._id);
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: { user: userResponse, token },
-    });
-  } catch (error) {
-    // Handle Mongoose validation errors
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map((err) => err.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: messages,
-      });
-    }
-
-    console.error('Registration error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during registration',
-    });
+  const errors = collectErrors([validateEmail(email), validatePassword(password)]);
+  if (errors) {
+    return res.status(400).json({ success: false, message: 'Validation failed', errors });
   }
-};
 
-// @desc    Authenticate user & get token
-// @route   POST /api/v1/auth/login
-// @access  Public
-const login = async (req, res) => {
+  const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+
+  const tokens = generateTokenPair(user._id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Logged in successfully',
+    data: { user: toUserResponse(user), ...tokens },
+  });
+});
+
+const refresh = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ success: false, message: 'Refresh token is required' });
+  }
+
   try {
-    const { email, password } = req.body;
+    const decoded = verifyRefreshToken(refreshToken);
+    const user = await User.findById(decoded.id);
 
-    // Validate request
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide an email and password',
-      });
-    }
-
-    // Check for user (we need the password field for comparison)
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
+      return res.status(401).json({ success: false, message: 'Invalid refresh token' });
     }
 
-    // Check if password matches
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
+    const tokens = generateTokenPair(user._id);
+
+    res.status(200).json({
+      success: true,
+      data: { user: toUserResponse(user), ...tokens },
+    });
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Refresh token expired or invalid',
+      code: 'REFRESH_TOKEN_INVALID',
+    });
+  }
+});
+
+const getMe = asyncHandler(async (req, res) => {
+  res.status(200).json({
+    success: true,
+    data: { user: toUserResponse(req.user) },
+  });
+});
+
+const updateProfile = asyncHandler(async (req, res) => {
+  const { name, walletAddress, preferences } = req.body;
+  const updates = {};
+
+  if (name !== undefined) {
+    const nameError = validateName(name);
+    if (nameError) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: [nameError] });
     }
+    updates.name = name.trim();
+  }
 
-    // Generate token
-    const token = generateToken(user._id);
+  if (walletAddress !== undefined) {
+    const walletError = validateWalletAddress(walletAddress, { required: false });
+    if (walletAddress && walletError) {
+      return res.status(400).json({ success: false, message: 'Validation failed', errors: [walletError] });
+    }
+    updates.walletAddress = walletAddress?.trim() || null;
+  }
 
-    // Return user data without password
-    const userResponse = {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      walletAddress: user.walletAddress,
-      role: user.role,
+  if (preferences !== undefined) {
+    updates.preferences = {
+      ...req.user.preferences?.toObject?.() || req.user.preferences || {},
+      ...preferences,
     };
+    if (updates.preferences.energyUnit && !['kWh', 'MWh'].includes(updates.preferences.energyUnit)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: ['energyUnit must be kWh or MWh'],
+      });
+    }
+  }
 
-    res.status(200).json({
-      success: true,
-      message: 'Logged in successfully',
-      data: { user: userResponse, token },
-    });
-  } catch (error) {
-    console.error('Login error:', error.message);
-    res.status(500).json({
+  const user = await User.findByIdAndUpdate(req.user._id, updates, {
+    new: true,
+    runValidators: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
+    data: { user: toUserResponse(user) },
+  });
+});
+
+const updatePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const errors = collectErrors([
+    validatePassword(currentPassword),
+    validatePassword(newPassword, { minLength: 8 }),
+  ]);
+
+  if (errors) {
+    return res.status(400).json({ success: false, message: 'Validation failed', errors });
+  }
+
+  if (currentPassword === newPassword) {
+    return res.status(400).json({
       success: false,
-      message: 'Server error during login',
+      message: 'Validation failed',
+      errors: ['New password must be different from current password'],
     });
   }
-};
 
-// @desc    Get current logged in user
-// @route   GET /api/v1/auth/me
-// @access  Private
-const getMe = async (req, res) => {
-  try {
-    // req.user is set in the auth middleware
-    res.status(200).json({
-      success: true,
-      data: { user: req.user },
-    });
-  } catch (error) {
-    console.error('Get me error:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Server error fetching user profile',
-    });
+  const user = await User.findById(req.user._id).select('+password');
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+  if (!isMatch) {
+    return res.status(401).json({ success: false, message: 'Current password is incorrect' });
   }
-};
 
-module.exports = { register, login, getMe };
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(newPassword, salt);
+  await user.save();
+
+  const tokens = generateTokenPair(user._id);
+
+  res.status(200).json({
+    success: true,
+    message: 'Password updated successfully',
+    data: { ...tokens },
+  });
+});
+
+module.exports = {
+  register,
+  login,
+  refresh,
+  getMe,
+  updateProfile,
+  updatePassword,
+};
