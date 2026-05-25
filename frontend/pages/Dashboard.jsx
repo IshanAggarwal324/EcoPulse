@@ -1,108 +1,235 @@
-import React, { useState, useEffect } from 'react';
-import { Zap, Activity, Award, BarChart3, Sun, Wind, Home, Rss, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Zap, Activity, Award, Sun, Wind, Home, TrendingUp, AlertCircle } from 'lucide-react';
+import io from 'socket.io-client';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
-import io from 'socket.io-client';
 import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
 import EnergyChart from '../components/ui/EnergyChart';
+import { analyticsApi, nodesApi, SOCKET_URL, ApiError } from '../utils/api';
+
+const SOURCE_ICONS = {
+  solar: <Sun size={20} className="text-yellow-400" />,
+  wind: <Wind size={20} className="text-blue-400" />,
+  home: <Home size={20} className="text-rose-400" />,
+};
 
 const Dashboard = () => {
-  const [totalEnergy, setTotalEnergy] = useState(14200); // base in kWh
-  const [activeNodes, setActiveNodes] = useState(1248);
-  const [account, setAccount] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [nodes, setNodes] = useState([]);
   const [liveReadings, setLiveReadings] = useState([]);
+  const [account, setAccount] = useState(null);
   const [forecastStatus, setForecastStatus] = useState('Loading...');
-  
-  useEffect(() => {
-    // Connect to the backend Socket.io server
-    const socket = io('http://localhost:5000');
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-    socket.on('connect', () => {
-      console.log('Connected to real-time data feed');
-    });
+  const applySummary = useCallback((data) => {
+    if (!data) return;
+    setSummary(data);
+    if (data.recentReadings?.length) {
+      setLiveReadings(data.recentReadings.map((r) => ({
+        nodeId: r.nodeId?._id || r.nodeId,
+        energyGenerated: r.energyGenerated,
+        energyConsumed: r.energyConsumed,
+        timestamp: r.timestamp,
+        nodeName: r.nodeId?.name,
+      })));
+    }
+  }, []);
+
+  const loadDashboard = useCallback(async (wallet) => {
+    try {
+      setError(null);
+      const [summaryRes, nodesRes] = await Promise.all([
+        analyticsApi.getSummary(wallet ? { wallet } : {}),
+        nodesApi.getAll(),
+      ]);
+
+      applySummary(summaryRes.data);
+      setNodes(nodesRes.data || []);
+
+      const forecastRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'}/forecast`);
+      const forecastData = await forecastRes.json();
+      if (forecastData.predictions?.length) {
+        setForecastStatus(forecastData.meta?.useDummyData ? 'Ready (demo)' : 'Ready');
+      } else {
+        setForecastStatus('Offline');
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load dashboard data';
+      setError(message);
+      setForecastStatus('Error');
+    } finally {
+      setLoading(false);
+    }
+  }, [applySummary]);
+
+  useEffect(() => {
+    loadDashboard(account);
+  }, [account, loadDashboard]);
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL);
+
+    socket.on('connect', () => setSocketConnected(true));
+    socket.on('disconnect', () => setSocketConnected(false));
 
     socket.on('newReading', (reading) => {
-      // Update total energy
-      setTotalEnergy((prev) => prev + reading.energyGenerated);
-      
-      // Update live readings list
       setLiveReadings((prev) => {
-        const updated = [reading, ...prev];
-        return updated.slice(0, 20); // keep last 20 readings for the chart
+        const updated = [{
+          nodeId: reading.nodeId?._id || reading.nodeId,
+          energyGenerated: reading.energyGenerated,
+          energyConsumed: reading.energyConsumed,
+          timestamp: reading.timestamp,
+          nodeName: reading.nodeId?.name,
+        }, ...prev];
+        return updated.slice(0, 20);
+      });
+
+      setSummary((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          energy: {
+            ...prev.energy,
+            totalGenerated: (prev.energy?.totalGenerated || 0) + (reading.energyGenerated || 0),
+            totalConsumed: (prev.energy?.totalConsumed || 0) + (reading.energyConsumed || 0),
+            readingCount: (prev.energy?.readingCount || 0) + 1,
+          },
+        };
       });
     });
 
-    // Fetch initial forecast status
-    fetch('http://localhost:5000/api/v1/forecast')
-      .then(res => res.json())
-      .then(data => {
-        if(data && data.predictions) setForecastStatus('Ready');
-        else setForecastStatus('Offline');
-      })
-      .catch(() => setForecastStatus('Error'));
+    socket.on('analyticsUpdate', (data) => {
+      applySummary(data);
+    });
 
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
+    return () => socket.disconnect();
+  }, [applySummary]);
+
+  const energy = summary?.energy || {};
+  const nodeStats = summary?.nodes || {};
+  const tradeStats = summary?.trades || {};
+  const carbon = summary?.carbon || {};
+
   const summaryCards = [
-    { label: 'Total Energy', value: `${(totalEnergy / 1000).toFixed(2)} MWh`, icon: <Zap size={24} className="text-yellow-400" />, trend: 'Live', positive: true },
-    { label: 'Active Nodes', value: activeNodes.toLocaleString(), icon: <Activity size={24} className="text-blue-400" />, trend: '+12', positive: true },
-    { label: 'Carbon Credits', value: '8,420', icon: <Award size={24} className="text-emerald-400" />, trend: '+450', positive: true },
-    { label: 'AI Forecast', value: forecastStatus, icon: <TrendingUp size={24} className="text-purple-400" />, trend: '7-Day', positive: forecastStatus === 'Ready' },
+    {
+      label: 'Energy Generated',
+      value: `${((energy.totalGenerated || 0) / 1000).toFixed(2)} MWh`,
+      icon: <Zap size={24} className="text-yellow-400" />,
+      trend: `${energy.readingCount || 0} readings`,
+      positive: true,
+    },
+    {
+      label: 'Energy Consumed',
+      value: `${((energy.totalConsumed || 0) / 1000).toFixed(2)} MWh`,
+      icon: <Activity size={24} className="text-rose-400" />,
+      trend: 'Grid total',
+      positive: false,
+    },
+    {
+      label: 'Active Nodes',
+      value: (nodeStats.activeNodes || 0).toLocaleString(),
+      icon: <Activity size={24} className="text-blue-400" />,
+      trend: `${nodeStats.totalNodes || 0} total`,
+      positive: true,
+    },
+    {
+      label: 'Trade Activity',
+      value: (tradeStats.completedTrades || 0).toLocaleString(),
+      icon: <TrendingUp size={24} className="text-indigo-400" />,
+      trend: `${(tradeStats.totalEnergyTraded || 0).toFixed(0)} kWh traded`,
+      positive: (tradeStats.completedTrades || 0) > 0,
+    },
+    {
+      label: 'Carbon Credits',
+      value: carbon.walletBalance
+        ? parseFloat(carbon.walletBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })
+        : (carbon.estimatedGridCredits || 0).toLocaleString(),
+      icon: <Award size={24} className="text-emerald-400" />,
+      trend: `${(carbon.totalCreditsTraded || 0).toFixed(2)} CC traded`,
+      positive: true,
+    },
+    {
+      label: 'AI Forecast',
+      value: forecastStatus,
+      icon: <TrendingUp size={24} className="text-purple-400" />,
+      trend: '7-Day',
+      positive: forecastStatus.startsWith('Ready'),
+    },
   ];
 
-  const nodeStatus = [
-    { name: 'Solar Node 1', type: 'Generation', status: 'Optimal', output: '45 kW', icon: <Sun size={20} className="text-yellow-400" /> },
-    { name: 'Wind Node', type: 'Generation', status: 'Moderate', output: '112 kW', icon: <Wind size={20} className="text-blue-400" /> },
-    { name: 'Consumer Node', type: 'Consumption', status: 'High Demand', output: '24 kW', icon: <Home size={20} className="text-rose-400" /> },
-  ];
+  const nodeStatus = nodes.slice(0, 5).map((node) => ({
+    name: node.name,
+    type: node.nodeType === 'consumer' ? 'Consumption' : 'Generation',
+    status: node.status === 'active' ? 'Optimal' : node.status,
+    output: '—',
+    icon: SOURCE_ICONS[node.sourceType] || <Zap size={20} className="text-emerald-400" />,
+  }));
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px] text-slate-400 animate-pulse">
+        Loading dashboard analytics...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-8">
-      {/* Page Heading */}
-      <SectionTitle 
-        title="Dashboard Overview" 
-        subtitle="Welcome to EcoPulse. Here is your grid summary." 
+      <SectionTitle
+        title="Dashboard Overview"
+        subtitle="Real-time grid summary synced from MongoDB, blockchain, and AI services."
         action={
-          <button className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20 whitespace-nowrap">
-            Generate Report
+          <button
+            onClick={() => loadDashboard(account)}
+            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20 whitespace-nowrap"
+          >
+            Refresh Data
           </button>
         }
       />
 
-      {/* Wallet & Blockchain Status */}
+      {error && (
+        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300">
+          <AlertCircle size={20} />
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <WalletConnect 
-          onConnect={(acc) => setAccount(acc)} 
-          onDisconnect={() => setAccount(null)} 
-          account={account} 
+        <WalletConnect
+          onConnect={(acc) => setAccount(acc)}
+          onDisconnect={() => setAccount(null)}
+          account={account}
         />
         <BlockchainStatus account={account} />
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {summaryCards.map((card, idx) => (
           <SummaryCard key={idx} {...card} />
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Monitoring Chart Section */}
         <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col min-h-[400px]">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-bold text-white flex items-center gap-2">
               <Activity className="text-emerald-400" /> Live Grid Analytics
             </h3>
-            <span className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-500/20">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Socket Connected
+            <span className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full border ${
+              socketConnected
+                ? 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20'
+                : 'text-slate-400 bg-slate-700/50 border-slate-600/30'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              {socketConnected ? 'Live Sync' : 'Reconnecting...'}
             </span>
           </div>
-          
+
           <div className="flex-1 w-full mb-6">
             <EnergyChart data={liveReadings} />
           </div>
@@ -122,7 +249,9 @@ const Dashboard = () => {
                         <Zap size={16} className="text-emerald-400" />
                       </div>
                       <div>
-                        <p className="text-sm text-slate-300 font-medium">Node: {reading.nodeId.substring(0, 8)}...</p>
+                        <p className="text-sm text-slate-300 font-medium">
+                          {reading.nodeName || `Node ${String(reading.nodeId).substring(0, 8)}...`}
+                        </p>
                         <p className="text-xs text-slate-500">{new Date(reading.timestamp).toLocaleTimeString()}</p>
                       </div>
                     </div>
@@ -137,17 +266,17 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Node Status Section */}
         <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
           <h3 className="text-xl font-bold text-white mb-6">Node Status</h3>
           <div className="space-y-4">
-            {nodeStatus.map((node, idx) => (
-              <StatusCard key={idx} {...node} />
-            ))}
+            {nodeStatus.length === 0 ? (
+              <p className="text-slate-500 text-sm">No nodes registered. Create nodes via the API or simulator.</p>
+            ) : (
+              nodeStatus.map((node, idx) => (
+                <StatusCard key={idx} {...node} />
+              ))
+            )}
           </div>
-          <button className="w-full mt-6 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-medium text-sm rounded-lg transition-colors">
-            View All Nodes
-          </button>
         </div>
       </div>
     </div>

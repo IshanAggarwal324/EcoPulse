@@ -11,5 +11,6 @@ router.use('/auth', require('./auth'));
 router.use('/nodes', require('./nodes'));
 router.use('/readings', require('./readings'));
 router.use('/forecast', require('./forecast'));
+router.use('/analytics', require('./analytics'));
 
 module.exports = router;
