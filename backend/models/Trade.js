@@ -7,7 +7,7 @@ const tradeSchema = new mongoose.Schema({
   },
   eventType: {
     type: String,
-    enum: ['listed', 'purchased'],
+    enum: ['listed', 'purchased', 'cancelled'],
     required: true,
   },
   seller: {
@@ -28,21 +28,36 @@ const tradeSchema = new mongoose.Schema({
   },
   txHash: {
     type: String,
-    unique: true,
-    sparse: true,
+    required: true,
+    lowercase: true,
+  },
+  logIndex: {
+    type: Number,
+    required: true,
   },
   blockNumber: {
     type: Number,
+    required: true,
   },
-  timestamp: {
+  blockTimestamp: {
     type: Date,
-    default: Date.now,
+  },
+  chainId: {
+    type: Number,
+  },
+  contractAddress: {
+    type: String,
+    lowercase: true,
   },
 }, {
   timestamps: true,
 });
 
-tradeSchema.index({ eventType: 1, timestamp: -1 });
+tradeSchema.index({ txHash: 1, logIndex: 1 }, { unique: true });
+tradeSchema.index({ eventType: 1, blockTimestamp: -1 });
 tradeSchema.index({ listingId: 1, eventType: 1 });
+tradeSchema.index({ seller: 1, blockTimestamp: -1 });
+tradeSchema.index({ buyer: 1, blockTimestamp: -1 });
+tradeSchema.index({ blockNumber: -1 });
 
 module.exports = mongoose.model('Trade', tradeSchema);

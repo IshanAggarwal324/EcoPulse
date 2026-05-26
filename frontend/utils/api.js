@@ -86,6 +86,18 @@ export const analyticsApi = {
   syncBlockchain: () => fetchApi('/analytics/sync', { method: 'POST' }),
 };
 
+export const tradesApi = {
+  getHistory: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/trades/history${query ? `?${query}` : ''}`);
+  },
+  syncHistory: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/trades/history/sync${query ? `?${query}` : ''}`);
+  },
+  getByTxHash: (txHash) => fetchApi(`/trades/tx/${txHash}`),
+};
+
 export const nodesApi = {
   getAll: () => fetchApi('/nodes'),
 };

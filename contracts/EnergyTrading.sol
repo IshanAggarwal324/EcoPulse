@@ -2,56 +2,115 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract EnergyTrading {
-    IERC20 public carbonCreditToken;
+/// @title EnergyTrading
+/// @notice Peer-to-peer marketplace for energy listings settled in CarbonCredit tokens
+contract EnergyTrading is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    IERC20 public immutable carbonCreditToken;
+
+    enum ListingStatus {
+        Active,
+        Sold,
+        Cancelled
+    }
 
     struct EnergyListing {
         address seller;
-        uint256 energyAmount; // generic units
-        uint256 price; // in CarbonCredits
-        bool active;
+        uint256 energyAmount;
+        uint256 price;
+        ListingStatus status;
+        uint256 createdAt;
     }
 
     mapping(uint256 => EnergyListing) public listings;
     uint256 public nextListingId;
 
-    event EnergyListed(uint256 listingId, address seller, uint256 energyAmount, uint256 price);
-    event EnergyPurchased(uint256 listingId, address buyer, address seller, uint256 energyAmount, uint256 price);
+    event EnergyListed(
+        uint256 indexed listingId,
+        address indexed seller,
+        uint256 energyAmount,
+        uint256 price
+    );
 
-    constructor(address _carbonCreditTokenAddress) {
-        carbonCreditToken = IERC20(_carbonCreditTokenAddress);
+    event EnergyPurchased(
+        uint256 indexed listingId,
+        address indexed buyer,
+        address indexed seller,
+        uint256 energyAmount,
+        uint256 price
+    );
+
+    event ListingCancelled(uint256 indexed listingId, address indexed seller);
+
+    error InvalidTokenAddress();
+    error InvalidAmount();
+    error InvalidPrice();
+    error ListingNotActive();
+    error NotListingSeller();
+    error CannotBuyOwnListing();
+    error ListingNotFound();
+
+    constructor(address carbonCreditTokenAddress) {
+        if (carbonCreditTokenAddress == address(0)) {
+            revert InvalidTokenAddress();
+        }
+        carbonCreditToken = IERC20(carbonCreditTokenAddress);
     }
 
-    function listEnergy(uint256 _energyAmount, uint256 _price) public {
-        require(_energyAmount > 0, "Energy amount must be > 0");
-        require(_price > 0, "Price must be > 0");
+    /// @notice Create a new energy listing priced in CarbonCredits
+    function listEnergy(uint256 energyAmount, uint256 price) external {
+        if (energyAmount == 0) revert InvalidAmount();
+        if (price == 0) revert InvalidPrice();
 
-        listings[nextListingId] = EnergyListing({
+        uint256 listingId = nextListingId;
+        listings[listingId] = EnergyListing({
             seller: msg.sender,
-            energyAmount: _energyAmount,
-            price: _price,
-            active: true
+            energyAmount: energyAmount,
+            price: price,
+            status: ListingStatus.Active,
+            createdAt: block.timestamp
         });
 
-        emit EnergyListed(nextListingId, msg.sender, _energyAmount, _price);
+        emit EnergyListed(listingId, msg.sender, energyAmount, price);
         nextListingId++;
     }
 
-    function purchaseEnergy(uint256 _listingId) public {
-        EnergyListing storage listing = listings[_listingId];
-        require(listing.active, "Listing is not active");
-        require(listing.seller != msg.sender, "Cannot buy your own listing");
+    /// @notice Cancel an active listing before it is purchased
+    function cancelListing(uint256 listingId) external {
+        EnergyListing storage listing = listings[listingId];
+        if (listing.seller == address(0)) revert ListingNotFound();
+        if (listing.status != ListingStatus.Active) revert ListingNotActive();
+        if (listing.seller != msg.sender) revert NotListingSeller();
+
+        listing.status = ListingStatus.Cancelled;
+        emit ListingCancelled(listingId, msg.sender);
+    }
+
+    /// @notice Purchase an active listing; transfers CarbonCredits from buyer to seller
+    function purchaseEnergy(uint256 listingId) external nonReentrant {
+        EnergyListing storage listing = listings[listingId];
+        if (listing.seller == address(0)) revert ListingNotFound();
+        if (listing.status != ListingStatus.Active) revert ListingNotActive();
+        if (listing.seller == msg.sender) revert CannotBuyOwnListing();
 
         uint256 price = listing.price;
         address seller = listing.seller;
+        uint256 energyAmount = listing.energyAmount;
 
-        // Mark inactive before transfer to prevent reentrancy-like issues
-        listing.active = false;
+        listing.status = ListingStatus.Sold;
 
-        // Transfer Carbon Credits from buyer to seller
-        require(carbonCreditToken.transferFrom(msg.sender, seller, price), "Transfer failed");
+        carbonCreditToken.safeTransferFrom(msg.sender, seller, price);
 
-        emit EnergyPurchased(_listingId, msg.sender, seller, listing.energyAmount, price);
+        emit EnergyPurchased(listingId, msg.sender, seller, energyAmount, price);
+    }
+
+    /// @notice Returns whether a listing is currently open for purchase
+    function isListingActive(uint256 listingId) external view returns (bool) {
+        EnergyListing storage listing = listings[listingId];
+        return listing.seller != address(0) && listing.status == ListingStatus.Active;
     }
 }

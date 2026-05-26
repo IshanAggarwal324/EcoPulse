@@ -24,13 +24,22 @@ const ccAbi = [
   "function mint(address to, uint256 amount) public"
 ];
 
+const LISTING_STATUS = {
+  Active: 0,
+  Sold: 1,
+  Cancelled: 2,
+};
+
 const etAbi = [
-  "function listEnergy(uint256 _energyAmount, uint256 _price)",
-  "function purchaseEnergy(uint256 _listingId)",
+  "function listEnergy(uint256 energyAmount, uint256 price)",
+  "function purchaseEnergy(uint256 listingId)",
+  "function cancelListing(uint256 listingId)",
+  "function isListingActive(uint256 listingId) view returns (bool)",
   "function nextListingId() view returns (uint256)",
-  "function listings(uint256) view returns (address seller, uint256 energyAmount, uint256 price, bool active)",
-  "event EnergyListed(uint256 listingId, address seller, uint256 energyAmount, uint256 price)",
-  "event EnergyPurchased(uint256 listingId, address buyer, address seller, uint256 energyAmount, uint256 price)"
+  "function listings(uint256) view returns (address seller, uint256 energyAmount, uint256 price, uint8 status, uint256 createdAt)",
+  "event EnergyListed(uint256 indexed listingId, address indexed seller, uint256 energyAmount, uint256 price)",
+  "event EnergyPurchased(uint256 indexed listingId, address indexed buyer, address indexed seller, uint256 energyAmount, uint256 price)",
+  "event ListingCancelled(uint256 indexed listingId, address indexed seller)",
 ];
 
 const getCcAddress = () => import.meta.env.VITE_CARBON_CREDIT_ADDRESS;
@@ -77,6 +86,15 @@ export const purchaseEnergy = async (listingId) => {
     return await tx.wait();
 };
 
+export const cancelListing = async (listingId) => {
+    const provider = getProvider();
+    if (!provider) throw new Error("No provider");
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(getEtAddress(), etAbi, signer);
+    const tx = await contract.cancelListing(listingId);
+    return await tx.wait();
+};
+
 export const fetchAllListings = async () => {
     const provider = getProvider();
     if (!provider) return [];
@@ -88,12 +106,14 @@ export const fetchAllListings = async () => {
         
         for (let i = 0; i < numListings; i++) {
             const listing = await contract.listings(i);
-            if (listing.active) {
+            const status = Number(listing.status ?? listing[3]);
+            if (status === LISTING_STATUS.Active) {
                 activeListings.push({
                     id: i,
                     seller: listing.seller,
                     energyAmount: listing.energyAmount.toString(),
                     price: ethers.formatEther(listing.price),
+                    createdAt: Number(listing.createdAt ?? listing[4]),
                 });
             }
         }

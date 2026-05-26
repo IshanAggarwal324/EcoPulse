@@ -42,7 +42,7 @@ const getNodeStats = async () => {
 };
 
 const getTradeStats = async () => {
-  const [purchases, listings] = await Promise.all([
+  const [purchases, listedCount, cancelledCount] = await Promise.all([
     Trade.aggregate([
       { $match: { eventType: 'purchased' } },
       {
@@ -57,6 +57,7 @@ const getTradeStats = async () => {
       },
     ]),
     Trade.countDocuments({ eventType: 'listed' }),
+    Trade.countDocuments({ eventType: 'cancelled' }),
   ]);
 
   const purchaseStats = purchases[0] || {};
@@ -65,7 +66,8 @@ const getTradeStats = async () => {
     completedTrades: purchaseStats.completedTrades || 0,
     totalEnergyTraded: purchaseStats.totalEnergyTraded || 0,
     totalVolumeCredits: purchaseStats.totalVolume || 0,
-    totalListings: listings,
+    totalListings: listedCount,
+    cancelledListings: cancelledCount,
   };
 };
 
