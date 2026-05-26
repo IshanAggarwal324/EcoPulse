@@ -6,6 +6,7 @@ import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
 import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
+import { useWallet } from '../context/WalletContext';
 import EnergyChart from '../components/ui/EnergyChart';
 import { analyticsApi, nodesApi, SOCKET_URL, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
@@ -21,7 +22,7 @@ const Dashboard = () => {
   const [summary, setSummary] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [liveReadings, setLiveReadings] = useState([]);
-  const [account, setAccount] = useState(null);
+  const { account } = useWallet();
   const [forecastStatus, setForecastStatus] = useState('Loading...');
   const [socketConnected, setSocketConnected] = useState(false);
   const [error, setError] = useState(null);
@@ -210,12 +211,8 @@ const Dashboard = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <WalletConnect
-          onConnect={(acc) => setAccount(acc)}
-          onDisconnect={() => setAccount(null)}
-          account={account}
-        />
-        <BlockchainStatus account={account} />
+        <WalletConnect />
+        <BlockchainStatus />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">

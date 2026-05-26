@@ -4,13 +4,14 @@ import {
   listEnergy,
   purchaseEnergy,
   cancelListing,
-  approveTokens,
+  approveTokensIfNeeded,
   mintDevTokens,
-  getProvider,
+  subscribeEnergyTradingEvents,
 } from '../utils/blockchain';
 import { tradesApi, analyticsApi } from '../utils/api';
 import SectionTitle from '../components/ui/SectionTitle';
 import { useToast } from '../context/ToastContext';
+import { useWallet } from '../context/WalletContext';
 
 const EVENT_LABELS = {
   listed: 'Listed',
@@ -33,11 +34,18 @@ const Trading = () => {
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [account, setAccount] = useState(null);
 
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
 
+  const {
+    account,
+    connect,
+    connecting,
+    isCorrectNetwork,
+    refreshBalance,
+    ensureNetwork,
+  } = useWallet();
   const toast = useToast();
 
   const loadListings = useCallback(async () => {
@@ -73,32 +81,64 @@ const Trading = () => {
   }, [toast]);
 
   useEffect(() => {
-    const init = async () => {
-      const provider = getProvider();
-      if (provider) {
-        const accounts = await provider.send('eth_accounts', []);
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          await loadHistory(accounts[0], true);
-        } else {
-          await loadHistory(null, true);
-        }
-      } else {
-        await loadHistory(null, false);
-      }
-      loadListings();
-    };
-    init();
-  }, [loadHistory, loadListings]);
+    loadListings();
+    loadHistory(account, Boolean(account));
+  }, [account, loadListings, loadHistory]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeEnergyTradingEvents({
+      onListed: () => {
+        loadListings();
+        toast.info('New energy listing detected on-chain');
+      },
+      onPurchased: () => {
+        loadListings();
+        if (account) loadHistory(account, true);
+        refreshBalance();
+        toast.info('Purchase detected on-chain');
+      },
+      onCancelled: () => {
+        loadListings();
+        toast.info('Listing cancellation detected on-chain');
+      },
+    });
+
+    return unsubscribe;
+  }, [account, loadListings, loadHistory, refreshBalance, toast]);
+
+  const requireWallet = async () => {
+    if (account) return true;
+    toast.info('Connect your wallet to continue');
+    try {
+      await connect();
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Wallet connection required');
+      return false;
+    }
+  };
+
+  const requireCorrectNetwork = async () => {
+    if (isCorrectNetwork) return true;
+    toast.info('Switch to the expected network in MetaMask');
+    try {
+      await ensureNetwork();
+      return true;
+    } catch (err) {
+      toast.error(err.message || 'Please switch to the correct network');
+      return false;
+    }
+  };
 
   const afterChainTx = async (receipt) => {
     await loadListings();
+    await refreshBalance();
     try {
       await analyticsApi.syncBlockchain();
     } catch {
-      // Backend sync is best-effort; history endpoint can still be queried later
+      // Backend sync is best-effort
     }
-    await loadHistory(account, true);
+    if (account) await loadHistory(account, true);
     if (receipt?.hash) {
       toast.info(`Tx: ${receipt.hash.slice(0, 10)}...`);
     }
@@ -106,10 +146,7 @@ const Trading = () => {
 
   const handleListEnergy = async (e) => {
     e.preventDefault();
-    if (!account) {
-      toast.error('Connect your wallet on the Dashboard first');
-      return;
-    }
+    if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
     if (!amount || !price) return;
 
     setLoading(true);
@@ -129,19 +166,19 @@ const Trading = () => {
   };
 
   const handlePurchase = async (id, priceStr) => {
-    if (!account) {
-      toast.error('Connect your wallet on the Dashboard first');
-      return;
-    }
+    if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
 
     setLoading(true);
     try {
-      toast.info('Step 1/2: Approving carbon credits...');
-      await approveTokens(priceStr);
+      const approvalReceipt = await approveTokensIfNeeded(priceStr);
 
-      toast.info('Step 2/2: Confirm purchase in MetaMask...');
+      if (approvalReceipt) {
+        toast.info('Step 1/2: Approval confirmed. Confirm purchase in MetaMask...');
+      } else {
+        toast.info('Allowance sufficient. Confirm purchase in MetaMask...');
+      }
+
       const receipt = await purchaseEnergy(id);
-
       toast.success('Energy purchased successfully!');
       await afterChainTx(receipt);
     } catch (err) {
@@ -152,10 +189,7 @@ const Trading = () => {
   };
 
   const handleCancel = async (id) => {
-    if (!account) {
-      toast.error('Connect your wallet on the Dashboard first');
-      return;
-    }
+    if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
 
     setLoading(true);
     try {
@@ -176,6 +210,37 @@ const Trading = () => {
         title="Peer-to-Peer Energy Trading"
         subtitle="List and purchase energy using carbon credits on-chain"
       />
+
+      {!account && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-slate-800/80 border border-slate-700/50 rounded-xl">
+          <p className="text-slate-300 text-sm">
+            Connect MetaMask to list, buy, or cancel energy on-chain.
+          </p>
+          <button
+            type="button"
+            onClick={() => connect().catch(() => {})}
+            disabled={connecting}
+            className="touch-target shrink-0 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            {connecting ? 'Connecting...' : 'Connect Wallet'}
+          </button>
+        </div>
+      )}
+
+      {account && !isCorrectNetwork && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <p className="text-amber-200 text-sm">
+            Your wallet is on the wrong network. Switch before trading.
+          </p>
+          <button
+            type="button"
+            onClick={() => ensureNetwork().catch((e) => toast.error(e.message))}
+            className="touch-target shrink-0 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            Switch Network
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl h-fit">
@@ -205,7 +270,7 @@ const Trading = () => {
             </div>
             <button
               type="submit"
-              disabled={loading || !account}
+              disabled={loading || !account || !isCorrectNetwork}
               className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors"
             >
               {loading ? 'Processing...' : 'Create Listing'}
@@ -216,8 +281,16 @@ const Trading = () => {
             <p className="text-xs text-slate-500 mb-2">Dev Tools (Hardhat Local Only)</p>
             <button
               type="button"
-              onClick={() => mintDevTokens(100).then(() => toast.success('Minted 100 CC!')).catch((e) => toast.error(e.message))}
-              className="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm py-2 rounded-lg"
+              onClick={() =>
+                mintDevTokens(100)
+                  .then(() => {
+                    toast.success('Minted 100 CC!');
+                    refreshBalance();
+                  })
+                  .catch((e) => toast.error(e.message))
+              }
+              disabled={!account || !isCorrectNetwork}
+              className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 text-sm py-2 rounded-lg"
             >
               Mint 100 CC to Self
             </button>
@@ -263,7 +336,7 @@ const Trading = () => {
                       <button
                         type="button"
                         onClick={() => handleCancel(listing.id)}
-                        disabled={loading}
+                        disabled={loading || !isCorrectNetwork}
                         className="touch-target bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium transition-colors w-full sm:w-auto"
                       >
                         Cancel
@@ -272,7 +345,7 @@ const Trading = () => {
                       <button
                         type="button"
                         onClick={() => handlePurchase(listing.id, listing.price)}
-                        disabled={loading}
+                        disabled={loading || !isCorrectNetwork}
                         className="touch-target bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium transition-colors w-full sm:w-auto"
                       >
                         Buy Energy

@@ -9,6 +9,7 @@ import Settings from '../../frontend/pages/Settings';
 
 import { AuthProvider } from '../../frontend/context/AuthContext';
 import { ToastProvider } from '../../frontend/context/ToastContext';
+import { WalletProvider } from '../../frontend/context/WalletContext';
 import SessionBridge from '../../frontend/components/SessionBridge';
 import ProtectedRoute from '../../frontend/components/ProtectedRoute';
 import GuestRoute from '../../frontend/components/GuestRoute';
@@ -19,6 +20,7 @@ function App() {
   return (
     <ToastProvider>
     <AuthProvider>
+    <WalletProvider>
       <SessionBridge />
       <BrowserRouter>
         <Routes>
@@ -42,6 +44,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+    </WalletProvider>
     </AuthProvider>
     </ToastProvider>
   );
