@@ -3,6 +3,8 @@ import { Award, RefreshCw, TrendingUp, Zap, AlertCircle } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import { analyticsApi, ApiError } from '../utils/api';
+import { useToast } from '../context/ToastContext';
+import PageLoader from '../components/ui/PageLoader';
 
 const Credits = () => {
   const [carbon, setCarbon] = useState(null);
@@ -10,6 +12,7 @@ const Credits = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState(null);
+  const toast = useToast();
 
   const loadCredits = async () => {
     try {
@@ -31,8 +34,11 @@ const Credits = () => {
       const res = await analyticsApi.syncBlockchain();
       setCarbon(res.data.summary.carbon);
       setTrades(res.data.summary.trades);
+      toast.success('Blockchain data synced');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Blockchain sync failed');
+      const msg = err instanceof ApiError ? err.message : 'Blockchain sync failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setSyncing(false);
     }
@@ -75,7 +81,7 @@ const Credits = () => {
           <button
             onClick={handleSync}
             disabled={syncing}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
           >
             <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Syncing...' : 'Sync Blockchain'}
@@ -91,7 +97,7 @@ const Credits = () => {
       )}
 
       {loading ? (
-        <div className="text-slate-400 animate-pulse py-12 text-center">Loading carbon credit analytics...</div>
+        <PageLoader message="Loading carbon credit analytics..." />
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

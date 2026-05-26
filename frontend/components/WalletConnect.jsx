@@ -42,8 +42,8 @@ const WalletConnect = ({ onConnect, onDisconnect, account }) => {
   }, [account]);
 
   return (
-    <div className="p-4 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl flex flex-col justify-center h-full">
-      <h3 className="text-xl font-bold text-white mb-4">Wallet Connection</h3>
+    <div className="p-4 sm:p-6 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl flex flex-col justify-center min-h-[140px]">
+      <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Wallet Connection</h3>
       
       {error && <p className="text-rose-400 text-sm mb-3">{error}</p>}
       
@@ -51,7 +51,7 @@ const WalletConnect = ({ onConnect, onDisconnect, account }) => {
         <button 
           onClick={connectWallet} 
           disabled={loading}
-          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
         >
           {loading ? "Connecting..." : "Connect MetaMask"}
         </button>
@@ -65,7 +65,7 @@ const WalletConnect = ({ onConnect, onDisconnect, account }) => {
           </p>
           <button 
             onClick={disconnectWallet}
-            className="w-full bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 font-medium px-4 py-2 rounded-lg transition-colors"
+            className="touch-target w-full bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 font-medium px-4 py-3 rounded-lg transition-colors"
           >
             Disconnect Wallet
           </button>

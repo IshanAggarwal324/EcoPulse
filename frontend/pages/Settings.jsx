@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Bell, Save, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Lock, Bell, Save, AlertCircle } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import FormField from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import {
   validateName,
   validateWalletAddress,
@@ -12,6 +13,7 @@ import {
 
 const Settings = () => {
   const { user, updateProfile, updatePassword, logout } = useAuth();
+  const toast = useToast();
 
   const [profile, setProfile] = useState({
     name: '',
@@ -29,8 +31,8 @@ const Settings = () => {
 
   const [profileErrors, setProfileErrors] = useState({});
   const [passwordErrors, setPasswordErrors] = useState({});
-  const [profileMessage, setProfileMessage] = useState({ type: '', text: '' });
-  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+  const [profileError, setProfileError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
@@ -48,7 +50,7 @@ const Settings = () => {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
-    setProfileMessage({ type: '', text: '' });
+    setProfileError('');
 
     const errors = {};
     const nameErr = validateName(profile.name);
@@ -70,15 +72,17 @@ const Settings = () => {
     });
 
     setSavingProfile(false);
-    setProfileMessage({
-      type: result.success ? 'success' : 'error',
-      text: result.success ? 'Profile saved successfully' : result.message,
-    });
+    if (result.success) {
+      toast.success('Profile saved successfully');
+    } else {
+      setProfileError(result.message);
+      toast.error(result.message);
+    }
   };
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    setPasswordMessage({ type: '', text: '' });
+    setPasswordError('');
 
     const errors = {};
     const currentErr = validatePassword(passwordForm.currentPassword);
@@ -101,33 +105,25 @@ const Settings = () => {
 
     if (result.success) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setPasswordMessage({ type: 'success', text: 'Password updated. You remain signed in.' });
+      toast.success('Password updated. You remain signed in.');
     } else {
-      setPasswordMessage({ type: 'error', text: result.message });
+      setPasswordError(result.message);
+      toast.error(result.message);
     }
   };
 
-  const StatusBanner = ({ message }) => {
-    if (!message.text) return null;
-    const isSuccess = message.type === 'success';
-    return (
-      <div
-        className={`flex items-center gap-2 p-3 rounded-lg text-sm mb-4 ${
-          isSuccess
-            ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-            : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-        }`}
-      >
-        {isSuccess ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-        {message.text}
+  const ErrorBanner = ({ message }) =>
+    message ? (
+      <div className="flex items-center gap-2 p-3 rounded-lg text-sm mb-4 bg-rose-500/10 border border-rose-500/30 text-rose-300">
+        <AlertCircle size={16} />
+        {message}
       </div>
-    );
-  };
+    ) : null;
 
   if (!user) return null;
 
   return (
-    <div className="space-y-8 pb-8 max-w-2xl">
+    <div className="space-y-6 sm:space-y-8 pb-4 sm:pb-8 max-w-2xl mx-auto w-full">
       <SectionTitle
         title="Settings"
         subtitle="Manage your profile, security, and grid preferences"
@@ -138,7 +134,7 @@ const Settings = () => {
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
           <User className="text-emerald-400" size={20} /> Profile
         </h3>
-        <StatusBanner message={profileMessage} />
+        <ErrorBanner message={profileError} />
         <form onSubmit={handleProfileSubmit} className="space-y-5" noValidate>
           <FormField label="Email" id="email" value={user.email} disabled onChange={() => {}} />
           <p className="text-xs text-slate-500 -mt-3">Email cannot be changed</p>
@@ -165,7 +161,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingProfile}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
           >
             <Save size={18} />
             {savingProfile ? 'Saving...' : 'Save profile'}
@@ -219,7 +215,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingProfile}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
           >
             <Save size={18} />
             {savingProfile ? 'Saving...' : 'Save preferences'}
@@ -232,7 +228,7 @@ const Settings = () => {
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
           <Lock className="text-amber-400" size={20} /> Security
         </h3>
-        <StatusBanner message={passwordMessage} />
+        <ErrorBanner message={passwordError} />
         <form onSubmit={handlePasswordSubmit} className="space-y-5" noValidate>
           <FormField
             label="Current password"
@@ -275,7 +271,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingPassword}
-            className="flex items-center gap-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
           >
             <Lock size={18} />
             {savingPassword ? 'Updating...' : 'Update password'}

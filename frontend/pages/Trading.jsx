@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchAllListings, listEnergy, purchaseEnergy, approveTokens, mintDevTokens, getProvider } from '../utils/blockchain';
+import SectionTitle from '../components/ui/SectionTitle';
+import { useToast } from '../context/ToastContext';
 
 const Trading = () => {
   const [listings, setListings] = useState([]);
@@ -11,7 +13,7 @@ const Trading = () => {
   const [price, setPrice] = useState('');
   
   // Status State
-  const [status, setStatus] = useState({ message: '', type: '' });
+  const toast = useToast();
 
   useEffect(() => {
     const init = async () => {
@@ -32,58 +34,61 @@ const Trading = () => {
 
   const handleListEnergy = async (e) => {
     e.preventDefault();
-    if(!account) return setStatus({ message: 'Connect wallet first via Dashboard!', type: 'error' });
+    if(!account) {
+      toast.error('Connect your wallet on the Dashboard first');
+      return;
+    }
     if(!amount || !price) return;
     
     setLoading(true);
-    setStatus({ message: 'Confirm transaction in MetaMask...', type: 'info' });
+    toast.info('Confirm transaction in MetaMask...');
     
     try {
         await listEnergy(amount, price);
-        setStatus({ message: 'Successfully listed energy!', type: 'success' });
+        toast.success('Energy listed successfully!');
         loadListings();
         setAmount('');
         setPrice('');
     } catch (err) {
-        setStatus({ message: err.message || 'Transaction failed', type: 'error' });
+        toast.error(err.message || 'Transaction failed');
     } finally {
         setLoading(false);
     }
   };
 
   const handlePurchase = async (id, priceStr) => {
-    if(!account) return setStatus({ message: 'Connect wallet first via Dashboard!', type: 'error' });
+    if(!account) {
+      toast.error('Connect your wallet on the Dashboard first');
+      return;
+    }
     
     setLoading(true);
     try {
-        setStatus({ message: 'Step 1/2: Approving CarbonCredits...', type: 'info' });
+        toast.info('Step 1/2: Approving carbon credits...');
         await approveTokens(priceStr);
         
-        setStatus({ message: 'Step 2/2: Confirming Purchase...', type: 'info' });
+        toast.info('Step 2/2: Confirm purchase in MetaMask...');
         await purchaseEnergy(id);
         
-        setStatus({ message: 'Successfully purchased energy!', type: 'success' });
+        toast.success('Energy purchased successfully!');
         loadListings();
     } catch (err) {
-        setStatus({ message: err.message || 'Purchase failed', type: 'error' });
+        toast.error(err.message || 'Purchase failed');
     } finally {
         setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6 pb-8">
-      <h1 className="text-3xl font-bold text-white">Peer-to-Peer Energy Trading</h1>
-      
-      {status.message && (
-          <div className={`p-4 rounded-lg ${status.type === 'error' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50' : status.type === 'success' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'bg-blue-500/20 text-blue-400 border border-blue-500/50'}`}>
-              {status.message}
-          </div>
-      )}
+    <div className="space-y-6 pb-4 sm:pb-8">
+      <SectionTitle
+        title="Peer-to-Peer Energy Trading"
+        subtitle="List and purchase energy using carbon credits on-chain"
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Create Listing */}
-        <div className="lg:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl h-fit">
+        <div className="lg:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl h-fit">
             <h3 className="text-xl font-bold text-white mb-4">List Energy for Sale</h3>
             <form onSubmit={handleListEnergy} className="space-y-4">
                 <div>
@@ -111,7 +116,7 @@ const Trading = () => {
                 <button 
                     type="submit" 
                     disabled={loading || !account}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-lg transition-colors"
+                    className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors"
                 >
                     {loading ? 'Processing...' : 'Create Listing'}
                 </button>
@@ -121,7 +126,7 @@ const Trading = () => {
             <div className="mt-8 pt-4 border-t border-slate-700/50">
                 <p className="text-xs text-slate-500 mb-2">Dev Tools (Hardhat Local Only)</p>
                 <button 
-                    onClick={() => mintDevTokens(100).then(()=>setStatus({message:'Minted 100 CC!', type:'success'})).catch(e => setStatus({message: e.message, type:'error'}))}
+                    onClick={() => mintDevTokens(100).then(() => toast.success('Minted 100 CC!')).catch((e) => toast.error(e.message))}
                     className="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm py-2 rounded-lg"
                 >
                     Mint 100 CC to Self
@@ -130,10 +135,10 @@ const Trading = () => {
         </div>
 
         {/* Market Listings */}
-        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white">Active Market Listings</h3>
-                <button onClick={loadListings} className="text-emerald-400 hover:text-emerald-300 text-sm font-medium">Refresh</button>
+        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl min-w-0">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                <h3 className="text-lg sm:text-xl font-bold text-white">Active Market Listings</h3>
+                <button type="button" onClick={() => { loadListings(); toast.info('Listings refreshed'); }} className="touch-target text-emerald-400 hover:text-emerald-300 text-sm font-medium py-2">Refresh</button>
             </div>
             
             {listings.length === 0 ? (
@@ -162,7 +167,7 @@ const Trading = () => {
                                     <button 
                                         onClick={() => handlePurchase(listing.id, listing.price)}
                                         disabled={loading}
-                                        className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                                        className="touch-target bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium transition-colors w-full sm:w-auto"
                                     >
                                         Buy Energy
                                     </button>

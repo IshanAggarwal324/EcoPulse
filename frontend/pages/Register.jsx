@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { UserPlus } from 'lucide-react';
 import FormField from '../components/ui/FormField';
 import { validateRegisterForm, hasErrors } from '../utils/validation';
+import { useToast } from '../context/ToastContext';
 import logo from '../../ecopulse/src/assets/logo.png';
 
 const Register = () => {
@@ -19,6 +20,7 @@ const Register = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -50,9 +52,11 @@ const Register = () => {
     const result = await register(payload);
 
     if (result.success) {
+      toast.success('Account created successfully!');
       navigate('/', { replace: true });
     } else {
       setFormError(result.message);
+      toast.error(result.message);
       if (Array.isArray(result.errors)) {
         const serverErrors = {};
         result.errors.forEach((msg) => {
@@ -67,7 +71,7 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] bg-slate-900 flex flex-col justify-center py-8 px-4 sm:py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <img src={logo} alt="EcoPulse Logo" className="h-20 w-auto" />

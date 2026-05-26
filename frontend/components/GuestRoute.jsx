@@ -9,7 +9,7 @@ const GuestRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-slate-900">
         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
       </div>
     );

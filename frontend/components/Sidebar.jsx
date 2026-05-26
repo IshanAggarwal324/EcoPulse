@@ -3,9 +3,11 @@ import { NavLink } from 'react-router-dom';
 import { X, LogOut, User } from 'lucide-react';
 import { NAV_LINKS } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const Sidebar = ({ onClose }) => {
   const { user, logout } = useAuth();
+  const toast = useToast();
 
   return (
     <aside className="h-full flex flex-col bg-slate-800 border-r border-slate-700 shadow-2xl">
@@ -29,7 +31,7 @@ const Sidebar = ({ onClose }) => {
             to={link.to}
             onClick={onClose}
             className={({ isActive }) =>
-              `flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all duration-300 group ${
+              `flex items-center gap-4 px-4 py-3.5 min-h-[48px] rounded-xl transition-all duration-300 group ${
                 isActive 
                   ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]' 
                   : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'
@@ -56,9 +58,13 @@ const Sidebar = ({ onClose }) => {
                 <p className="text-xs text-slate-400 truncate">{user.email}</p>
               </div>
             </div>
-            <button 
-              onClick={logout}
-              className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                toast.info('Signed out successfully');
+              }}
+              className="touch-target p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
               title="Logout"
             >
               <LogOut size={18} />

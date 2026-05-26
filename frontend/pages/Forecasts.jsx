@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import SectionTitle from '../components/ui/SectionTitle';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 import { forecastApi, ApiError } from '../utils/api';
+import { useToast } from '../context/ToastContext';
+import { Loader2 } from 'lucide-react';
 
 const Forecasts = () => {
   const [forecastData, setForecastData] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const toast = useToast();
 
   useEffect(() => {
     const fetchForecasts = async () => {
@@ -18,7 +21,9 @@ const Forecasts = () => {
         setForecastData(data.predictions || []);
         setMeta(data.meta || null);
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Failed to fetch forecasts');
+        const msg = err instanceof ApiError ? err.message : 'Failed to fetch forecasts';
+        setError(msg);
+        toast.error(msg);
         setForecastData([]);
       } finally {
         setLoading(false);
@@ -46,8 +51,9 @@ const Forecasts = () => {
         </h3>
 
         {loading ? (
-          <div className="h-64 flex items-center justify-center text-slate-400 animate-pulse">
-            <p>Generating predictions...</p>
+          <div className="h-48 sm:h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
+            <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+            <p className="text-sm">Generating predictions...</p>
           </div>
         ) : error ? (
           <div className="h-64 flex flex-col items-center justify-center text-rose-400 gap-3">
@@ -61,7 +67,7 @@ const Forecasts = () => {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex h-48 items-end gap-4 overflow-x-auto pb-2 border-b border-slate-700/50">
+            <div className="flex h-40 sm:h-48 items-end gap-2 sm:gap-4 overflow-x-auto pb-2 border-b border-slate-700/50 -mx-2 px-2 sm:mx-0 sm:px-0">
               {forecastData.map((day, idx) => {
                 const genHeight = Math.min((day.predicted_generation / 2000) * 100, 100);
                 const conHeight = Math.min((day.predicted_consumption / 2000) * 100, 100);

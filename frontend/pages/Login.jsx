@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { LogIn } from 'lucide-react';
 import FormField from '../components/ui/FormField';
 import { validateLoginForm, hasErrors } from '../utils/validation';
+import { useToast } from '../context/ToastContext';
 import logo from '../../ecopulse/src/assets/logo.png';
 
 const Login = () => {
@@ -14,6 +15,7 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { login } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/';
@@ -31,15 +33,17 @@ const Login = () => {
     const result = await login(email.trim(), password);
 
     if (result.success) {
+      toast.success('Welcome back!');
       navigate(from, { replace: true });
     } else {
       setFormError(result.message);
+      toast.error(result.message);
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] bg-slate-900 flex flex-col justify-center py-8 px-4 sm:py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <img src={logo} alt="EcoPulse Logo" className="h-20 w-auto" />
@@ -87,7 +91,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full flex justify-center items-center py-2.5 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 transition-colors"
+              className="touch-target w-full flex justify-center items-center py-3 px-4 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 transition-colors"
             >
               {isSubmitting ? 'Signing in...' : 'Sign in'}
               {!isSubmitting && <LogIn className="ml-2 h-4 w-4" />}

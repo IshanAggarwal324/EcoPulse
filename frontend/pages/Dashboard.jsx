@@ -8,6 +8,8 @@ import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
 import EnergyChart from '../components/ui/EnergyChart';
 import { analyticsApi, nodesApi, SOCKET_URL, ApiError } from '../utils/api';
+import { useToast } from '../context/ToastContext';
+import PageLoader from '../components/ui/PageLoader';
 
 const SOURCE_ICONS = {
   solar: <Sun size={20} className="text-yellow-400" />,
@@ -24,6 +26,8 @@ const Dashboard = () => {
   const [socketConnected, setSocketConnected] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const toast = useToast();
 
   const applySummary = useCallback((data) => {
     if (!data) return;
@@ -39,8 +43,9 @@ const Dashboard = () => {
     }
   }, []);
 
-  const loadDashboard = useCallback(async (wallet) => {
+  const loadDashboard = useCallback(async (wallet, { silent = false } = {}) => {
     try {
+      if (!silent) setRefreshing(true);
       setError(null);
       const [summaryRes, nodesRes] = await Promise.all([
         analyticsApi.getSummary(wallet ? { wallet } : {}),
@@ -61,10 +66,14 @@ const Dashboard = () => {
       const message = err instanceof ApiError ? err.message : 'Failed to load dashboard data';
       setError(message);
       setForecastStatus('Error');
+      if (!silent) toast.error(message);
+      return false;
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [applySummary]);
+    return true;
+  }, [applySummary, toast]);
 
   useEffect(() => {
     loadDashboard(account);
@@ -170,24 +179,25 @@ const Dashboard = () => {
   }));
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px] text-slate-400 animate-pulse">
-        Loading dashboard analytics...
-      </div>
-    );
+    return <PageLoader message="Loading dashboard analytics..." />;
   }
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-6 sm:space-y-8 pb-4 sm:pb-8">
       <SectionTitle
         title="Dashboard Overview"
         subtitle="Real-time grid summary synced from MongoDB, blockchain, and AI services."
         action={
           <button
-            onClick={() => loadDashboard(account)}
-            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20 whitespace-nowrap"
+            type="button"
+            disabled={refreshing}
+            onClick={async () => {
+              const ok = await loadDashboard(account);
+              if (ok) toast.success('Dashboard updated');
+            }}
+            className="touch-target px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
           >
-            Refresh Data
+            {refreshing ? 'Refreshing...' : 'Refresh Data'}
           </button>
         }
       />
@@ -208,19 +218,19 @@ const Dashboard = () => {
         <BlockchainStatus account={account} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {summaryCards.map((card, idx) => (
           <SummaryCard key={idx} {...card} />
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl flex flex-col min-h-[400px]">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-              <Activity className="text-emerald-400" /> Live Grid Analytics
+        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col min-h-0">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+            <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+              <Activity className="text-emerald-400 shrink-0" /> Live Grid Analytics
             </h3>
-            <span className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full border ${
+            <span className={`self-start flex items-center gap-2 text-xs sm:text-sm px-3 py-1 rounded-full border ${
               socketConnected
                 ? 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20'
                 : 'text-slate-400 bg-slate-700/50 border-slate-600/30'
@@ -243,8 +253,8 @@ const Dashboard = () => {
                 </div>
               ) : (
                 liveReadings.slice(0, 3).map((reading, i) => (
-                  <div key={i} className="flex items-center justify-between bg-slate-900/50 p-3 rounded-xl border border-slate-700/30">
-                    <div className="flex items-center gap-3">
+                  <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-900/50 p-3 rounded-xl border border-slate-700/30">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="p-2 bg-emerald-500/10 rounded-lg">
                         <Zap size={16} className="text-emerald-400" />
                       </div>
@@ -255,7 +265,7 @@ const Dashboard = () => {
                         <p className="text-xs text-slate-500">{new Date(reading.timestamp).toLocaleTimeString()}</p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="flex sm:flex-col gap-2 sm:text-right pl-11 sm:pl-0">
                       <p className="text-emerald-400 font-bold text-sm">+{reading.energyGenerated} kW</p>
                       <p className="text-rose-400 font-bold text-sm">-{reading.energyConsumed} kW</p>
                     </div>

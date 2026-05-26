@@ -1,5 +1,4 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
-import { configureApiAuth } from '../utils/api';
 
 const AuthContext = createContext(null);
 
@@ -110,14 +109,6 @@ export const AuthProvider = ({ children }) => {
     setUser(data.data.user);
     return true;
   }, [refreshSession]);
-
-  useEffect(() => {
-    configureApiAuth({
-      getAccessToken: () => localStorage.getItem(ACCESS_KEY),
-      refreshSession,
-      onSessionExpired: clearSession,
-    });
-  }, [refreshSession, clearSession]);
 
   useEffect(() => {
     const init = async () => {

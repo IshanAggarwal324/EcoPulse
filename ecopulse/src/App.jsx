@@ -8,6 +8,8 @@ import Credits from '../../frontend/pages/Credits';
 import Settings from '../../frontend/pages/Settings';
 
 import { AuthProvider } from '../../frontend/context/AuthContext';
+import { ToastProvider } from '../../frontend/context/ToastContext';
+import SessionBridge from '../../frontend/components/SessionBridge';
 import ProtectedRoute from '../../frontend/components/ProtectedRoute';
 import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
@@ -15,7 +17,9 @@ import Register from '../../frontend/pages/Register';
 
 function App() {
   return (
+    <ToastProvider>
     <AuthProvider>
+      <SessionBridge />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
@@ -39,6 +43,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ToastProvider>
   );
 }
 

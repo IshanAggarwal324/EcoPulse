@@ -9,7 +9,7 @@ const ProtectedRoute = ({ children, roles }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 gap-3">
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-900 gap-3 px-4">
         <Loader2 className="h-8 w-8 text-emerald-500 animate-spin" />
         <p className="text-slate-400 text-sm">Verifying session...</p>
       </div>
