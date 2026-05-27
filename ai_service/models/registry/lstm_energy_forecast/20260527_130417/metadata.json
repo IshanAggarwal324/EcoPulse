@@ -1,0 +1,30 @@
+{
+  "artifacts": {
+    "model_path": "models/registry\\lstm_energy_forecast\\20260527_130417\\model.keras",
+    "scaler_path": "models/registry\\lstm_energy_forecast\\20260527_130417\\scaler.joblib"
+  },
+  "model_name": "lstm_energy_forecast",
+  "preprocessing": {
+    "end": "2026-05-27 00:00:00",
+    "features": [
+      "generation",
+      "consumption"
+    ],
+    "freq": "D",
+    "look_back": 30,
+    "n_rows": 366,
+    "start": "2025-05-27 00:00:00",
+    "test_rows": 37,
+    "train_ratio": 0.8,
+    "train_rows": 292,
+    "val_ratio": 0.1,
+    "val_rows": 37
+  },
+  "saved_at_utc": "2026-05-27T13:04:17.872586+00:00",
+  "training": {
+    "batch_size": 32,
+    "data_source": "dummy",
+    "epochs": 20
+  },
+  "version": "20260527_130417"
+}

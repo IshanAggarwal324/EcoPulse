@@ -5,12 +5,12 @@ import pandas as pd
 import logging
 import os
 import joblib
-from tensorflow.keras.models import load_model
 
 from app.schemas import ForecastRequest, ForecastResponse, ForecastResult
 from utils.database import get_historical_data
 from models.preprocessing import prepare_for_prediction
 from models.forecasting import predict_future
+from models.model_registry import load_bundle
 
 router = APIRouter(prefix="/forecast", tags=["Forecast"])
 logger = logging.getLogger(__name__)
@@ -18,19 +18,43 @@ logger = logging.getLogger(__name__)
 # Global variables to hold the trained model and scaler in memory
 trained_model = None
 data_scaler = None
+loaded_version = None
 
 MODEL_DIR = "models/saved"
 MODEL_PATH = os.path.join(MODEL_DIR, "lstm_model.keras")
 SCALER_PATH = os.path.join(MODEL_DIR, "scaler.save")
 
-def load_artifacts():
-    global trained_model, data_scaler
+def load_artifacts(version: str | None = None):
+    """
+    Loads model artifacts.
+    Prefers the versioned registry. Falls back to legacy paths for backwards compatibility.
+    """
+    global trained_model, data_scaler, loaded_version
+    try:
+        model, scaler, meta = load_bundle(version=version)
+        trained_model = model
+        data_scaler = scaler
+        loaded_version = meta.get("version") or version
+        logger.info(f"Loaded model bundle from registry (version={loaded_version})")
+        return
+    except Exception as e:
+        logger.warning(f"Registry load failed, falling back to legacy artifacts: {e}")
+
     if trained_model is None or data_scaler is None:
         try:
-            logger.info("Loading pre-trained model and scaler from disk...")
+            logger.info("Loading legacy model and scaler from disk...")
+            try:
+                from tensorflow.keras.models import load_model  # type: ignore
+            except Exception as e:  # pragma: no cover
+                raise RuntimeError(
+                    "TensorFlow/Keras is required to load the saved model. "
+                    "Run in a compatible Python environment with TensorFlow installed."
+                ) from e
+
             trained_model = load_model(MODEL_PATH)
             data_scaler = joblib.load(SCALER_PATH)
-            logger.info("Successfully loaded artifacts.")
+            loaded_version = "legacy"
+            logger.info("Successfully loaded legacy artifacts.")
         except Exception as e:
             logger.error(f"Failed to load model artifacts: {e}")
 
@@ -41,10 +65,12 @@ async def startup_event():
 
 @router.post("/", response_model=ForecastResponse)
 async def get_forecast(request: ForecastRequest):
-    global trained_model, data_scaler
+    global trained_model, data_scaler, loaded_version
     
     # Ensure artifacts are loaded
-    if trained_model is None or data_scaler is None:
+    if request.model_version and request.model_version != loaded_version:
+        load_artifacts(request.model_version)
+    elif trained_model is None or data_scaler is None:
         load_artifacts()
         
     if trained_model is None or data_scaler is None:
@@ -85,7 +111,8 @@ async def get_forecast(request: ForecastRequest):
             
         return ForecastResponse(
             predictions=results,
-            model_status="Using pre-trained production model"
+            model_status="Using pre-trained production model",
+            model_version=loaded_version,
         )
         
     except Exception as e:
