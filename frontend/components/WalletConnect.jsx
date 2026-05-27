@@ -6,17 +6,24 @@ const WalletConnect = () => {
     account,
     balance,
     connecting,
+    reconnecting,
     error,
     connect,
+    reconnect,
     disconnect,
     isCorrectNetwork,
     expectedChainId,
     ensureNetwork,
+    hadPreviousSession,
   } = useWallet();
 
   const handleConnect = async () => {
     try {
-      await connect();
+      if (hadPreviousSession) {
+        await reconnect();
+      } else {
+        await connect();
+      }
     } catch {
       // Error state is set in context
     }
@@ -30,21 +37,40 @@ const WalletConnect = () => {
     }
   };
 
+  const connectLabel = reconnecting
+    ? 'Reconnecting...'
+    : connecting
+      ? 'Connecting...'
+      : hadPreviousSession
+        ? 'Reconnect MetaMask'
+        : 'Connect MetaMask';
+
   return (
     <div className="p-4 sm:p-6 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl flex flex-col justify-center min-h-[140px]">
       <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Wallet Connection</h3>
 
+      {reconnecting && (
+        <p className="text-slate-400 text-sm mb-3">Restoring wallet session...</p>
+      )}
+
       {error && <p className="text-rose-400 text-sm mb-3">{error}</p>}
 
       {!account ? (
-        <button
-          type="button"
-          onClick={handleConnect}
-          disabled={connecting}
-          className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {connecting ? 'Connecting...' : 'Connect MetaMask'}
-        </button>
+        <div className="space-y-2">
+          {hadPreviousSession && !reconnecting && (
+            <p className="text-slate-400 text-xs">
+              Previous session detected. Reconnect to continue trading.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleConnect}
+            disabled={connecting}
+            className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {connectLabel}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           <p className="text-slate-300 text-sm">

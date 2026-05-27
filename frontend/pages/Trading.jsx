@@ -41,7 +41,9 @@ const Trading = () => {
   const {
     account,
     connect,
+    reconnect,
     connecting,
+    hadPreviousSession,
     isCorrectNetwork,
     refreshBalance,
     ensureNetwork,
@@ -108,9 +110,13 @@ const Trading = () => {
 
   const requireWallet = async () => {
     if (account) return true;
-    toast.info('Connect your wallet to continue');
+    toast.info(hadPreviousSession ? 'Reconnect your wallet to continue' : 'Connect your wallet to continue');
     try {
-      await connect();
+      if (hadPreviousSession) {
+        await reconnect();
+      } else {
+        await connect();
+      }
       return true;
     } catch (err) {
       toast.error(err.message || 'Wallet connection required');
@@ -214,15 +220,19 @@ const Trading = () => {
       {!account && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-slate-800/80 border border-slate-700/50 rounded-xl">
           <p className="text-slate-300 text-sm">
-            Connect MetaMask to list, buy, or cancel energy on-chain.
+            {hadPreviousSession
+              ? 'Your wallet session ended. Reconnect MetaMask to continue trading.'
+              : 'Connect MetaMask to list, buy, or cancel energy on-chain.'}
           </p>
           <button
             type="button"
-            onClick={() => connect().catch(() => {})}
+            onClick={() => (hadPreviousSession ? reconnect() : connect()).catch(() => {})}
             disabled={connecting}
             className="touch-target shrink-0 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            {connecting ? 'Connecting...' : 'Connect Wallet'}
+            {connecting
+              ? (hadPreviousSession ? 'Reconnecting...' : 'Connecting...')
+              : (hadPreviousSession ? 'Reconnect Wallet' : 'Connect Wallet')}
           </button>
         </div>
       )}

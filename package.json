@@ -20,7 +20,8 @@
   },
   "scripts": {
     "dev": "cd ecopulse && npm run dev",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "hardhat test",
+    "test:contracts": "hardhat test",
     "docs:pdf": "node docs/generate-pdf.js"
   },
   "dependencies": {
