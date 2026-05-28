@@ -1,6 +1,13 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import Any, List, Optional
 from datetime import datetime
+
+
+class ErrorResponse(BaseModel):
+    success: bool = False
+    message: str
+    error_code: str
+    details: Optional[Any] = None
 
 class EnergyReading(BaseModel):
     timestamp: datetime
@@ -8,15 +15,15 @@ class EnergyReading(BaseModel):
     consumption: float
 
 class ForecastRequest(BaseModel):
-    days_to_predict: int = 7
+    days_to_predict: int = Field(default=7, ge=1, le=90)
     use_dummy_data: bool = True
     model_version: Optional[str] = None
     node_id: Optional[str] = None
 
 class BatchForecastRequest(BaseModel):
-    days_to_predict: int = 7
+    days_to_predict: int = Field(default=7, ge=1, le=90)
     use_dummy_data: bool = True
-    node_ids: List[str]
+    node_ids: List[str] = Field(..., min_length=1)
 
 class ForecastResult(BaseModel):
     timestamp: datetime
