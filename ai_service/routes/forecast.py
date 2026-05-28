@@ -5,12 +5,12 @@ import pandas as pd
 import logging
 import os
 import joblib
+from tensorflow.keras.models import load_model
 
 from app.schemas import ForecastRequest, ForecastResponse, ForecastResult
 from utils.database import get_historical_data
 from models.preprocessing import prepare_for_prediction
 from models.forecasting import predict_future
-from models.model_registry import load_bundle
 
 router = APIRouter(prefix="/forecast", tags=["Forecast"])
 logger = logging.getLogger(__name__)
@@ -18,43 +18,19 @@ logger = logging.getLogger(__name__)
 # Global variables to hold the trained model and scaler in memory
 trained_model = None
 data_scaler = None
-loaded_version = None
 
 MODEL_DIR = "models/saved"
 MODEL_PATH = os.path.join(MODEL_DIR, "lstm_model.keras")
 SCALER_PATH = os.path.join(MODEL_DIR, "scaler.save")
 
-def load_artifacts(version: str | None = None):
-    """
-    Loads model artifacts.
-    Prefers the versioned registry. Falls back to legacy paths for backwards compatibility.
-    """
-    global trained_model, data_scaler, loaded_version
-    try:
-        model, scaler, meta = load_bundle(version=version)
-        trained_model = model
-        data_scaler = scaler
-        loaded_version = meta.get("version") or version
-        logger.info(f"Loaded model bundle from registry (version={loaded_version})")
-        return
-    except Exception as e:
-        logger.warning(f"Registry load failed, falling back to legacy artifacts: {e}")
-
+def load_artifacts():
+    global trained_model, data_scaler
     if trained_model is None or data_scaler is None:
         try:
-            logger.info("Loading legacy model and scaler from disk...")
-            try:
-                from tensorflow.keras.models import load_model  # type: ignore
-            except Exception as e:  # pragma: no cover
-                raise RuntimeError(
-                    "TensorFlow/Keras is required to load the saved model. "
-                    "Run in a compatible Python environment with TensorFlow installed."
-                ) from e
-
+            logger.info("Loading pre-trained model and scaler from disk...")
             trained_model = load_model(MODEL_PATH)
             data_scaler = joblib.load(SCALER_PATH)
-            loaded_version = "legacy"
-            logger.info("Successfully loaded legacy artifacts.")
+            logger.info("Successfully loaded artifacts.")
         except Exception as e:
             logger.error(f"Failed to load model artifacts: {e}")
 
@@ -65,12 +41,10 @@ async def startup_event():
 
 @router.post("/", response_model=ForecastResponse)
 async def get_forecast(request: ForecastRequest):
-    global trained_model, data_scaler, loaded_version
+    global trained_model, data_scaler
     
     # Ensure artifacts are loaded
-    if request.model_version and request.model_version != loaded_version:
-        load_artifacts(request.model_version)
-    elif trained_model is None or data_scaler is None:
+    if trained_model is None or data_scaler is None:
         load_artifacts()
         
     if trained_model is None or data_scaler is None:
@@ -103,16 +77,30 @@ async def get_forecast(request: ForecastRequest):
         last_date = df.index[-1]
         for i, pred in enumerate(predictions):
             pred_date = last_date + timedelta(days=i+1)
+            generation_value = float(pred[0])
+            consumption_value = float(pred[1])
+
+            # Confidence gradually drops for farther horizon days.
+            confidence = max(0.55, 0.92 - (i * 0.05))
+            uncertainty_pct = 1.0 - confidence
+
+            generation_margin = abs(generation_value) * uncertainty_pct
+            consumption_margin = abs(consumption_value) * uncertainty_pct
+
             results.append(ForecastResult(
                 timestamp=pred_date,
-                predicted_generation=float(pred[0]),
-                predicted_consumption=float(pred[1])
+                predicted_generation=generation_value,
+                predicted_consumption=consumption_value,
+                generation_lower=max(0.0, generation_value - generation_margin),
+                generation_upper=generation_value + generation_margin,
+                consumption_lower=max(0.0, consumption_value - consumption_margin),
+                consumption_upper=consumption_value + consumption_margin,
+                confidence=confidence
             ))
             
         return ForecastResponse(
             predictions=results,
-            model_status="Using pre-trained production model",
-            model_version=loaded_version,
+            model_status="Using pre-trained production model"
         )
         
     except Exception as e:

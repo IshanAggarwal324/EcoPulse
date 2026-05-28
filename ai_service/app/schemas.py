@@ -16,6 +16,11 @@ class ForecastResult(BaseModel):
     timestamp: datetime
     predicted_generation: float
     predicted_consumption: float
+    generation_lower: float
+    generation_upper: float
+    consumption_lower: float
+    consumption_upper: float
+    confidence: float
 
 class ForecastResponse(BaseModel):
     predictions: List[ForecastResult]
