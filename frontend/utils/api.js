@@ -107,5 +107,12 @@ export const readingsApi = {
 };
 
 export const forecastApi = {
-  get: (days = 7) => fetchApi(`/forecast?days=${days}`),
+  get: (days = 7, options = {}) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (options.nodeId) params.set('nodeId', options.nodeId);
+    if (options.nodeIds?.length) params.set('nodeIds', options.nodeIds.join(','));
+    if (options.allNodes) params.set('allNodes', 'true');
+    if (options.useDummy) params.set('useDummy', 'true');
+    return fetchApi(`/forecast?${params}`);
+  },
 };

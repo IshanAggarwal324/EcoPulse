@@ -1,110 +1,208 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SectionTitle from '../components/ui/SectionTitle';
-import { TrendingUp, AlertCircle } from 'lucide-react';
-import { forecastApi, ApiError } from '../utils/api';
+import ForecastChart, { forecastSummary } from '../components/ui/ForecastChart';
+import { TrendingUp, AlertCircle, Network, GitCompare } from 'lucide-react';
+import { forecastApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { Loader2 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Area,
-  Line,
-  Legend,
-} from 'recharts';
+
+const VIEW_MODES = {
+  AGGREGATE: 'aggregate',
+  SINGLE: 'single',
+  COMPARE: 'compare',
+};
+
+const ForecastSummaryCards = ({ predictions }) => {
+  const { avgGeneration, avgConsumption, avgConfidence } = forecastSummary(predictions);
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+        <div className="flex items-center gap-2 text-emerald-400 mb-2">
+          <div className="w-3 h-3 rounded-full bg-emerald-400" />
+          <span className="font-semibold">Predicted Generation</span>
+        </div>
+        <p className="text-sm text-slate-400">Avg: {avgGeneration.toFixed(2)} kW</p>
+      </div>
+      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+        <div className="flex items-center gap-2 text-rose-400 mb-2">
+          <div className="w-3 h-3 rounded-full bg-rose-400" />
+          <span className="font-semibold">Predicted Consumption</span>
+        </div>
+        <p className="text-sm text-slate-400">Avg: {avgConsumption.toFixed(2)} kW</p>
+      </div>
+      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+        <div className="flex items-center gap-2 text-violet-400 mb-2">
+          <div className="w-3 h-3 rounded-full bg-violet-400" />
+          <span className="font-semibold">Prediction Confidence</span>
+        </div>
+        <p className="text-sm text-slate-400">Avg: {avgConfidence.toFixed(0)}%</p>
+      </div>
+    </div>
+  );
+};
 
 const Forecasts = () => {
+  const [nodes, setNodes] = useState([]);
+  const [viewMode, setViewMode] = useState(VIEW_MODES.AGGREGATE);
+  const [selectedNodeId, setSelectedNodeId] = useState('');
   const [forecastData, setForecastData] = useState([]);
+  const [nodeForecasts, setNodeForecasts] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const toast = useToast();
 
   useEffect(() => {
-    const fetchForecasts = async () => {
+    const loadNodes = async () => {
       try {
-        setLoading(true);
-        setError(null);
-        const data = await forecastApi.get(7);
-        setForecastData(data.predictions || []);
-        setMeta(data.meta || null);
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : 'Failed to fetch forecasts';
-        setError(msg);
-        toast.error(msg);
-        setForecastData([]);
-      } finally {
-        setLoading(false);
+        const res = await nodesApi.getAll();
+        const list = res.data || [];
+        setNodes(list);
+        if (list.length > 0) {
+          setSelectedNodeId(list[0]._id);
+        }
+      } catch {
+        setNodes([]);
       }
     };
-
-    fetchForecasts();
+    loadNodes();
   }, []);
 
-  const chartData = forecastData.map((day, idx) => {
-    const fallbackConfidence = Math.max(0.55, 0.92 - idx * 0.05);
-    const confidence = day.confidence ?? fallbackConfidence;
-    const uncertaintyPct = 1 - confidence;
+  const fetchForecasts = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      setForecastData([]);
+      setNodeForecasts([]);
 
-    const generationLower =
-      day.generation_lower ?? Math.max(0, day.predicted_generation * (1 - uncertaintyPct));
-    const generationUpper = day.generation_upper ?? day.predicted_generation * (1 + uncertaintyPct);
-    const consumptionLower =
-      day.consumption_lower ?? Math.max(0, day.predicted_consumption * (1 - uncertaintyPct));
-    const consumptionUpper = day.consumption_upper ?? day.predicted_consumption * (1 + uncertaintyPct);
+      if (viewMode === VIEW_MODES.COMPARE) {
+        if (nodes.length === 0) {
+          setError('No energy nodes found. Add nodes to compare forecasts.');
+          return;
+        }
+        const data = await forecastApi.get(7, { allNodes: true });
+        setNodeForecasts(data.forecasts || []);
+        setMeta(data.meta || null);
+        return;
+      }
 
-    return {
-      ...day,
-      generation_lower: generationLower,
-      generation_upper: generationUpper,
-      consumption_lower: consumptionLower,
-      consumption_upper: consumptionUpper,
-      dayLabel: new Date(day.timestamp).toLocaleDateString(undefined, {
-        weekday: 'short',
-      }),
-      confidencePercent: Math.round(confidence * 100),
-    };
-  });
+      if (viewMode === VIEW_MODES.SINGLE) {
+        if (!selectedNodeId) {
+          setError('Select a node to view its forecast.');
+          return;
+        }
+        const data = await forecastApi.get(7, { nodeId: selectedNodeId });
+        setForecastData(data.predictions || []);
+        setMeta(data.meta || null);
+        return;
+      }
 
-  const avgGeneration =
-    forecastData.length > 0
-      ? forecastData.reduce((acc, curr) => acc + curr.predicted_generation, 0) / forecastData.length
-      : 0;
-  const avgConsumption =
-    forecastData.length > 0
-      ? forecastData.reduce((acc, curr) => acc + curr.predicted_consumption, 0) / forecastData.length
-      : 0;
-  const avgConfidence =
-    forecastData.length > 0
-      ? (forecastData.reduce((acc, curr) => acc + (curr.confidence ?? 0), 0) / forecastData.length) * 100
-      : 0;
-
-  const tooltipFormatter = (value, name) => {
-    if (name.toLowerCase().includes('confidence')) {
-      return [`${Math.round(value)}%`, name];
+      const data = await forecastApi.get(7);
+      setForecastData(data.predictions || []);
+      setMeta(data.meta || null);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to fetch forecasts';
+      setError(msg);
+      toast.error(msg);
+      setForecastData([]);
+      setNodeForecasts([]);
+    } finally {
+      setLoading(false);
     }
-    return [`${Number(value).toFixed(2)} kW`, name];
-  };
+  }, [viewMode, selectedNodeId, nodes.length, toast]);
+
+  useEffect(() => {
+    fetchForecasts();
+  }, [fetchForecasts]);
+
+  const chartTitle =
+    viewMode === VIEW_MODES.COMPARE
+      ? 'Per-node forecast comparison'
+      : viewMode === VIEW_MODES.SINGLE
+        ? meta?.nodeName
+          ? `${meta.nodeName} forecast`
+          : 'Node forecast'
+        : 'Network aggregate forecast';
 
   return (
     <div className="space-y-8 pb-8">
       <SectionTitle
         title="AI Forecasts"
-        subtitle="7-day AI prediction synced with MongoDB readings when available."
+        subtitle="7-day predictions per node or across your full energy network."
       />
 
       <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
-        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-          <TrendingUp className="text-purple-400" /> Generation vs Consumption Forecast
-          {meta && (
-            <span className="text-xs font-normal text-slate-400 ml-2">
-              ({meta.useDummyData ? 'demo data' : 'live data'})
-            </span>
-          )}
-        </h3>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+          <h3 className="text-xl font-bold text-white flex items-center gap-2">
+            <TrendingUp className="text-purple-400" />
+            {chartTitle}
+            {meta && (
+              <span className="text-xs font-normal text-slate-400 ml-2">
+                ({meta.useDummyData ? 'demo data' : 'live data'})
+              </span>
+            )}
+          </h3>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex rounded-lg border border-slate-600/60 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode(VIEW_MODES.AGGREGATE)}
+                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 ${
+                  viewMode === VIEW_MODES.AGGREGATE
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                }`}
+              >
+                <Network size={14} />
+                Aggregate
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode(VIEW_MODES.SINGLE)}
+                className={`px-3 py-2 text-xs sm:text-sm ${
+                  viewMode === VIEW_MODES.SINGLE
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                }`}
+              >
+                Single node
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode(VIEW_MODES.COMPARE)}
+                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 ${
+                  viewMode === VIEW_MODES.COMPARE
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                }`}
+              >
+                <GitCompare size={14} />
+                Compare all
+              </button>
+            </div>
+
+            {viewMode === VIEW_MODES.SINGLE && (
+              <select
+                value={selectedNodeId}
+                onChange={(e) => setSelectedNodeId(e.target.value)}
+                className="bg-slate-900/70 border border-slate-600/60 rounded-lg px-3 py-2 text-sm text-slate-200 min-w-[180px]"
+                disabled={nodes.length === 0}
+              >
+                {nodes.length === 0 ? (
+                  <option value="">No nodes available</option>
+                ) : (
+                  nodes.map((node) => (
+                    <option key={node._id} value={node._id}>
+                      {node.name} ({node.nodeType})
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
+          </div>
+        </div>
 
         {loading ? (
           <div className="h-48 sm:h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
@@ -117,161 +215,39 @@ const Forecasts = () => {
             <p>{error}</p>
             <p className="text-sm text-slate-500">Ensure the AI service is running on port 8000</p>
           </div>
+        ) : viewMode === VIEW_MODES.COMPARE ? (
+          nodeForecasts.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-slate-400">
+              <p>No per-node forecast data available.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {nodeForecasts.map((entry) => (
+                <div
+                  key={entry.nodeId}
+                  className="bg-slate-900/40 border border-slate-700/50 rounded-xl p-4"
+                >
+                  <h4 className="text-sm font-semibold text-white mb-3">{entry.nodeName}</h4>
+                  <ForecastChart
+                    predictions={entry.predictions}
+                    compact
+                    bandIdPrefix={`node-${entry.nodeId}`}
+                  />
+                  <ForecastSummaryCards predictions={entry.predictions} />
+                </div>
+              ))}
+            </div>
+          )
         ) : forecastData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-slate-400">
             <p>No forecast data available.</p>
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="h-72 sm:h-80 lg:h-96 border-b border-slate-700/50 pb-3">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="genBand" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.24} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.05} />
-                    </linearGradient>
-                    <linearGradient id="conBand" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis dataKey="dayLabel" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis
-                    yAxisId="power"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => `${value}`}
-                  />
-                  <YAxis
-                    yAxisId="confidence"
-                    orientation="right"
-                    stroke="#cbd5e1"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    domain={[0, 100]}
-                    tickFormatter={(value) => `${value}%`}
-                  />
-                  <Tooltip
-                    formatter={tooltipFormatter}
-                    contentStyle={{
-                      backgroundColor: '#0f172a',
-                      border: '1px solid #334155',
-                      borderRadius: '0.75rem',
-                      color: '#f8fafc',
-                      fontSize: '12px',
-                    }}
-                    labelStyle={{ color: '#cbd5e1' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: '12px' }} />
-
-                  <Area
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="generation_upper"
-                    stroke="none"
-                    fill="url(#genBand)"
-                    fillOpacity={1}
-                    legendType="none"
-                    activeDot={false}
-                  />
-                  <Area
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="generation_lower"
-                    stroke="none"
-                    fill="#0f172a"
-                    fillOpacity={1}
-                    legendType="none"
-                    activeDot={false}
-                  />
-
-                  <Area
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="consumption_upper"
-                    stroke="none"
-                    fill="url(#conBand)"
-                    fillOpacity={1}
-                    legendType="none"
-                    activeDot={false}
-                  />
-                  <Area
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="consumption_lower"
-                    stroke="none"
-                    fill="#0f172a"
-                    fillOpacity={1}
-                    legendType="none"
-                    activeDot={false}
-                  />
-
-                  <Line
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="predicted_generation"
-                    stroke="#10b981"
-                    strokeWidth={2.5}
-                    dot={{ r: 3 }}
-                    name="Predicted generation"
-                  />
-                  <Line
-                    yAxisId="power"
-                    type="monotone"
-                    dataKey="predicted_consumption"
-                    stroke="#f43f5e"
-                    strokeWidth={2.5}
-                    dot={{ r: 3 }}
-                    name="Predicted consumption"
-                  />
-                  <Line
-                    yAxisId="confidence"
-                    type="monotone"
-                    dataKey="confidencePercent"
-                    stroke="#a78bfa"
-                    strokeDasharray="6 4"
-                    strokeWidth={2}
-                    dot={{ r: 2 }}
-                    name="Prediction confidence"
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+            <div className="border-b border-slate-700/50 pb-3">
+              <ForecastChart predictions={forecastData} bandIdPrefix="main" />
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <div className="flex items-center gap-2 text-emerald-400 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-400" />
-                  <span className="font-semibold">Predicted Generation</span>
-                </div>
-                <p className="text-sm text-slate-400">
-                  Avg: {avgGeneration.toFixed(2)} kW
-                </p>
-              </div>
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <div className="flex items-center gap-2 text-rose-400 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-rose-400" />
-                  <span className="font-semibold">Predicted Consumption</span>
-                </div>
-                <p className="text-sm text-slate-400">
-                  Avg: {avgConsumption.toFixed(2)} kW
-                </p>
-              </div>
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                <div className="flex items-center gap-2 text-violet-400 mb-2">
-                  <div className="w-3 h-3 rounded-full bg-violet-400" />
-                  <span className="font-semibold">Prediction Confidence</span>
-                </div>
-                <p className="text-sm text-slate-400">
-                  Avg: {avgConfidence.toFixed(0)}%
-                </p>
-              </div>
-            </div>
+            <ForecastSummaryCards predictions={forecastData} />
           </div>
         )}
       </div>
