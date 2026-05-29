@@ -55,6 +55,7 @@ const ccAbi = [
   "function name() view returns (string)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
   "function mint(address to, uint256 amount) public",
   "event Transfer(address indexed from, address indexed to, uint256 value)",
 ];
@@ -100,6 +101,21 @@ export const getTokenAllowance = async (owner) => {
   const contract = new ethers.Contract(getCcAddress(), ccAbi, provider);
   return contract.allowance(owner, getEtAddress());
 };
+
+export const getMarketplaceAllowance = async (owner) => {
+  const allowance = await getTokenAllowance(owner);
+  return ethers.formatEther(allowance);
+};
+
+export const transferCarbonCredits = async (to, amount) =>
+  executeSignedTx(async (signer) => {
+    if (!ethers.isAddress(to)) {
+      throw new Error("Invalid recipient address");
+    }
+    const contract = new ethers.Contract(getCcAddress(), ccAbi, signer);
+    const tx = await contract.transfer(to, ethers.parseEther(amount.toString()));
+    return tx.wait();
+  });
 
 export const approveTokensIfNeeded = async (amount) => {
   const provider = getProvider();

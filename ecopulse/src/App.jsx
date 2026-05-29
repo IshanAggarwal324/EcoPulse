@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AppLayout from '../../frontend/components/AppLayout';
 import Dashboard from '../../frontend/pages/Dashboard';
 import Trading from '../../frontend/pages/Trading';
+import CarbonTransactions from '../../frontend/pages/CarbonTransactions';
 import Forecasts from '../../frontend/pages/Forecasts';
 import Credits from '../../frontend/pages/Credits';
 import Settings from '../../frontend/pages/Settings';
@@ -34,6 +35,7 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/trading" element={<Trading />} />
+                    <Route path="/transactions" element={<CarbonTransactions />} />
                     <Route path="/forecasts" element={<Forecasts />} />
                     <Route path="/credits" element={<Credits />} />
                     <Route path="/settings" element={<Settings />} />
