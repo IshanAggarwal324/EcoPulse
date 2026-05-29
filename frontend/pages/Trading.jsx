@@ -13,15 +13,17 @@ import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
 import EmptyState from '../components/ui/EmptyState';
+import TransactionSummary from '../components/ui/TransactionSummary';
+import TransactionFilters from '../components/ui/TransactionFilters';
+import {
+  applyDirectionFilter,
+  buildHistoryParams,
+  getDisplaySummary,
+  EVENT_LABELS,
+} from '../utils/transactionUtils';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
 import { Loader2, Store, ListOrdered, Zap } from 'lucide-react';
-
-const EVENT_LABELS = {
-  listed: 'Listed',
-  purchased: 'Purchased',
-  cancelled: 'Cancelled',
-};
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },
@@ -45,6 +47,12 @@ const Trading = () => {
   const [orders, setOrders] = useState([]);
   const [orderSummary, setOrderSummary] = useState(null);
   const [history, setHistory] = useState([]);
+  const [apiSummary, setApiSummary] = useState(null);
+  const [txFilter, setTxFilter] = useState('all');
+  const [txPeriodDays, setTxPeriodDays] = useState('');
+  const [txListingId, setTxListingId] = useState('');
+  const [txMinPrice, setTxMinPrice] = useState('');
+  const [txMaxPrice, setTxMaxPrice] = useState('');
   const [listingsLoading, setListingsLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -119,14 +127,22 @@ const Trading = () => {
   const loadHistory = useCallback(async (wallet, syncFirst = false) => {
     setHistoryLoading(true);
     try {
-      const params = { limit: 25 };
-      if (wallet) params.wallet = wallet;
+      const params = buildHistoryParams({
+        wallet,
+        filterId: txFilter,
+        periodDays: txPeriodDays,
+        listingId: txListingId,
+        minPrice: txMinPrice,
+        maxPrice: txMaxPrice,
+        limit: 100,
+      });
 
       const response = syncFirst
         ? await tradesApi.syncHistory(params)
         : await tradesApi.getHistory(params);
 
       setHistory(response.data?.trades || []);
+      setApiSummary(response.data?.summary || null);
     } catch (err) {
       if (!syncFirst) {
         try {
@@ -144,12 +160,30 @@ const Trading = () => {
     } finally {
       setHistoryLoading(false);
     }
-  }, [toast]);
+  }, [txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice, toast]);
+
+  const filteredHistory = React.useMemo(
+    () => applyDirectionFilter(history, txFilter, account),
+    [history, txFilter, account],
+  );
+
+  const txDisplaySummary = React.useMemo(
+    () => getDisplaySummary(filteredHistory, account, apiSummary, txFilter),
+    [filteredHistory, account, apiSummary, txFilter],
+  );
+
+  const clearTxFilters = () => {
+    setTxFilter('all');
+    setTxPeriodDays('');
+    setTxListingId('');
+    setTxMinPrice('');
+    setTxMaxPrice('');
+  };
 
   useEffect(() => {
     loadOrders();
     loadHistory(account, Boolean(account));
-  }, [account, loadOrders, loadHistory]);
+  }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
 
   useEffect(() => {
     const unsubscribe = subscribeEnergyTradingEvents({
@@ -523,12 +557,28 @@ const Trading = () => {
           </button>
         </div>
 
-        {historyLoading && history.length === 0 ? (
+        <TransactionFilters
+          filterId={txFilter}
+          onFilterChange={setTxFilter}
+          periodDays={txPeriodDays}
+          onPeriodChange={setTxPeriodDays}
+          listingId={txListingId}
+          onListingIdChange={setTxListingId}
+          minPrice={txMinPrice}
+          onMinPriceChange={setTxMinPrice}
+          maxPrice={txMaxPrice}
+          onMaxPriceChange={setTxMaxPrice}
+          onClear={clearTxFilters}
+        />
+
+        <TransactionSummary summary={txDisplaySummary} wallet={account} compact />
+
+        {historyLoading && filteredHistory.length === 0 ? (
           <p className="text-slate-400 text-center py-8">Loading transaction history...</p>
-        ) : history.length === 0 ? (
+        ) : filteredHistory.length === 0 ? (
           <EmptyState
-            title="No transactions yet"
-            description="List or fill an order, then sync from chain."
+            title="No transactions match filters"
+            description="Adjust filters or sync from chain to load more activity."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -545,7 +595,7 @@ const Trading = () => {
                 </tr>
               </thead>
               <tbody>
-                {history.map((trade) => (
+                {filteredHistory.map((trade) => (
                   <tr
                     key={`${trade.txHash}-${trade.logIndex}`}
                     className="border-b border-slate-700/50 text-slate-200"

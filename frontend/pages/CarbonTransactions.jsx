@@ -14,6 +14,15 @@ import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import FormField from '../components/ui/FormField';
 import EmptyState from '../components/ui/EmptyState';
+import TransactionSummary from '../components/ui/TransactionSummary';
+import TransactionFilters from '../components/ui/TransactionFilters';
+import {
+  applyDirectionFilter,
+  buildHistoryParams,
+  classifyTrade,
+  getDisplaySummary,
+  parseAmount,
+} from '../utils/transactionUtils';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
 import {
@@ -23,13 +32,6 @@ import {
   transferCarbonCredits,
 } from '../utils/blockchain';
 import { analyticsApi, tradesApi } from '../utils/api';
-
-const FILTER_OPTIONS = [
-  { id: 'all', label: 'All activity' },
-  { id: 'received', label: 'Received' },
-  { id: 'sent', label: 'Sent' },
-  { id: 'marketplace', label: 'Marketplace' },
-];
 
 const formatAddress = (address) => {
   if (!address) return '—';
@@ -41,40 +43,17 @@ const formatDate = (value) => {
   return new Date(value).toLocaleString();
 };
 
-const parseAmount = (value) => {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : 0;
-};
-
-const classifyTrade = (trade, wallet) => {
-  if (!wallet) return { direction: 'neutral', label: 'Marketplace' };
-
-  const me = wallet.toLowerCase();
-  const seller = trade.seller?.toLowerCase();
-  const buyer = trade.buyer?.toLowerCase();
-
-  if (trade.eventType === 'purchased' && buyer === me) {
-    return { direction: 'sent', label: 'Energy purchase', amount: parseAmount(trade.price) };
-  }
-  if (trade.eventType === 'purchased' && seller === me) {
-    return { direction: 'received', label: 'Sale proceeds', amount: parseAmount(trade.price) };
-  }
-  if (trade.eventType === 'listed' && seller === me) {
-    return { direction: 'marketplace', label: 'Listing created', amount: parseAmount(trade.price) };
-  }
-  if (trade.eventType === 'cancelled' && seller === me) {
-    return { direction: 'marketplace', label: 'Listing cancelled', amount: 0 };
-  }
-
-  return { direction: 'marketplace', label: 'Marketplace', amount: parseAmount(trade.price) };
-};
-
 const CarbonTransactions = () => {
   const [history, setHistory] = useState([]);
+  const [apiSummary, setApiSummary] = useState(null);
   const [allowance, setAllowance] = useState('0');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [transferLoading, setTransferLoading] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [periodDays, setPeriodDays] = useState('');
+  const [listingId, setListingId] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [selectedTx, setSelectedTx] = useState(null);
 
   const [recipient, setRecipient] = useState('');
@@ -106,20 +85,28 @@ const CarbonTransactions = () => {
   const loadHistory = useCallback(async (wallet, syncFirst = false) => {
     setHistoryLoading(true);
     try {
-      const params = { limit: 50 };
-      if (wallet) params.wallet = wallet;
+      const params = buildHistoryParams({
+        wallet,
+        filterId: filter,
+        periodDays,
+        listingId,
+        minPrice,
+        maxPrice,
+        limit: 100,
+      });
 
       const response = syncFirst
         ? await tradesApi.syncHistory(params)
         : await tradesApi.getHistory(params);
 
       setHistory(response.data?.trades || []);
+      setApiSummary(response.data?.summary || null);
     } catch (err) {
       toast.error(err.message || 'Failed to load transaction history');
     } finally {
       setHistoryLoading(false);
     }
-  }, [toast]);
+  }, [filter, periodDays, listingId, minPrice, maxPrice, toast]);
 
   const refreshAll = useCallback(async (syncFirst = false) => {
     await Promise.all([
@@ -131,7 +118,7 @@ const CarbonTransactions = () => {
 
   useEffect(() => {
     refreshAll(Boolean(account));
-  }, [account, refreshAll]);
+  }, [account, refreshAll, filter, periodDays, listingId, minPrice, maxPrice]);
 
   useEffect(() => {
     if (!account) return undefined;
@@ -144,25 +131,23 @@ const CarbonTransactions = () => {
     return unsubscribe;
   }, [account, refreshBalance, loadAllowance]);
 
-  const ledgerStats = useMemo(() => {
-    if (!account) return { received: 0, sent: 0, marketplace: 0 };
+  const filteredHistory = useMemo(
+    () => applyDirectionFilter(history, filter, account),
+    [history, filter, account],
+  );
 
-    return history.reduce(
-      (acc, trade) => {
-        const info = classifyTrade(trade, account);
-        if (info.direction === 'received') acc.received += info.amount;
-        if (info.direction === 'sent') acc.sent += info.amount;
-        if (info.direction === 'marketplace') acc.marketplace += 1;
-        return acc;
-      },
-      { received: 0, sent: 0, marketplace: 0 },
-    );
-  }, [history, account]);
+  const displaySummary = useMemo(
+    () => getDisplaySummary(filteredHistory, account, apiSummary, filter),
+    [filteredHistory, account, apiSummary, filter],
+  );
 
-  const filteredHistory = useMemo(() => {
-    if (filter === 'all') return history;
-    return history.filter((trade) => classifyTrade(trade, account).direction === filter);
-  }, [history, filter, account]);
+  const clearFilters = () => {
+    setFilter('all');
+    setPeriodDays('');
+    setListingId('');
+    setMinPrice('');
+    setMaxPrice('');
+  };
 
   const requireWallet = async () => {
     if (account) return true;
@@ -253,17 +238,24 @@ const CarbonTransactions = () => {
     },
     {
       label: 'Credits Received',
-      value: `${ledgerStats.received.toFixed(2)} CC`,
+      value: `${(displaySummary.creditsReceived || 0).toFixed(2)} CC`,
       icon: <ArrowDownLeft size={24} className="text-blue-400" />,
-      trend: 'From marketplace sales',
+      trend: 'Filtered total',
       positive: true,
     },
     {
       label: 'Credits Spent',
-      value: `${ledgerStats.sent.toFixed(2)} CC`,
+      value: `${(displaySummary.creditsSpent || 0).toFixed(2)} CC`,
       icon: <ArrowUpRight size={24} className="text-rose-400" />,
-      trend: `${ledgerStats.marketplace} listing events`,
+      trend: `${displaySummary.listed || 0} listings`,
       positive: false,
+    },
+    {
+      label: 'Net Flow',
+      value: `${(displaySummary.netFlow || 0).toFixed(2)} CC`,
+      icon: <Coins size={24} className="text-violet-400" />,
+      trend: `${displaySummary.showing ?? 0} transactions`,
+      positive: (displaySummary.netFlow || 0) >= 0,
     },
   ];
 
@@ -314,7 +306,7 @@ const CarbonTransactions = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {summaryCards.map((card) => (
           <SummaryCard key={card.label} {...card} />
         ))}
@@ -415,23 +407,23 @@ const CarbonTransactions = () => {
                 Indexed marketplace settlements mapped to carbon credit flows.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setFilter(option.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    filter === option.id
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-slate-900/60 text-slate-400 border border-slate-700/50 hover:text-slate-200'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
           </div>
+
+          <TransactionFilters
+            filterId={filter}
+            onFilterChange={setFilter}
+            periodDays={periodDays}
+            onPeriodChange={setPeriodDays}
+            listingId={listingId}
+            onListingIdChange={setListingId}
+            minPrice={minPrice}
+            onMinPriceChange={setMinPrice}
+            maxPrice={maxPrice}
+            onMaxPriceChange={setMaxPrice}
+            onClear={clearFilters}
+          />
+
+          <TransactionSummary summary={displaySummary} wallet={account} />
 
           {historyLoading && filteredHistory.length === 0 ? (
             <p className="text-slate-400 text-center py-12">Loading transactions...</p>

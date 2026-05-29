@@ -2,14 +2,20 @@ const tradeHistoryService = require('../services/tradeHistoryService');
 const blockchainSyncService = require('../services/blockchainSyncService');
 const asyncHandler = require('../utils/asyncHandler');
 
+const parseHistoryParams = (query) => ({
+  wallet: query.wallet,
+  eventType: query.eventType,
+  listingId: query.listingId,
+  limit: query.limit,
+  page: query.page,
+  sinceDays: query.sinceDays,
+  since: query.since,
+  minPrice: query.minPrice,
+  maxPrice: query.maxPrice,
+});
+
 const getHistory = asyncHandler(async (req, res) => {
-  const result = await tradeHistoryService.getTradeHistory({
-    wallet: req.query.wallet,
-    eventType: req.query.eventType,
-    listingId: req.query.listingId,
-    limit: req.query.limit,
-    page: req.query.page,
-  });
+  const result = await tradeHistoryService.getTradeHistory(parseHistoryParams(req.query));
 
   res.status(200).json({
     success: true,
@@ -35,13 +41,7 @@ const getByTxHash = asyncHandler(async (req, res) => {
 
 const syncAndGetHistory = asyncHandler(async (req, res) => {
   const sync = await blockchainSyncService.syncBlockchainTrades();
-  const result = await tradeHistoryService.getTradeHistory({
-    wallet: req.query.wallet,
-    eventType: req.query.eventType,
-    listingId: req.query.listingId,
-    limit: req.query.limit,
-    page: req.query.page,
-  });
+  const result = await tradeHistoryService.getTradeHistory(parseHistoryParams(req.query));
 
   res.status(200).json({
     success: true,
