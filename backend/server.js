@@ -117,4 +117,5 @@ const startBackgroundSync = () => {
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   startBackgroundSync();
+  blockchainSyncService.listenToBlockchainEvents(io);
 });

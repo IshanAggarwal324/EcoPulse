@@ -241,7 +241,101 @@ const getChainStatus = async () => {
   }
 };
 
+const listenToBlockchainEvents = (io) => {
+  if (!process.env.ENERGY_TRADING_ADDRESS || !process.env.CARBON_CREDIT_ADDRESS) {
+    console.warn('[Sync] Blockchain contracts not configured for real-time listening.');
+    return;
+  }
+
+  try {
+    const contract = BlockchainService.getEnergyTradingContractReadOnly();
+    const provider = contract.runner.provider;
+    const contractAddress = process.env.ENERGY_TRADING_ADDRESS.toLowerCase();
+
+    console.log(`[Sync] Starting real-time blockchain event listeners on contract ${contractAddress}...`);
+
+    contract.on('EnergyListed', async (listingId, seller, energyAmount, price) => {
+      const listingIdNum = Number(listingId);
+      console.log(`[Sync] Real-time event detected: EnergyListed (listingId: ${listingIdNum}, seller: ${seller}, amount: ${energyAmount}, price: ${price})`);
+      try {
+        const syncResult = await syncBlockchainTrades();
+        console.log('[Sync] Event synced to MongoDB:', syncResult);
+
+        // Broadcast event to all frontend clients
+        io.emit('blockchainEvent', {
+          eventType: 'listed',
+          listingId: listingIdNum,
+          seller,
+          energyAmount: energyAmount.toString(),
+          price: ethers.formatEther(price),
+        });
+
+        // Broadcast updated analytics to all dashboard clients
+        const analyticsService = require('./analyticsService');
+        const summary = await analyticsService.getSummary();
+        io.emit('analyticsUpdate', summary);
+      } catch (err) {
+        console.error('[Sync] Error processing real-time EnergyListed event:', err.message);
+      }
+    });
+
+    contract.on('EnergyPurchased', async (listingId, buyer, seller, energyAmount, price) => {
+      const listingIdNum = Number(listingId);
+      console.log(`[Sync] Real-time event detected: EnergyPurchased (listingId: ${listingIdNum}, buyer: ${buyer}, seller: ${seller}, amount: ${energyAmount}, price: ${price})`);
+      try {
+        const syncResult = await syncBlockchainTrades();
+        console.log('[Sync] Event synced to MongoDB:', syncResult);
+
+        // Broadcast event to all frontend clients
+        io.emit('blockchainEvent', {
+          eventType: 'purchased',
+          listingId: listingIdNum,
+          buyer,
+          seller,
+          energyAmount: energyAmount.toString(),
+          price: ethers.formatEther(price),
+        });
+
+        // Broadcast updated analytics to all dashboard clients
+        const analyticsService = require('./analyticsService');
+        const summary = await analyticsService.getSummary();
+        io.emit('analyticsUpdate', summary);
+      } catch (err) {
+        console.error('[Sync] Error processing real-time EnergyPurchased event:', err.message);
+      }
+    });
+
+    contract.on('ListingCancelled', async (listingId, seller) => {
+      const listingIdNum = Number(listingId);
+      console.log(`[Sync] Real-time event detected: ListingCancelled (listingId: ${listingIdNum}, seller: ${seller})`);
+      try {
+        const syncResult = await syncBlockchainTrades();
+        console.log('[Sync] Event synced to MongoDB:', syncResult);
+
+        // Broadcast event to all frontend clients
+        io.emit('blockchainEvent', {
+          eventType: 'cancelled',
+          listingId: listingIdNum,
+          seller,
+        });
+
+        // Broadcast updated analytics to all dashboard clients
+        const analyticsService = require('./analyticsService');
+        const summary = await analyticsService.getSummary();
+        io.emit('analyticsUpdate', summary);
+      } catch (err) {
+        console.error('[Sync] Error processing real-time ListingCancelled event:', err.message);
+      }
+    });
+
+  } catch (err) {
+    console.error('[Sync] Failed to initialize real-time blockchain event listeners:', err.message);
+  }
+};
+
 module.exports = {
   syncBlockchainTrades,
   getChainStatus,
+  listenToBlockchainEvents,
 };
+

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import io from 'socket.io-client';
 import {
   fetchAllListings,
   listEnergy,
@@ -6,9 +7,8 @@ import {
   cancelListing,
   approveTokensIfNeeded,
   mintDevTokens,
-  subscribeEnergyTradingEvents,
 } from '../utils/blockchain';
-import { marketplaceApi, tradesApi, analyticsApi } from '../utils/api';
+import { marketplaceApi, tradesApi, analyticsApi, SOCKET_URL } from '../utils/api';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
@@ -186,24 +186,29 @@ const Trading = () => {
   }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
 
   useEffect(() => {
-    const unsubscribe = subscribeEnergyTradingEvents({
-      onListed: () => {
-        loadOrders();
-        toast.info('New marketplace order listed');
-      },
-      onPurchased: () => {
-        loadOrders();
-        if (account) loadHistory(account, true);
-        refreshBalance();
-        toast.info('Order filled on-chain');
-      },
-      onCancelled: () => {
-        loadOrders();
-        toast.info('Order cancelled');
-      },
+    const socket = io(SOCKET_URL);
+
+    socket.on('blockchainEvent', (data) => {
+      console.log('[Socket] Blockchain event received:', data);
+      loadOrders();
+      refreshBalance();
+      if (account) {
+        loadHistory(account, true);
+      }
+
+      // Show toast messages
+      if (data.eventType === 'listed') {
+        toast.info(`New marketplace order listed: #${data.listingId}`);
+      } else if (data.eventType === 'purchased') {
+        toast.success(`Order #${data.listingId} filled on-chain!`);
+      } else if (data.eventType === 'cancelled') {
+        toast.info(`Order #${data.listingId} cancelled`);
+      }
     });
 
-    return unsubscribe;
+    return () => {
+      socket.disconnect();
+    };
   }, [account, loadOrders, loadHistory, refreshBalance, toast]);
 
   const requireWallet = async () => {
