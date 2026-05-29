@@ -124,8 +124,17 @@ const syncBlockchainTrades = async () => {
     const contractAddress = process.env.ENERGY_TRADING_ADDRESS.toLowerCase();
 
     const syncState = await getSyncCursor(chainId, contractAddress);
-    const fromBlock = syncState.lastSyncedBlock > 0 ? syncState.lastSyncedBlock + 1 : 0;
+    let fromBlock = syncState.lastSyncedBlock > 0 ? syncState.lastSyncedBlock + 1 : 0;
     const toBlock = await provider.getBlockNumber();
+
+    // Detect local blockchain reset (e.g. npx hardhat node restarted)
+    if (toBlock < syncState.lastSyncedBlock && chainId === 31337) {
+      console.log('[Sync] Detected local blockchain reset. Clearing old trade history...');
+      await Trade.deleteMany({});
+      syncState.lastSyncedBlock = 0;
+      await syncState.save();
+      fromBlock = 0;
+    }
 
     if (fromBlock > toBlock) {
       return {

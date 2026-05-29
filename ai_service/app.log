@@ -81,3 +81,30 @@
 2026-05-25 01:43:49,540 - routes.forecast - INFO - Loading data sequence (dummy=True)
 2026-05-25 01:43:49,544 - routes.forecast - INFO - Predicting for 7 days
 2026-05-25 01:43:50,227 - main - INFO - Path: /forecast/ | Method: POST | Status: 200 | Time: 0.6880s
+2026-05-29 23:20:25,356 - app.services.model_store - INFO - Loading model from models/saved\lstm_model.keras
+2026-05-29 23:20:25,780 - tensorflow - WARNING - TensorFlow GPU support is not available on native Windows for TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will not be used. Please use WSL2 or the TensorFlow-DirectML plugin.
+2026-05-29 23:20:25,965 - app.services.model_store - INFO - Model artifacts loaded successfully
+2026-05-29 23:21:40,550 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:21:42,225 - app.middleware - INFO - POST /forecast/ -> 200 (1697.2ms)
+2026-05-29 23:21:42,305 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:21:42,804 - app.middleware - INFO - POST /forecast/ -> 200 (501.6ms)
+2026-05-29 23:29:40,137 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:29:41,481 - app.middleware - INFO - POST /forecast/ -> 200 (1348.1ms)
+2026-05-29 23:29:41,568 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:29:42,903 - app.middleware - INFO - POST /forecast/ -> 200 (1336.6ms)
+2026-05-29 23:29:43,039 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:29:44,602 - app.middleware - INFO - POST /forecast/ -> 200 (1564.5ms)
+2026-05-29 23:29:44,773 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:29:46,204 - app.middleware - INFO - POST /forecast/ -> 200 (1432.5ms)
+2026-05-29 23:30:04,963 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:30:06,200 - app.middleware - INFO - POST /forecast/ -> 200 (1238.4ms)
+2026-05-29 23:30:06,384 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:30:07,805 - app.middleware - INFO - POST /forecast/ -> 200 (1424.2ms)
+2026-05-29 23:33:26,500 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:33:27,874 - app.middleware - INFO - POST /forecast/ -> 200 (1376.9ms)
+2026-05-29 23:33:27,975 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:33:29,624 - app.middleware - INFO - POST /forecast/ -> 200 (1655.9ms)
+2026-05-29 23:40:02,352 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:40:04,047 - app.middleware - INFO - POST /forecast/ -> 200 (1705.0ms)
+2026-05-29 23:40:04,110 - app.services.forecast_service - INFO - Forecasting node=aggregate dummy=True days=7
+2026-05-29 23:40:06,335 - app.middleware - INFO - POST /forecast/ -> 200 (2226.2ms)

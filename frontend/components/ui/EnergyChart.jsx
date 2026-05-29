@@ -3,14 +3,17 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Zap } from 'lucide-react';
 
 const EnergyChart = ({ data }) => {
-  const chartData = [...data].reverse().map((d) => ({
-    name: new Date(d.timestamp).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
-    generated: d.energyGenerated,
-    consumed: d.energyConsumed,
-  }));
+  const chartData = [...data].reverse().map((d) => {
+    const date = new Date(d.timestamp);
+    const isToday = date.toDateString() === new Date().toDateString();
+    return {
+      name: isToday 
+        ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      generated: d.energyGenerated,
+      consumed: d.energyConsumed,
+    };
+  });
 
   if (!data || data.length === 0) {
     return (
