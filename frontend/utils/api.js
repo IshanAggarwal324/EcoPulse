@@ -90,6 +90,14 @@ export const analyticsApi = {
   syncBlockchain: () => fetchApi('/analytics/sync', { method: 'POST' }),
 };
 
+export const marketplaceApi = {
+  getOrders: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/orders${query ? `?${query}` : ''}`);
+  },
+  getOrder: (listingId) => fetchApi(`/marketplace/orders/${listingId}`),
+};
+
 export const tradesApi = {
   getHistory: (params = {}) => {
     const query = new URLSearchParams(params).toString();

@@ -13,5 +13,6 @@ router.use('/readings', require('./readings'));
 router.use('/forecast', require('./forecast'));
 router.use('/analytics', require('./analytics'));
 router.use('/trades', require('./trades'));
+router.use('/marketplace', require('./marketplace'));
 
 module.exports = router;

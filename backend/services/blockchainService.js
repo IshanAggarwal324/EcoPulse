@@ -42,6 +42,58 @@ class BlockchainService {
     return new ethers.Contract(energyTradingAddress, energyTradingAbi, wallet);
   }
 
+  static getEnergyTradingContractReadOnly() {
+    if (!energyTradingAddress) throw new Error("ENERGY_TRADING_ADDRESS not configured in .env");
+    return new ethers.Contract(energyTradingAddress, energyTradingAbi, provider);
+  }
+
+  static async getActiveListings() {
+    const contract = this.getEnergyTradingContractReadOnly();
+    const nextId = await contract.nextListingId();
+    const numListings = Number(nextId);
+    const activeListings = [];
+
+    for (let i = 0; i < numListings; i += 1) {
+      const listing = await contract.listings(i);
+      const status = Number(listing.status ?? listing[3]);
+
+      if (status === 0) {
+        activeListings.push({
+          id: i,
+          seller: listing.seller,
+          energyAmount: listing.energyAmount.toString(),
+          price: ethers.formatEther(listing.price),
+          createdAt: Number(listing.createdAt ?? listing[4]),
+        });
+      }
+    }
+
+    return activeListings;
+  }
+
+  static async getListingById(listingId) {
+    const contract = this.getEnergyTradingContractReadOnly();
+    const listing = await contract.listings(listingId);
+    const seller = listing.seller ?? listing[0];
+
+    if (!seller || seller === ethers.ZeroAddress) {
+      return null;
+    }
+
+    const status = Number(listing.status ?? listing[3]);
+    const statusLabels = ['active', 'sold', 'cancelled'];
+
+    return {
+      id: Number(listingId),
+      seller,
+      energyAmount: (listing.energyAmount ?? listing[1]).toString(),
+      price: ethers.formatEther(listing.price ?? listing[2]),
+      status: statusLabels[status] || 'unknown',
+      createdAt: Number(listing.createdAt ?? listing[4]),
+      isActive: status === 0,
+    };
+  }
+
   /**
    * Mint Carbon Credits to a specified address
    * @param {string} toAddress
