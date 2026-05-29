@@ -159,8 +159,10 @@ const Dashboard = () => {
         ? parseFloat(carbon.walletBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })
         : (carbon.estimatedGridCredits || 0).toLocaleString(),
       icon: <Award size={24} className="text-emerald-400" />,
-      trend: `${(carbon.totalCreditsTraded || 0).toFixed(2)} CC traded`,
-      positive: true,
+      trend: carbon.balanceAnalytics?.wallet
+        ? `Net ${(carbon.balanceAnalytics.wallet.netFlow || 0).toFixed(2)} CC (30d)`
+        : `${(carbon.totalCreditsTraded || 0).toFixed(2)} CC traded`,
+      positive: (carbon.balanceAnalytics?.wallet?.netFlow ?? 1) >= 0,
     },
     {
       label: 'AI Forecast',

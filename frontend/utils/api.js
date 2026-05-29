@@ -82,6 +82,10 @@ export const analyticsApi = {
     const query = new URLSearchParams(params).toString();
     return fetchApi(`/analytics/summary${query ? `?${query}` : ''}`);
   },
+  getCarbonBalance: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/analytics/carbon/balance${query ? `?${query}` : ''}`);
+  },
   getStatus: () => fetchApi('/analytics/status'),
   syncBlockchain: () => fetchApi('/analytics/sync', { method: 'POST' }),
 };

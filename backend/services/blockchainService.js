@@ -64,6 +64,18 @@ class BlockchainService {
     return ethers.formatEther(balance);
   }
 
+  static async getAllowance(ownerAddress, spenderAddress = energyTradingAddress) {
+    const contract = this.getCarbonCreditContract();
+    const allowance = await contract.allowance(ownerAddress, spenderAddress);
+    return ethers.formatEther(allowance);
+  }
+
+  static async getTotalSupply() {
+    const contract = this.getCarbonCreditContract();
+    const supply = await contract.totalSupply();
+    return ethers.formatEther(supply);
+  }
+
   /**
    * List Energy for Trade
    * @param {number} energyAmount

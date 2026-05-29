@@ -6,6 +6,7 @@ const {
   getNodeAnalytics,
   getTradeAnalytics,
   getCarbonAnalytics,
+  getCarbonBalanceAnalytics,
   syncBlockchain,
   getPlatformStatus,
 } = require('../controllers/analyticsController');
@@ -15,6 +16,7 @@ router.get('/energy', getEnergyAnalytics);
 router.get('/nodes', getNodeAnalytics);
 router.get('/trades', getTradeAnalytics);
 router.get('/carbon', getCarbonAnalytics);
+router.get('/carbon/balance', getCarbonBalanceAnalytics);
 router.get('/status', getPlatformStatus);
 router.post('/sync', syncBlockchain);
 

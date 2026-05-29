@@ -56,6 +56,18 @@ const getCarbonAnalytics = asyncHandler(async (req, res) => {
   });
 });
 
+const getCarbonBalanceAnalytics = asyncHandler(async (req, res) => {
+  const walletAddress = req.query.wallet || null;
+  const days = req.query.days ? parseInt(req.query.days, 10) : 30;
+
+  const analytics = await analyticsService.getCarbonBalanceAnalytics(walletAddress, days);
+
+  res.status(200).json({
+    success: true,
+    data: analytics,
+  });
+});
+
 const syncBlockchain = asyncHandler(async (req, res) => {
   const result = await blockchainSyncService.syncBlockchainTrades();
   const summary = await analyticsService.getSummary();
@@ -107,6 +119,7 @@ module.exports = {
   getNodeAnalytics,
   getTradeAnalytics,
   getCarbonAnalytics,
+  getCarbonBalanceAnalytics,
   syncBlockchain,
   getPlatformStatus,
 };
