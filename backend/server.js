@@ -50,7 +50,7 @@ const startBackgroundSync = () => {
   const runSync = async () => {
     try {
       await blockchainSyncService.syncBlockchainTrades();
-      await socketBroadcastService.flushAnalytics();
+      await socketBroadcastService.flushAnalytics('full');
     } catch (err) {
       console.warn('Background blockchain sync skipped:', err.message);
     }

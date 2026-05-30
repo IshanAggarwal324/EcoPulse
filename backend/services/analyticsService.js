@@ -259,6 +259,22 @@ const getRecentReadings = async (limit = 20) => {
     .lean();
 };
 
+/** Lightweight aggregates for high-frequency socket updates (no carbon / recent readings). */
+const getRealtimeSnapshot = async () => {
+  const [energy, nodes, trades] = await Promise.all([
+    getEnergyTotals(),
+    getNodeStats(),
+    getTradeStats(),
+  ]);
+
+  return {
+    energy,
+    nodes,
+    trades,
+    syncedAt: new Date().toISOString(),
+  };
+};
+
 const getSummary = async (options = {}) => {
   const { walletAddress, sinceHours } = options;
   const since = sinceHours
@@ -286,6 +302,7 @@ const getSummary = async (options = {}) => {
 
 module.exports = {
   getSummary,
+  getRealtimeSnapshot,
   getEnergyTotals,
   getNodeStats,
   getTradeStats,

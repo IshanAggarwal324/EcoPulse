@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Zap, Activity, Award, Sun, Wind, Home, TrendingUp, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Zap, Sun, Wind, Home, AlertCircle } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
-import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
 import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
 import { useWallet } from '../context/WalletContext';
-import EnergyChart from '../components/ui/EnergyChart';
 import { analyticsApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
-import { useSocket, useSocketEvent } from '../context/SocketContext';
-import { SOCKET_EVENTS } from '../constants/socketEvents';
+import { useSocket } from '../context/SocketContext';
+import { useDashboardRealtime } from '../hooks/useDashboardRealtime';
+import { applyFullSummary } from '../utils/dashboardRealtime';
+import DashboardSummaryCards from '../components/dashboard/DashboardSummaryCards';
+import LiveGridPanel from '../components/dashboard/LiveGridPanel';
 import PageLoader from '../components/ui/PageLoader';
 
 const SOURCE_ICONS = {
@@ -31,19 +32,7 @@ const Dashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const toast = useToast();
 
-  const applySummary = useCallback((data) => {
-    if (!data) return;
-    setSummary(data);
-    if (data.recentReadings?.length) {
-      setLiveReadings(data.recentReadings.map((r) => ({
-        nodeId: r.nodeId?._id || r.nodeId,
-        energyGenerated: r.energyGenerated,
-        energyConsumed: r.energyConsumed,
-        timestamp: r.timestamp,
-        nodeName: r.nodeId?.name,
-      })));
-    }
-  }, []);
+  useDashboardRealtime({ setSummary, setLiveReadings });
 
   const loadDashboard = useCallback(async (wallet, { silent = false } = {}) => {
     try {
@@ -54,7 +43,9 @@ const Dashboard = () => {
         nodesApi.getAll(),
       ]);
 
-      applySummary(summaryRes.data);
+      const { summary: nextSummary, readings } = applyFullSummary(summaryRes.data);
+      if (nextSummary) setSummary(nextSummary);
+      if (readings) setLiveReadings(readings);
       setNodes(nodesRes.data || []);
 
       const forecastRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'}/forecast`);
@@ -75,103 +66,27 @@ const Dashboard = () => {
       setRefreshing(false);
     }
     return true;
-  }, [applySummary, toast]);
+  }, [toast]);
 
   useEffect(() => {
     loadDashboard(account);
   }, [account, loadDashboard]);
-
-  useSocketEvent(SOCKET_EVENTS.SERVER.NEW_READING, (reading) => {
-    setLiveReadings((prev) => {
-      const updated = [{
-        nodeId: reading.nodeId?._id || reading.nodeId,
-        energyGenerated: reading.energyGenerated,
-        energyConsumed: reading.energyConsumed,
-        timestamp: reading.timestamp,
-        nodeName: reading.nodeId?.name,
-      }, ...prev];
-      return updated.slice(0, 20);
-    });
-
-    setSummary((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        energy: {
-          ...prev.energy,
-          totalGenerated: (prev.energy?.totalGenerated || 0) + (reading.energyGenerated || 0),
-          totalConsumed: (prev.energy?.totalConsumed || 0) + (reading.energyConsumed || 0),
-          readingCount: (prev.energy?.readingCount || 0) + 1,
-        },
-      };
-    });
-  });
-
-  useSocketEvent(SOCKET_EVENTS.SERVER.ANALYTICS_UPDATE, (data) => {
-    applySummary(data);
-  });
 
   const energy = summary?.energy || {};
   const nodeStats = summary?.nodes || {};
   const tradeStats = summary?.trades || {};
   const carbon = summary?.carbon || {};
 
-  const summaryCards = [
-    {
-      label: 'Energy Generated',
-      value: `${((energy.totalGenerated || 0) / 1000).toFixed(2)} MWh`,
-      icon: <Zap size={24} className="text-yellow-400" />,
-      trend: `${energy.readingCount || 0} readings`,
-      positive: true,
-    },
-    {
-      label: 'Energy Consumed',
-      value: `${((energy.totalConsumed || 0) / 1000).toFixed(2)} MWh`,
-      icon: <Activity size={24} className="text-rose-400" />,
-      trend: 'Grid total',
-      positive: false,
-    },
-    {
-      label: 'Active Nodes',
-      value: (nodeStats.activeNodes || 0).toLocaleString(),
-      icon: <Activity size={24} className="text-blue-400" />,
-      trend: `${nodeStats.totalNodes || 0} total`,
-      positive: true,
-    },
-    {
-      label: 'Trade Activity',
-      value: (tradeStats.completedTrades || 0).toLocaleString(),
-      icon: <TrendingUp size={24} className="text-indigo-400" />,
-      trend: `${(tradeStats.totalEnergyTraded || 0).toFixed(0)} kWh traded`,
-      positive: (tradeStats.completedTrades || 0) > 0,
-    },
-    {
-      label: 'Carbon Credits',
-      value: carbon.walletBalance
-        ? parseFloat(carbon.walletBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })
-        : (carbon.estimatedGridCredits || 0).toLocaleString(),
-      icon: <Award size={24} className="text-emerald-400" />,
-      trend: carbon.balanceAnalytics?.wallet
-        ? `Net ${(carbon.balanceAnalytics.wallet.netFlow || 0).toFixed(2)} CC (30d)`
-        : `${(carbon.totalCreditsTraded || 0).toFixed(2)} CC traded`,
-      positive: (carbon.balanceAnalytics?.wallet?.netFlow ?? 1) >= 0,
-    },
-    {
-      label: 'AI Forecast',
-      value: forecastStatus,
-      icon: <TrendingUp size={24} className="text-purple-400" />,
-      trend: '7-Day',
-      positive: forecastStatus.startsWith('Ready'),
-    },
-  ];
-
-  const nodeStatus = nodes.slice(0, 5).map((node) => ({
-    name: node.name,
-    type: node.nodeType === 'consumer' ? 'Consumption' : 'Generation',
-    status: node.status === 'active' ? 'Optimal' : node.status,
-    output: '—',
-    icon: SOURCE_ICONS[node.sourceType] || <Zap size={20} className="text-emerald-400" />,
-  }));
+  const nodeStatus = useMemo(
+    () => nodes.slice(0, 5).map((node) => ({
+      name: node.name,
+      type: node.nodeType === 'consumer' ? 'Consumption' : 'Generation',
+      status: node.status === 'active' ? 'Optimal' : node.status,
+      output: '—',
+      icon: SOURCE_ICONS[node.sourceType] || <Zap size={20} className="text-emerald-400" />,
+    })),
+    [nodes],
+  );
 
   if (loading) {
     return <PageLoader message="Loading dashboard analytics..." />;
@@ -209,63 +124,16 @@ const Dashboard = () => {
         <BlockchainStatus />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {summaryCards.map((card, idx) => (
-          <SummaryCard key={idx} {...card} />
-        ))}
-      </div>
+      <DashboardSummaryCards
+        energy={energy}
+        nodeStats={nodeStats}
+        tradeStats={tradeStats}
+        carbon={carbon}
+        forecastStatus={forecastStatus}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col min-h-0">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
-            <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
-              <Activity className="text-emerald-400 shrink-0" /> Live Grid Analytics
-            </h3>
-            <span className={`self-start flex items-center gap-2 text-xs sm:text-sm px-3 py-1 rounded-full border ${
-              socketConnected
-                ? 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20'
-                : 'text-slate-400 bg-slate-700/50 border-slate-600/30'
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-              {socketConnected ? 'Live Sync' : 'Reconnecting...'}
-            </span>
-          </div>
-
-          <div className="flex-1 w-full mb-6">
-            <EnergyChart data={liveReadings} />
-          </div>
-
-          <div className="pt-6 border-t border-slate-700/50">
-            <h4 className="text-sm font-medium text-slate-400 mb-4 uppercase tracking-wider">Recent Activity Logs</h4>
-            <div className="flex flex-col gap-3 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-              {liveReadings.length === 0 ? (
-                <div className="flex items-center justify-center text-slate-500 py-4">
-                  <p>Waiting for live readings...</p>
-                </div>
-              ) : (
-                liveReadings.slice(0, 3).map((reading, i) => (
-                  <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-900/50 p-3 rounded-xl border border-slate-700/30">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-2 bg-emerald-500/10 rounded-lg">
-                        <Zap size={16} className="text-emerald-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-300 font-medium">
-                          {reading.nodeName || `Node ${String(reading.nodeId).substring(0, 8)}...`}
-                        </p>
-                        <p className="text-xs text-slate-500">{new Date(reading.timestamp).toLocaleTimeString()}</p>
-                      </div>
-                    </div>
-                    <div className="flex sm:flex-col gap-2 sm:text-right pl-11 sm:pl-0">
-                      <p className="text-emerald-400 font-bold text-sm">+{reading.energyGenerated} kW</p>
-                      <p className="text-rose-400 font-bold text-sm">-{reading.energyConsumed} kW</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        <LiveGridPanel liveReadings={liveReadings} socketConnected={socketConnected} />
 
         <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
           <h3 className="text-xl font-bold text-white mb-6">Node Status</h3>
@@ -273,8 +141,8 @@ const Dashboard = () => {
             {nodeStatus.length === 0 ? (
               <p className="text-slate-500 text-sm">No nodes registered. Create nodes via the API or simulator.</p>
             ) : (
-              nodeStatus.map((node, idx) => (
-                <StatusCard key={idx} {...node} />
+              nodeStatus.map((node) => (
+                <StatusCard key={node.name} {...node} />
               ))
             )}
           </div>

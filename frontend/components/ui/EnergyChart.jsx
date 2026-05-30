@@ -1,21 +1,25 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Zap } from 'lucide-react';
 
-const EnergyChart = ({ data }) => {
-  const chartData = [...data].reverse().map((d) => {
+function buildChartData(data) {
+  return [...data].reverse().map((d) => {
     const date = new Date(d.timestamp);
     const isToday = date.toDateString() === new Date().toDateString();
     return {
-      name: isToday 
+      name: isToday
         ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
       generated: d.energyGenerated,
       consumed: d.energyConsumed,
     };
   });
+}
 
-  if (!data || data.length === 0) {
+const EnergyChart = memo(function EnergyChart({ data }) {
+  const chartData = useMemo(() => (data?.length ? buildChartData(data) : []), [data]);
+
+  if (!chartData.length) {
     return (
       <div className="w-full h-[220px] sm:h-[280px] lg:h-[300px] flex items-center justify-center text-slate-500 flex-col gap-2">
         <Zap className="animate-pulse text-slate-600" size={32} />
@@ -88,6 +92,6 @@ const EnergyChart = ({ data }) => {
       </ResponsiveContainer>
     </div>
   );
-};
+});
 
 export default EnergyChart;

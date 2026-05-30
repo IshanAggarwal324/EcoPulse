@@ -3,9 +3,10 @@ const { SOCKET_EVENTS } = require('../socket/events');
 
 let io = null;
 let analyticsDebounceTimer = null;
+let pendingAnalyticsScope = 'realtime';
 
 const ANALYTICS_DEBOUNCE_MS = parseInt(
-  process.env.SOCKET_ANALYTICS_DEBOUNCE_MS || '500',
+  process.env.SOCKET_ANALYTICS_DEBOUNCE_MS || '750',
   10,
 );
 
@@ -23,29 +24,37 @@ const emitNewReading = (reading) => {
   emit(SOCKET_EVENTS.SERVER.NEW_READING, payload);
 };
 
-const flushAnalytics = async () => {
+const flushAnalytics = async (scope = 'realtime') => {
   if (!io) return;
   try {
-    const summary = await analyticsService.getSummary();
-    emit(SOCKET_EVENTS.SERVER.ANALYTICS_UPDATE, summary);
+    const data = scope === 'full'
+      ? await analyticsService.getSummary()
+      : await analyticsService.getRealtimeSnapshot();
+
+    emit(SOCKET_EVENTS.SERVER.ANALYTICS_UPDATE, { scope, ...data });
   } catch (err) {
     console.error('Analytics broadcast failed:', err.message);
   }
 };
 
-const scheduleAnalyticsUpdate = () => {
+const scheduleAnalyticsUpdate = (scope = 'realtime') => {
+  pendingAnalyticsScope = pendingAnalyticsScope === 'full' || scope === 'full' ? 'full' : 'realtime';
+
   if (analyticsDebounceTimer) {
     clearTimeout(analyticsDebounceTimer);
   }
+
   analyticsDebounceTimer = setTimeout(() => {
+    const flushScope = pendingAnalyticsScope;
+    pendingAnalyticsScope = 'realtime';
     analyticsDebounceTimer = null;
-    flushAnalytics();
+    flushAnalytics(flushScope);
   }, ANALYTICS_DEBOUNCE_MS);
 };
 
 const emitReadingAndAnalytics = async (reading) => {
   emitNewReading(reading);
-  scheduleAnalyticsUpdate();
+  scheduleAnalyticsUpdate('realtime');
 };
 
 const emitBlockchainEvent = (eventPayload) => {
@@ -54,7 +63,7 @@ const emitBlockchainEvent = (eventPayload) => {
 
 const emitBlockchainEventWithAnalytics = (eventPayload) => {
   emitBlockchainEvent(eventPayload);
-  scheduleAnalyticsUpdate();
+  scheduleAnalyticsUpdate('full');
 };
 
 module.exports = {

@@ -73,7 +73,7 @@ const syncBlockchain = asyncHandler(async (req, res) => {
   const result = await blockchainSyncService.syncBlockchainTrades();
   const summary = await analyticsService.getSummary();
 
-  await socketBroadcastService.flushAnalytics();
+  await socketBroadcastService.flushAnalytics('full');
 
   res.status(200).json({
     success: true,
