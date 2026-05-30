@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
 
-const AppLayout = ({ children }) => {
+const AppLayout = memo(function AppLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -12,12 +12,15 @@ const AppLayout = ({ children }) => {
     };
   }, [sidebarOpen]);
 
+  const closeSidebar = () => setSidebarOpen(false);
+  const openSidebar = () => setSidebarOpen(true);
+
   return (
     <div className="flex h-[100dvh] bg-slate-900 overflow-hidden font-sans">
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={closeSidebar}
           aria-hidden="true"
         />
       )}
@@ -27,7 +30,7 @@ const AppLayout = ({ children }) => {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <Sidebar onClose={() => setSidebarOpen(false)} />
+        <Sidebar onClose={closeSidebar} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-900">
@@ -40,7 +43,7 @@ const AppLayout = ({ children }) => {
           </h2>
           <button
             type="button"
-            onClick={() => setSidebarOpen(true)}
+            onClick={openSidebar}
             className="touch-target p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             aria-label="Open menu"
           >
@@ -57,6 +60,6 @@ const AppLayout = ({ children }) => {
       </div>
     </div>
   );
-};
+});
 
 export default AppLayout;

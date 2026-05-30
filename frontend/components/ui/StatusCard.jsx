@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { memo } from 'react';
 
-const StatusCard = ({ name, type, status, output, icon }) => {
+const StatusCard = memo(function StatusCard({ name, type, status, output, icon }) {
   return (
     <div className="p-4 bg-slate-900/80 border border-slate-700 rounded-xl hover:border-slate-600 transition-colors">
       <div className="flex items-center gap-3 mb-3">
@@ -23,6 +23,6 @@ const StatusCard = ({ name, type, status, output, icon }) => {
       </div>
     </div>
   );
-};
+});
 
 export default StatusCard;

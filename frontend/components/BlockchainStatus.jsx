@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { getProvider } from '../utils/blockchain';
-import { useWallet } from '../context/WalletContext';
+import { useWalletState, useWalletActions } from '../context/WalletContext';
 
-const BlockchainStatus = () => {
-  const { account, chainId, isCorrectNetwork, expectedChainId, ensureNetwork } = useWallet();
+const BlockchainStatus = memo(function BlockchainStatus() {
+  const { account, chainId, isCorrectNetwork, expectedChainId } = useWalletState();
+  const { ensureNetwork } = useWalletActions();
   const [blockNumber, setBlockNumber] = useState(null);
 
   useEffect(() => {
@@ -68,6 +69,6 @@ const BlockchainStatus = () => {
       )}
     </div>
   );
-};
+});
 
 export default BlockchainStatus;

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useSocket } from '../../context/SocketContext';
+import { useSocketApi, useSocketStatus } from '../../context/SocketContext';
 
 const STATUS_STYLES = {
   connected: {
@@ -26,13 +26,13 @@ const STATUS_STYLES = {
 };
 
 const SocketStatusBadge = memo(function SocketStatusBadge({ className = '' }) {
+  const { reconnect } = useSocketApi();
   const {
     status,
     reconnecting,
     reconnectAttempt,
     lastError,
-    reconnect,
-  } = useSocket();
+  } = useSocketStatus();
 
   const styles = STATUS_STYLES[status] || STATUS_STYLES.disconnected;
   const showRetry = status === 'failed' || status === 'disconnected';

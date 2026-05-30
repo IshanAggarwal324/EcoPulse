@@ -12,7 +12,8 @@ import { getSocketClientOptions, SOCKET_URL } from '../utils/socketClient';
 
 /** @typedef {'connected' | 'disconnected' | 'reconnecting' | 'failed'} SocketStatus */
 
-const SocketContext = createContext(null);
+const SocketApiContext = createContext(null);
+const SocketStatusContext = createContext(null);
 
 export function SocketProvider({ children }) {
   const [status, setStatus] = useState(/** @type {SocketStatus} */ ('disconnected'));
@@ -26,6 +27,11 @@ export function SocketProvider({ children }) {
 
   const hasConnectedRef = useRef(false);
   const reconnectListenersRef = useRef(new Set());
+
+  const subscribeReconnect = useCallback((listener) => {
+    reconnectListenersRef.current.add(listener);
+    return () => reconnectListenersRef.current.delete(listener);
+  }, []);
 
   const notifyReconnect = useCallback(() => {
     reconnectListenersRef.current.forEach((listener) => {
@@ -102,39 +108,54 @@ export function SocketProvider({ children }) {
     };
   }, [socket, notifyReconnect]);
 
-  const value = useMemo(
+  const apiValue = useMemo(
+    () => ({ socket, reconnect, subscribeReconnect }),
+    [socket, reconnect, subscribeReconnect],
+  );
+
+  const statusValue = useMemo(
     () => ({
-      socket,
       status,
       connected: status === 'connected',
       reconnecting: status === 'reconnecting',
       reconnectAttempt,
       lastError,
-      reconnect,
-      subscribeReconnect: (listener) => {
-        reconnectListenersRef.current.add(listener);
-        return () => reconnectListenersRef.current.delete(listener);
-      },
     }),
-    [socket, status, reconnectAttempt, lastError, reconnect],
+    [status, reconnectAttempt, lastError],
   );
 
   return (
-    <SocketContext.Provider value={value}>{children}</SocketContext.Provider>
+    <SocketApiContext.Provider value={apiValue}>
+      <SocketStatusContext.Provider value={statusValue}>
+        {children}
+      </SocketStatusContext.Provider>
+    </SocketApiContext.Provider>
   );
 }
 
-export function useSocket() {
-  const ctx = useContext(SocketContext);
+export function useSocketApi() {
+  const ctx = useContext(SocketApiContext);
   if (!ctx) {
-    throw new Error('useSocket must be used within SocketProvider');
+    throw new Error('useSocketApi must be used within SocketProvider');
   }
   return ctx;
 }
 
-/** Run callback after the socket reconnects (not on the initial connect). */
+export function useSocketStatus() {
+  const ctx = useContext(SocketStatusContext);
+  if (!ctx) {
+    throw new Error('useSocketStatus must be used within SocketProvider');
+  }
+  return ctx;
+}
+
+/** @deprecated Prefer useSocketApi / useSocketStatus for fewer re-renders. */
+export function useSocket() {
+  return { ...useSocketApi(), ...useSocketStatus() };
+}
+
 export function useSocketReconnect(callback) {
-  const { subscribeReconnect } = useSocket();
+  const { subscribeReconnect } = useSocketApi();
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
 
@@ -144,9 +165,8 @@ export function useSocketReconnect(callback) {
   );
 }
 
-/** Subscribe to a server event with a stable handler ref (avoids duplicate listeners). */
 export function useSocketEvent(event, handler) {
-  const { socket } = useSocket();
+  const { socket } = useSocketApi();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 

@@ -1,21 +1,24 @@
-import React from 'react';
-import { useWallet } from '../context/WalletContext';
+import React, { memo } from 'react';
+import { useWalletState, useWalletActions } from '../context/WalletContext';
 
-const WalletConnect = () => {
+const WalletConnect = memo(function WalletConnect() {
   const {
     account,
     balance,
     connecting,
     reconnecting,
     error,
+    isCorrectNetwork,
+    expectedChainId,
+    hadPreviousSession,
+  } = useWalletState();
+
+  const {
     connect,
     reconnect,
     disconnect,
-    isCorrectNetwork,
-    expectedChainId,
     ensureNetwork,
-    hadPreviousSession,
-  } = useWallet();
+  } = useWalletActions();
 
   const handleConnect = async () => {
     try {
@@ -108,6 +111,6 @@ const WalletConnect = () => {
       )}
     </div>
   );
-};
+});
 
 export default WalletConnect;

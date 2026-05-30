@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
 } from 'react';
 import {
   getProvider,
@@ -20,7 +21,8 @@ import {
   hadWalletSession,
 } from '../utils/walletStorage';
 
-const WalletContext = createContext(null);
+const WalletStateContext = createContext(null);
+const WalletActionsContext = createContext(null);
 
 const PROVIDER_POLL_MS = 500;
 const RECONNECT_DEBOUNCE_MS = 300;
@@ -311,41 +313,77 @@ export const WalletProvider = ({ children }) => {
     return unsubscribe;
   }, [account, refreshBalance]);
 
+  const connecting = status === 'connecting' || status === 'reconnecting';
+  const reconnecting = status === 'reconnecting';
   const isCorrectNetwork =
     chainId === null || chainId === EXPECTED_CHAIN_ID;
 
-  const connecting = status === 'connecting' || status === 'reconnecting';
+  const stateValue = useMemo(
+    () => ({
+      account,
+      chainId,
+      balance,
+      status,
+      connecting,
+      reconnecting,
+      error,
+      isCorrectNetwork,
+      expectedChainId: EXPECTED_CHAIN_ID,
+      hadPreviousSession,
+    }),
+    [
+      account,
+      chainId,
+      balance,
+      status,
+      connecting,
+      reconnecting,
+      error,
+      isCorrectNetwork,
+      hadPreviousSession,
+    ],
+  );
 
-  const value = {
-    account,
-    chainId,
-    balance,
-    status,
-    connecting,
-    reconnecting: status === 'reconnecting',
-    error,
-    isCorrectNetwork,
-    expectedChainId: EXPECTED_CHAIN_ID,
-    hadPreviousSession,
-    connect,
-    disconnect,
-    reconnect,
-    reconnectSilent,
-    refreshBalance,
-    ensureNetwork: ensureCorrectNetwork,
-  };
+  const actionsValue = useMemo(
+    () => ({
+      connect,
+      disconnect,
+      reconnect,
+      reconnectSilent,
+      refreshBalance,
+      ensureNetwork: ensureCorrectNetwork,
+    }),
+    [connect, disconnect, reconnect, reconnectSilent, refreshBalance],
+  );
 
   return (
-    <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+    <WalletActionsContext.Provider value={actionsValue}>
+      <WalletStateContext.Provider value={stateValue}>
+        {children}
+      </WalletStateContext.Provider>
+    </WalletActionsContext.Provider>
   );
 };
 
-export const useWallet = () => {
-  const ctx = useContext(WalletContext);
+export const useWalletState = () => {
+  const ctx = useContext(WalletStateContext);
   if (!ctx) {
-    throw new Error('useWallet must be used within a WalletProvider');
+    throw new Error('useWalletState must be used within a WalletProvider');
   }
   return ctx;
 };
 
-export default WalletContext;
+export const useWalletActions = () => {
+  const ctx = useContext(WalletActionsContext);
+  if (!ctx) {
+    throw new Error('useWalletActions must be used within a WalletProvider');
+  }
+  return ctx;
+};
+
+export const useWallet = () => ({
+  ...useWalletState(),
+  ...useWalletActions(),
+});
+
+export default WalletStateContext;

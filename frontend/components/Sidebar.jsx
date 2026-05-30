@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { X, LogOut, User } from 'lucide-react';
 import { NAV_LINKS } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
-const Sidebar = ({ onClose }) => {
+const Sidebar = memo(function Sidebar({ onClose }) {
   const { user, logout } = useAuth();
   const toast = useToast();
 
@@ -85,6 +85,6 @@ const Sidebar = ({ onClose }) => {
       </div>
     </aside>
   );
-};
+});
 
 export default Sidebar;

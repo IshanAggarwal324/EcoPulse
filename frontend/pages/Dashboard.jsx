@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Zap, Sun, Wind, Home, AlertCircle } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
-import StatusCard from '../components/ui/StatusCard';
-import WalletConnect from '../components/WalletConnect';
-import BlockchainStatus from '../components/BlockchainStatus';
-import { useWallet } from '../context/WalletContext';
+import { useWalletState } from '../context/WalletContext';
 import { analyticsApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useSocketReconnect } from '../context/SocketContext';
 import { useDashboardRealtime } from '../hooks/useDashboardRealtime';
 import { applyFullSummary } from '../utils/dashboardRealtime';
 import DashboardSummaryCards from '../components/dashboard/DashboardSummaryCards';
+import DashboardWalletSection from '../components/dashboard/DashboardWalletSection';
+import DashboardNodePanel from '../components/dashboard/DashboardNodePanel';
 import LiveGridPanel from '../components/dashboard/LiveGridPanel';
 import PageLoader from '../components/ui/PageLoader';
 
@@ -24,7 +23,7 @@ const Dashboard = () => {
   const [summary, setSummary] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [liveReadings, setLiveReadings] = useState([]);
-  const { account } = useWallet();
+  const { account } = useWalletState();
   const [forecastStatus, setForecastStatus] = useState('Loading...');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +91,25 @@ const Dashboard = () => {
     [nodes],
   );
 
+  const handleRefresh = useCallback(async () => {
+    const ok = await loadDashboard(account);
+    if (ok) toast.success('Dashboard updated');
+  }, [account, loadDashboard, toast]);
+
+  const refreshAction = useMemo(
+    () => (
+      <button
+        type="button"
+        disabled={refreshing}
+        onClick={handleRefresh}
+        className="touch-target px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+      >
+        {refreshing ? 'Refreshing...' : 'Refresh Data'}
+      </button>
+    ),
+    [refreshing, handleRefresh],
+  );
+
   if (loading) {
     return <PageLoader message="Loading dashboard analytics..." />;
   }
@@ -101,19 +119,7 @@ const Dashboard = () => {
       <SectionTitle
         title="Dashboard Overview"
         subtitle="Real-time grid summary synced from MongoDB, blockchain, and AI services."
-        action={
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={async () => {
-              const ok = await loadDashboard(account);
-              if (ok) toast.success('Dashboard updated');
-            }}
-            className="touch-target px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh Data'}
-          </button>
-        }
+        action={refreshAction}
       />
 
       {error && (
@@ -123,10 +129,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <WalletConnect />
-        <BlockchainStatus />
-      </div>
+      <DashboardWalletSection />
 
       <DashboardSummaryCards
         energy={energy}
@@ -139,18 +142,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <LiveGridPanel liveReadings={liveReadings} />
 
-        <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
-          <h3 className="text-xl font-bold text-white mb-6">Node Status</h3>
-          <div className="space-y-4">
-            {nodeStatus.length === 0 ? (
-              <p className="text-slate-500 text-sm">No nodes registered. Create nodes via the API or simulator.</p>
-            ) : (
-              nodeStatus.map((node) => (
-                <StatusCard key={node.name} {...node} />
-              ))
-            )}
-          </div>
-        </div>
+        <DashboardNodePanel nodeStatus={nodeStatus} />
       </div>
     </div>
   );
