@@ -1,10 +1,14 @@
+require('dotenv').config();
 const { io } = require('socket.io-client');
+const { SOCKET_EVENTS } = require('./socket/events');
 
-const socket = io('http://localhost:5000');
+const SOCKET_URL = process.env.SOCKET_URL || 'http://localhost:5000';
 const NODE_IDS = ['node_solar_01', 'node_wind_02', 'node_consumer_03'];
 
+const socket = io(SOCKET_URL);
+
 socket.on('connect', () => {
-  console.log('Simulator connected to backend via Socket.io');
+  console.log(`Simulator connected to ${SOCKET_URL}`);
   console.log('Sending mock readings every 3 seconds... Press Ctrl+C to stop.\n');
 
   setInterval(() => {
@@ -17,7 +21,7 @@ socket.on('connect', () => {
       energyConsumed: isConsumer ? Math.floor(Math.random() * 30) + 5 : Math.floor(Math.random() * 5),
     };
 
-    socket.emit('simulateReading', payload);
+    socket.emit(SOCKET_EVENTS.CLIENT.SIMULATE_READING, payload);
     console.log(`[Sent] Node: ${nodeId} | Gen: +${payload.energyGenerated}kW | Con: -${payload.energyConsumed}kW`);
   }, 3000);
 });

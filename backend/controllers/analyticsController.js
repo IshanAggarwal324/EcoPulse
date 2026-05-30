@@ -1,5 +1,6 @@
 const analyticsService = require('../services/analyticsService');
 const blockchainSyncService = require('../services/blockchainSyncService');
+const socketBroadcastService = require('../services/socketBroadcastService');
 const asyncHandler = require('../utils/asyncHandler');
 
 const getSummary = asyncHandler(async (req, res) => {
@@ -72,10 +73,7 @@ const syncBlockchain = asyncHandler(async (req, res) => {
   const result = await blockchainSyncService.syncBlockchainTrades();
   const summary = await analyticsService.getSummary();
 
-  const io = req.app.get('io');
-  if (io) {
-    io.emit('analyticsUpdate', summary);
-  }
+  await socketBroadcastService.flushAnalytics();
 
   res.status(200).json({
     success: true,

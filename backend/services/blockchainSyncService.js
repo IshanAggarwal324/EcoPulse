@@ -2,6 +2,7 @@ const { ethers } = require('ethers');
 const Trade = require('../models/Trade');
 const SyncState = require('../models/SyncState');
 const BlockchainService = require('./blockchainService');
+const socketBroadcastService = require('./socketBroadcastService');
 
 const SYNC_STATE_KEY = 'energy_trading';
 let isSyncing = false;
@@ -250,7 +251,7 @@ const getChainStatus = async () => {
   }
 };
 
-const listenToBlockchainEvents = (io) => {
+const listenToBlockchainEvents = () => {
   if (!process.env.ENERGY_TRADING_ADDRESS || !process.env.CARBON_CREDIT_ADDRESS) {
     console.warn('[Sync] Blockchain contracts not configured for real-time listening.');
     return;
@@ -270,19 +271,13 @@ const listenToBlockchainEvents = (io) => {
         const syncResult = await syncBlockchainTrades();
         console.log('[Sync] Event synced to MongoDB:', syncResult);
 
-        // Broadcast event to all frontend clients
-        io.emit('blockchainEvent', {
+        socketBroadcastService.emitBlockchainEventWithAnalytics({
           eventType: 'listed',
           listingId: listingIdNum,
           seller,
           energyAmount: energyAmount.toString(),
           price: ethers.formatEther(price),
         });
-
-        // Broadcast updated analytics to all dashboard clients
-        const analyticsService = require('./analyticsService');
-        const summary = await analyticsService.getSummary();
-        io.emit('analyticsUpdate', summary);
       } catch (err) {
         console.error('[Sync] Error processing real-time EnergyListed event:', err.message);
       }
@@ -295,8 +290,7 @@ const listenToBlockchainEvents = (io) => {
         const syncResult = await syncBlockchainTrades();
         console.log('[Sync] Event synced to MongoDB:', syncResult);
 
-        // Broadcast event to all frontend clients
-        io.emit('blockchainEvent', {
+        socketBroadcastService.emitBlockchainEventWithAnalytics({
           eventType: 'purchased',
           listingId: listingIdNum,
           buyer,
@@ -304,11 +298,6 @@ const listenToBlockchainEvents = (io) => {
           energyAmount: energyAmount.toString(),
           price: ethers.formatEther(price),
         });
-
-        // Broadcast updated analytics to all dashboard clients
-        const analyticsService = require('./analyticsService');
-        const summary = await analyticsService.getSummary();
-        io.emit('analyticsUpdate', summary);
       } catch (err) {
         console.error('[Sync] Error processing real-time EnergyPurchased event:', err.message);
       }
@@ -321,17 +310,11 @@ const listenToBlockchainEvents = (io) => {
         const syncResult = await syncBlockchainTrades();
         console.log('[Sync] Event synced to MongoDB:', syncResult);
 
-        // Broadcast event to all frontend clients
-        io.emit('blockchainEvent', {
+        socketBroadcastService.emitBlockchainEventWithAnalytics({
           eventType: 'cancelled',
           listingId: listingIdNum,
           seller,
         });
-
-        // Broadcast updated analytics to all dashboard clients
-        const analyticsService = require('./analyticsService');
-        const summary = await analyticsService.getSummary();
-        io.emit('analyticsUpdate', summary);
       } catch (err) {
         console.error('[Sync] Error processing real-time ListingCancelled event:', err.message);
       }

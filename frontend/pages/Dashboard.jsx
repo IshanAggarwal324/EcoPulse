@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Zap, Activity, Award, Sun, Wind, Home, TrendingUp, AlertCircle } from 'lucide-react';
-import io from 'socket.io-client';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import StatusCard from '../components/ui/StatusCard';
@@ -8,8 +7,10 @@ import WalletConnect from '../components/WalletConnect';
 import BlockchainStatus from '../components/BlockchainStatus';
 import { useWallet } from '../context/WalletContext';
 import EnergyChart from '../components/ui/EnergyChart';
-import { analyticsApi, nodesApi, SOCKET_URL, ApiError } from '../utils/api';
+import { analyticsApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useSocket, useSocketEvent } from '../context/SocketContext';
+import { SOCKET_EVENTS } from '../constants/socketEvents';
 import PageLoader from '../components/ui/PageLoader';
 
 const SOURCE_ICONS = {
@@ -24,7 +25,7 @@ const Dashboard = () => {
   const [liveReadings, setLiveReadings] = useState([]);
   const { account } = useWallet();
   const [forecastStatus, setForecastStatus] = useState('Loading...');
-  const [socketConnected, setSocketConnected] = useState(false);
+  const { connected: socketConnected } = useSocket();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,44 +81,35 @@ const Dashboard = () => {
     loadDashboard(account);
   }, [account, loadDashboard]);
 
-  useEffect(() => {
-    const socket = io(SOCKET_URL);
-
-    socket.on('connect', () => setSocketConnected(true));
-    socket.on('disconnect', () => setSocketConnected(false));
-
-    socket.on('newReading', (reading) => {
-      setLiveReadings((prev) => {
-        const updated = [{
-          nodeId: reading.nodeId?._id || reading.nodeId,
-          energyGenerated: reading.energyGenerated,
-          energyConsumed: reading.energyConsumed,
-          timestamp: reading.timestamp,
-          nodeName: reading.nodeId?.name,
-        }, ...prev];
-        return updated.slice(0, 20);
-      });
-
-      setSummary((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          energy: {
-            ...prev.energy,
-            totalGenerated: (prev.energy?.totalGenerated || 0) + (reading.energyGenerated || 0),
-            totalConsumed: (prev.energy?.totalConsumed || 0) + (reading.energyConsumed || 0),
-            readingCount: (prev.energy?.readingCount || 0) + 1,
-          },
-        };
-      });
+  useSocketEvent(SOCKET_EVENTS.SERVER.NEW_READING, (reading) => {
+    setLiveReadings((prev) => {
+      const updated = [{
+        nodeId: reading.nodeId?._id || reading.nodeId,
+        energyGenerated: reading.energyGenerated,
+        energyConsumed: reading.energyConsumed,
+        timestamp: reading.timestamp,
+        nodeName: reading.nodeId?.name,
+      }, ...prev];
+      return updated.slice(0, 20);
     });
 
-    socket.on('analyticsUpdate', (data) => {
-      applySummary(data);
+    setSummary((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        energy: {
+          ...prev.energy,
+          totalGenerated: (prev.energy?.totalGenerated || 0) + (reading.energyGenerated || 0),
+          totalConsumed: (prev.energy?.totalConsumed || 0) + (reading.energyConsumed || 0),
+          readingCount: (prev.energy?.readingCount || 0) + 1,
+        },
+      };
     });
+  });
 
-    return () => socket.disconnect();
-  }, [applySummary]);
+  useSocketEvent(SOCKET_EVENTS.SERVER.ANALYTICS_UPDATE, (data) => {
+    applySummary(data);
+  });
 
   const energy = summary?.energy || {};
   const nodeStats = summary?.nodes || {};

@@ -1,20 +1,9 @@
 const EnergyReading = require('../models/EnergyReading');
-const analyticsService = require('../services/analyticsService');
+const socketBroadcastService = require('../services/socketBroadcastService');
 const asyncHandler = require('../utils/asyncHandler');
 
-const emitReadingUpdate = async (req, reading) => {
-  const io = req.app.get('io');
-  if (!io) return;
-
-  const payload = reading.toObject ? reading.toObject() : reading;
-  io.emit('newReading', payload);
-
-  try {
-    const summary = await analyticsService.getSummary();
-    io.emit('analyticsUpdate', summary);
-  } catch (err) {
-    console.error('Failed to emit analytics update:', err.message);
-  }
+const emitReadingUpdate = async (reading) => {
+  await socketBroadcastService.emitReadingAndAnalytics(reading);
 };
 
 const createReading = asyncHandler(async (req, res) => {
@@ -33,7 +22,7 @@ const createReading = asyncHandler(async (req, res) => {
     energyConsumed: energyConsumed || 0,
   });
 
-  await emitReadingUpdate(req, reading);
+  await emitReadingUpdate(reading);
 
   res.status(201).json({
     success: true,

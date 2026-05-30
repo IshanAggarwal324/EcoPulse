@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import io from 'socket.io-client';
 import {
   fetchAllListings,
   listEnergy,
@@ -8,7 +7,9 @@ import {
   approveTokensIfNeeded,
   mintDevTokens,
 } from '../utils/blockchain';
-import { marketplaceApi, tradesApi, analyticsApi, SOCKET_URL } from '../utils/api';
+import { marketplaceApi, tradesApi, analyticsApi } from '../utils/api';
+import { useSocketEvent } from '../context/SocketContext';
+import { SOCKET_EVENTS } from '../constants/socketEvents';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
@@ -185,31 +186,21 @@ const Trading = () => {
     loadHistory(account, Boolean(account));
   }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
 
-  useEffect(() => {
-    const socket = io(SOCKET_URL);
+  useSocketEvent(SOCKET_EVENTS.SERVER.BLOCKCHAIN_EVENT, (data) => {
+    loadOrders();
+    refreshBalance();
+    if (account) {
+      loadHistory(account, true);
+    }
 
-    socket.on('blockchainEvent', (data) => {
-      console.log('[Socket] Blockchain event received:', data);
-      loadOrders();
-      refreshBalance();
-      if (account) {
-        loadHistory(account, true);
-      }
-
-      // Show toast messages
-      if (data.eventType === 'listed') {
-        toast.info(`New marketplace order listed: #${data.listingId}`);
-      } else if (data.eventType === 'purchased') {
-        toast.success(`Order #${data.listingId} filled on-chain!`);
-      } else if (data.eventType === 'cancelled') {
-        toast.info(`Order #${data.listingId} cancelled`);
-      }
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [account, loadOrders, loadHistory, refreshBalance, toast]);
+    if (data.eventType === 'listed') {
+      toast.info(`New marketplace order listed: #${data.listingId}`);
+    } else if (data.eventType === 'purchased') {
+      toast.success(`Order #${data.listingId} filled on-chain!`);
+    } else if (data.eventType === 'cancelled') {
+      toast.info(`Order #${data.listingId} cancelled`);
+    }
+  });
 
   const requireWallet = async () => {
     if (account) return true;

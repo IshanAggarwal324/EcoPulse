@@ -1,76 +1,22 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const v1Routes = require('./routes/v1');
-const EnergyReading = require('./models/EnergyReading');
-const analyticsService = require('./services/analyticsService');
 const blockchainSyncService = require('./services/blockchainSyncService');
+const socketBroadcastService = require('./services/socketBroadcastService');
+const { initSocket } = require('./socket');
 
 connectDB();
-
-const http = require('http');
-const { Server } = require('socket.io');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  },
-});
-
-app.set('io', io);
-
-const broadcastAnalytics = async () => {
-  try {
-    const summary = await analyticsService.getSummary();
-    io.emit('analyticsUpdate', summary);
-  } catch (err) {
-    console.error('Analytics broadcast failed:', err.message);
-  }
-};
-
-io.on('connection', (socket) => {
-  console.log('Socket client connected:', socket.id);
-
-  socket.on('simulateReading', async (data) => {
-    const reading = {
-      nodeId: data.nodeId,
-      energyGenerated: data.energyGenerated || 0,
-      energyConsumed: data.energyConsumed || 0,
-      timestamp: new Date().toISOString(),
-    };
-
-    if (mongoose.Types.ObjectId.isValid(data.nodeId)) {
-      try {
-        const saved = await EnergyReading.create({
-          nodeId: data.nodeId,
-          energyGenerated: reading.energyGenerated,
-          energyConsumed: reading.energyConsumed,
-        });
-        const payload = saved.toObject();
-        io.emit('newReading', payload);
-        await broadcastAnalytics();
-        return;
-      } catch (err) {
-        console.error('Socket reading persist failed:', err.message);
-      }
-    }
-
-    io.emit('newReading', reading);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Socket client disconnected:', socket.id);
-  });
-});
+initSocket(server, app);
 
 app.use(cors());
 app.use(express.json());
@@ -104,7 +50,7 @@ const startBackgroundSync = () => {
   const runSync = async () => {
     try {
       await blockchainSyncService.syncBlockchainTrades();
-      await broadcastAnalytics();
+      await socketBroadcastService.flushAnalytics();
     } catch (err) {
       console.warn('Background blockchain sync skipped:', err.message);
     }
@@ -117,5 +63,5 @@ const startBackgroundSync = () => {
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   startBackgroundSync();
-  blockchainSyncService.listenToBlockchainEvents(io);
+  blockchainSyncService.listenToBlockchainEvents();
 });
