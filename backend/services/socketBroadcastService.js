@@ -1,4 +1,4 @@
-const analyticsService = require('./analyticsService');
+const analyticsService = require('./analytics');
 const { SOCKET_EVENTS } = require('../socket/events');
 
 let io = null;

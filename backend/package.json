@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "simulate": "node simulate_nodes.js",
+    "simulate:socket": "node simulate_nodes.js",
+    "simulate:rest": "node simulator.js",
     "test": "node scripts/test-mvp.js",
     "test:mvp": "node scripts/test-mvp.js"
   },

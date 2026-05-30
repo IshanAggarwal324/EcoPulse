@@ -1,31 +1,33 @@
 require('dotenv').config();
-const { io } = require('socket.io-client');
-const { SOCKET_EVENTS } = require('./socket/events');
+const mongoose = require('mongoose');
+const connectDB = require('./config/db');
+const { SimulatorRunner } = require('./services/simulator');
 
-const SOCKET_URL = process.env.SOCKET_URL || 'http://localhost:5000';
-const NODE_IDS = ['node_solar_01', 'node_wind_02', 'node_consumer_03'];
+const start = async () => {
+  if (process.env.MONGO_URI && process.env.SIM_USE_DB_NODES !== 'false') {
+    await connectDB();
+  } else {
+    console.warn('[Simulator] Running without MongoDB — built-in mock node profiles only.');
+  }
 
-const socket = io(SOCKET_URL);
+  const runner = new SimulatorRunner({ transport: 'socket' });
 
-socket.on('connect', () => {
-  console.log(`Simulator connected to ${SOCKET_URL}`);
-  console.log('Sending mock readings every 3 seconds... Press Ctrl+C to stop.\n');
+  const shutdown = () => {
+    runner.stop();
+    if (mongoose.connection.readyState === 1) {
+      mongoose.connection.close().finally(() => process.exit(0));
+    } else {
+      process.exit(0);
+    }
+  };
 
-  setInterval(() => {
-    const nodeId = NODE_IDS[Math.floor(Math.random() * NODE_IDS.length)];
-    const isConsumer = nodeId.includes('consumer');
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
-    const payload = {
-      nodeId,
-      energyGenerated: isConsumer ? 0 : Math.floor(Math.random() * 50) + 10,
-      energyConsumed: isConsumer ? Math.floor(Math.random() * 30) + 5 : Math.floor(Math.random() * 5),
-    };
+  await runner.start();
+};
 
-    socket.emit(SOCKET_EVENTS.CLIENT.SIMULATE_READING, payload);
-    console.log(`[Sent] Node: ${nodeId} | Gen: +${payload.energyGenerated}kW | Con: -${payload.energyConsumed}kW`);
-  }, 3000);
-});
-
-socket.on('connect_error', (err) => {
-  console.error('Connection failed:', err.message);
+start().catch((err) => {
+  console.error('Simulator failed:', err.message);
+  process.exit(1);
 });
