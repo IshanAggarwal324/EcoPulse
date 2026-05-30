@@ -7,7 +7,7 @@ import BlockchainStatus from '../components/BlockchainStatus';
 import { useWallet } from '../context/WalletContext';
 import { analyticsApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
-import { useSocket } from '../context/SocketContext';
+import { useSocketReconnect } from '../context/SocketContext';
 import { useDashboardRealtime } from '../hooks/useDashboardRealtime';
 import { applyFullSummary } from '../utils/dashboardRealtime';
 import DashboardSummaryCards from '../components/dashboard/DashboardSummaryCards';
@@ -26,7 +26,6 @@ const Dashboard = () => {
   const [liveReadings, setLiveReadings] = useState([]);
   const { account } = useWallet();
   const [forecastStatus, setForecastStatus] = useState('Loading...');
-  const { connected: socketConnected } = useSocket();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,6 +70,11 @@ const Dashboard = () => {
   useEffect(() => {
     loadDashboard(account);
   }, [account, loadDashboard]);
+
+  useSocketReconnect(() => {
+    loadDashboard(account, { silent: true });
+    toast.info('Live connection restored — dashboard synced');
+  });
 
   const energy = summary?.energy || {};
   const nodeStats = summary?.nodes || {};
@@ -133,7 +137,7 @@ const Dashboard = () => {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <LiveGridPanel liveReadings={liveReadings} socketConnected={socketConnected} />
+        <LiveGridPanel liveReadings={liveReadings} />
 
         <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
           <h3 className="text-xl font-bold text-white mb-6">Node Status</h3>

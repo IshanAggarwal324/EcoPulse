@@ -1,25 +1,16 @@
 import React, { memo } from 'react';
 import { Activity, Zap } from 'lucide-react';
 import EnergyChart from '../ui/EnergyChart';
+import SocketStatusBadge from '../ui/SocketStatusBadge';
 
-const LiveGridPanel = memo(function LiveGridPanel({
-  liveReadings,
-  socketConnected,
-}) {
+const LiveGridPanel = memo(function LiveGridPanel({ liveReadings }) {
   return (
     <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl flex flex-col min-h-0">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
         <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
           <Activity className="text-emerald-400 shrink-0" /> Live Grid Analytics
         </h3>
-        <span className={`self-start flex items-center gap-2 text-xs sm:text-sm px-3 py-1 rounded-full border ${
-          socketConnected
-            ? 'text-emerald-400 bg-emerald-400/10 border-emerald-500/20'
-            : 'text-slate-400 bg-slate-700/50 border-slate-600/30'
-        }`}>
-          <span className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-          {socketConnected ? 'Live Sync' : 'Reconnecting...'}
-        </span>
+        <SocketStatusBadge className="self-start" />
       </div>
 
       <div className="flex-1 w-full mb-6">

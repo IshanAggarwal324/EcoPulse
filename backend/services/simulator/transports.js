@@ -2,6 +2,8 @@ const http = require('http');
 const { io } = require('socket.io-client');
 const { SOCKET_EVENTS } = require('../../socket/events');
 
+const MAX_PENDING_READINGS = 200;
+
 const createRestTransport = (baseUrl) => {
   const url = new URL(baseUrl.endsWith('/readings') ? baseUrl : `${baseUrl}/api/v1/readings`);
 
@@ -47,9 +49,43 @@ const createRestTransport = (baseUrl) => {
 };
 
 const createSocketTransport = (socketUrl) => {
+  const pendingQueue = [];
+  let wasConnected = false;
+
   const socket = io(socketUrl, {
     transports: ['websocket', 'polling'],
     reconnection: true,
+    reconnectionAttempts: parseInt(process.env.SIM_SOCKET_RECONNECT_ATTEMPTS || '30', 10),
+    reconnectionDelay: parseInt(process.env.SIM_SOCKET_RECONNECT_DELAY_MS || '1000', 10),
+    reconnectionDelayMax: parseInt(process.env.SIM_SOCKET_RECONNECT_DELAY_MAX_MS || '10000', 10),
+  });
+
+  const flushQueue = () => {
+    while (pendingQueue.length > 0 && socket.connected) {
+      const reading = pendingQueue.shift();
+      socket.emit(SOCKET_EVENTS.CLIENT.SIMULATE_READING, {
+        nodeId: reading.nodeId,
+        energyGenerated: reading.energyGenerated,
+        energyConsumed: reading.energyConsumed,
+      });
+    }
+  };
+
+  socket.on('connect', () => {
+    if (wasConnected) {
+      const flushed = pendingQueue.length;
+      console.log(`[Simulator] Reconnected — flushing ${flushed} queued reading(s)`);
+    }
+    wasConnected = true;
+    flushQueue();
+  });
+
+  socket.io.on('reconnect_attempt', (attempt) => {
+    console.log(`[Simulator] Reconnect attempt ${attempt}...`);
+  });
+
+  socket.io.on('reconnect_failed', () => {
+    console.error('[Simulator] Reconnection failed. Queued readings retained; restart when server is up.');
   });
 
   return {
@@ -75,8 +111,13 @@ const createSocketTransport = (socketUrl) => {
     },
     send(reading) {
       if (!socket.connected) {
-        return Promise.reject(new Error('Socket not connected'));
+        if (pendingQueue.length >= MAX_PENDING_READINGS) {
+          pendingQueue.shift();
+        }
+        pendingQueue.push(reading);
+        return Promise.resolve({ ok: true, queued: true });
       }
+
       socket.emit(SOCKET_EVENTS.CLIENT.SIMULATE_READING, {
         nodeId: reading.nodeId,
         energyGenerated: reading.energyGenerated,

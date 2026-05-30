@@ -8,7 +8,7 @@ import {
   mintDevTokens,
 } from '../utils/blockchain';
 import { marketplaceApi, tradesApi, analyticsApi } from '../utils/api';
-import { useSocketEvent } from '../context/SocketContext';
+import { useSocketEvent, useSocketReconnect } from '../context/SocketContext';
 import { SOCKET_EVENTS } from '../constants/socketEvents';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
@@ -185,6 +185,14 @@ const Trading = () => {
     loadOrders();
     loadHistory(account, Boolean(account));
   }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
+
+  useSocketReconnect(() => {
+    loadOrders();
+    if (account) {
+      loadHistory(account, true);
+    }
+    toast.info('Live connection restored — marketplace synced');
+  });
 
   useSocketEvent(SOCKET_EVENTS.SERVER.BLOCKCHAIN_EVENT, (data) => {
     loadOrders();
