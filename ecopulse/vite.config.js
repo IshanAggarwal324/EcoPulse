@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import commonjs from '@rollup/plugin-commonjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dep = (name) => path.resolve(__dirname, 'node_modules', name)
@@ -13,6 +14,7 @@ export default defineConfig({
     minify: false
   },
   plugins: [
+    commonjs(),
     tailwindcss(),
     react()
   ],
