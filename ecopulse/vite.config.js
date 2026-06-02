@@ -9,6 +9,9 @@ const dep = (name) => path.resolve(__dirname, 'node_modules', name)
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    minify: false
+  },
   plugins: [
     tailwindcss(),
     react()
