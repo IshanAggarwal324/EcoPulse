@@ -114,14 +114,16 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const init = async () => {
-      if (!accessToken) {
-        setLoading(false);
-        return;
-      }
+      try {
+        if (!accessToken) return;
 
-      const ok = await fetchCurrentUser(accessToken);
-      if (!ok) clearSession();
-      setLoading(false);
+        const ok = await fetchCurrentUser(accessToken);
+        if (!ok) clearSession();
+      } catch {
+        clearSession();
+      } finally {
+        setLoading(false);
+      }
     };
 
     init();

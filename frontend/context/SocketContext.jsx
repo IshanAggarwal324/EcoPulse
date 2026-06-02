@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import io from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { getSocketClientOptions, SOCKET_URL } from '../utils/socketClient';
 
 /** @typedef {'connected' | 'disconnected' | 'reconnecting' | 'failed'} SocketStatus */
