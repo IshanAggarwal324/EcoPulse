@@ -22,7 +22,8 @@ export default defineConfig({
       'lucide-react': dep('lucide-react'),
       ethers: dep('ethers'),
       recharts: dep('recharts'),
-      'socket.io-client': dep('socket.io-client'),
+      // ESM entry avoids broken default export when aliasing the package root (Rolldown prod bug).
+      'socket.io-client': dep('socket.io-client/build/esm/index.js'),
     },
   },
 })

@@ -18,39 +18,40 @@ import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
 
+function AuthenticatedApp() {
+  return (
+    <SocketProvider>
+      <SessionBridge />
+      <ProtectedRoute>
+        <AppLayout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/trading" element={<Trading />} />
+            <Route path="/transactions" element={<CarbonTransactions />} />
+            <Route path="/forecasts" element={<Forecasts />} />
+            <Route path="/credits" element={<Credits />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </AppLayout>
+      </ProtectedRoute>
+    </SocketProvider>
+  );
+}
+
 function App() {
   return (
     <ToastProvider>
-    <AuthProvider>
-    <WalletProvider>
-    <SocketProvider>
-      <SessionBridge />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-          <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <AppLayout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/trading" element={<Trading />} />
-                    <Route path="/transactions" element={<CarbonTransactions />} />
-                    <Route path="/forecasts" element={<Forecasts />} />
-                    <Route path="/credits" element={<Credits />} />
-                    <Route path="/settings" element={<Settings />} />
-                  </Routes>
-                </AppLayout>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </SocketProvider>
-    </WalletProvider>
-    </AuthProvider>
+      <AuthProvider>
+        <WalletProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+              <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+              <Route path="/*" element={<AuthenticatedApp />} />
+            </Routes>
+          </BrowserRouter>
+        </WalletProvider>
+      </AuthProvider>
     </ToastProvider>
   );
 }
