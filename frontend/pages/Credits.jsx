@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Award,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
-import CarbonBalanceChart from '../components/ui/CarbonBalanceChart';
+const CarbonBalanceChart = lazy(() => import('../components/ui/CarbonBalanceChart'));
 import { analyticsApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
@@ -269,11 +269,19 @@ const Credits = () => {
                   ? 'Daily credits received vs spent, with cumulative net balance change.'
                   : 'Daily CC volume settled through marketplace purchases.'}
               </p>
-              <CarbonBalanceChart
-                mode={account ? 'wallet' : 'platform'}
-                walletHistory={wallet?.history || []}
-                platformVolume={platform?.volumeByDay || []}
-              />
+              <Suspense
+                fallback={
+                  <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
+                    Loading chart...
+                  </div>
+                }
+              >
+                <CarbonBalanceChart
+                  mode={account ? 'wallet' : 'platform'}
+                  walletHistory={wallet?.history || []}
+                  platformVolume={platform?.volumeByDay || []}
+                />
+              </Suspense>
             </div>
 
             <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">

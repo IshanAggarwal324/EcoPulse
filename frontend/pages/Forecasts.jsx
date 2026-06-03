@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import SectionTitle from '../components/ui/SectionTitle';
-import ForecastChart, { forecastSummary } from '../components/ui/ForecastChart';
+import { forecastSummary } from '../utils/forecastSummary';
+
+const ForecastChart = lazy(() => import('../components/ui/ForecastChart'));
 import { TrendingUp, AlertCircle, Network, GitCompare } from 'lucide-react';
 import { forecastApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
@@ -228,11 +230,19 @@ const Forecasts = () => {
                   className="bg-slate-900/40 border border-slate-700/50 rounded-xl p-4"
                 >
                   <h4 className="text-sm font-semibold text-white mb-3">{entry.nodeName}</h4>
-                  <ForecastChart
-                    predictions={entry.predictions}
-                    compact
-                    bandIdPrefix={`node-${entry.nodeId}`}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
+                        Loading chart...
+                      </div>
+                    }
+                  >
+                    <ForecastChart
+                      predictions={entry.predictions}
+                      compact
+                      bandIdPrefix={`node-${entry.nodeId}`}
+                    />
+                  </Suspense>
                   <ForecastSummaryCards predictions={entry.predictions} />
                 </div>
               ))}
@@ -245,7 +255,15 @@ const Forecasts = () => {
         ) : (
           <div className="space-y-6">
             <div className="border-b border-slate-700/50 pb-3">
-              <ForecastChart predictions={forecastData} bandIdPrefix="main" />
+              <Suspense
+                fallback={
+                  <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
+                    Loading chart...
+                  </div>
+                }
+              >
+                <ForecastChart predictions={forecastData} bandIdPrefix="main" />
+              </Suspense>
             </div>
             <ForecastSummaryCards predictions={forecastData} />
           </div>

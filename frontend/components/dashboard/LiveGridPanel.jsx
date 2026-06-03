@@ -1,7 +1,8 @@
-import React, { memo } from 'react';
+import React, { lazy, memo, Suspense } from 'react';
 import { Activity, Zap } from 'lucide-react';
-import EnergyChart from '../ui/EnergyChart';
 import SocketStatusBadge from '../ui/SocketStatusBadge';
+
+const EnergyChart = lazy(() => import('../ui/EnergyChart'));
 
 const LiveGridPanel = memo(function LiveGridPanel({ liveReadings }) {
   return (
@@ -14,7 +15,15 @@ const LiveGridPanel = memo(function LiveGridPanel({ liveReadings }) {
       </div>
 
       <div className="flex-1 w-full mb-6">
-        <EnergyChart data={liveReadings} />
+        <Suspense
+          fallback={
+            <div className="w-full h-[220px] sm:h-[280px] lg:h-[300px] flex items-center justify-center text-slate-500">
+              <p className="text-sm">Loading chart...</p>
+            </div>
+          }
+        >
+          <EnergyChart data={liveReadings} />
+        </Suspense>
       </div>
 
       <div className="pt-6 border-t border-slate-700/50">

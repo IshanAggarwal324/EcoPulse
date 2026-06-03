@@ -114,9 +114,12 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const init = async () => {
-      try {
-        if (!accessToken) return;
+      if (!accessToken) {
+        setLoading(false);
+        return;
+      }
 
+      try {
         const ok = await fetchCurrentUser(accessToken);
         if (!ok) clearSession();
       } catch {
@@ -127,6 +130,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     init();
+    // Run once on mount only; login/register set user directly.
   }, []);
 
   const login = async (email, password) => {

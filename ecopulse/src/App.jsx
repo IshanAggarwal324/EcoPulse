@@ -1,12 +1,7 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AppLayout from '../../frontend/components/AppLayout';
-import Dashboard from '../../frontend/pages/Dashboard';
-import Trading from '../../frontend/pages/Trading';
-import CarbonTransactions from '../../frontend/pages/CarbonTransactions';
-import Forecasts from '../../frontend/pages/Forecasts';
-import Credits from '../../frontend/pages/Credits';
-import Settings from '../../frontend/pages/Settings';
+import PageLoader from '../../frontend/components/ui/PageLoader';
 
 import { AuthProvider } from '../../frontend/context/AuthContext';
 import { ToastProvider } from '../../frontend/context/ToastContext';
@@ -18,20 +13,29 @@ import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
 
+const Dashboard = lazy(() => import('../../frontend/pages/Dashboard'));
+const Trading = lazy(() => import('../../frontend/pages/Trading'));
+const CarbonTransactions = lazy(() => import('../../frontend/pages/CarbonTransactions'));
+const Forecasts = lazy(() => import('../../frontend/pages/Forecasts'));
+const Credits = lazy(() => import('../../frontend/pages/Credits'));
+const Settings = lazy(() => import('../../frontend/pages/Settings'));
+
 function AuthenticatedApp() {
   return (
     <SocketProvider>
       <SessionBridge />
       <ProtectedRoute>
         <AppLayout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/trading" element={<Trading />} />
-            <Route path="/transactions" element={<CarbonTransactions />} />
-            <Route path="/forecasts" element={<Forecasts />} />
-            <Route path="/credits" element={<Credits />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+          <Suspense fallback={<PageLoader message="Loading page..." />}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/trading" element={<Trading />} />
+              <Route path="/transactions" element={<CarbonTransactions />} />
+              <Route path="/forecasts" element={<Forecasts />} />
+              <Route path="/credits" element={<Credits />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </Suspense>
         </AppLayout>
       </ProtectedRoute>
     </SocketProvider>
@@ -42,15 +46,20 @@ function App() {
   return (
     <ToastProvider>
       <AuthProvider>
-        <WalletProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-              <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
-              <Route path="/*" element={<AuthenticatedApp />} />
-            </Routes>
-          </BrowserRouter>
-        </WalletProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+            <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+            <Route
+              path="/*"
+              element={
+                <WalletProvider>
+                  <AuthenticatedApp />
+                </WalletProvider>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
       </AuthProvider>
     </ToastProvider>
   );

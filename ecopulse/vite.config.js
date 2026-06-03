@@ -9,23 +9,29 @@ const dep = (name) => path.resolve(__dirname, 'node_modules', name)
 
 // https://vite.dev/config/
 export default defineConfig({
-  build: {
-    minify: false
-  },
   plugins: [
     tailwindcss(),
-    react()
+    react(),
   ],
+  optimizeDeps: {
+    // victory-vendor has no "." export (only d3-* subpaths) — do not include it here.
+    include: ['recharts', 'react-is', 'react-redux', 'immer'],
+  },
   resolve: {
-    dedupe: ['react', 'react-dom', 'react-router-dom'],
+    dedupe: ['react', 'react-dom', 'react-router-dom', 'react-is'],
     alias: {
       react: dep('react'),
       'react-dom': dep('react-dom'),
       'react-router-dom': dep('react-router-dom'),
       'lucide-react': dep('lucide-react'),
       ethers: dep('ethers'),
-      // ESM entry avoids broken default export when aliasing the package root (Rolldown prod bug).
+      recharts: dep('recharts/es6/index.js'),
       'socket.io-client': dep('socket.io-client/build/esm/index.js'),
+    },
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 })
