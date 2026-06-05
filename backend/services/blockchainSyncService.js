@@ -27,6 +27,26 @@ const getLookbackBlocks = () => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3000;
 };
 
+const getInitialSyncStartBlock = async ({
+  provider,
+  contractAddress,
+  chainId,
+  configuredFromBlock,
+  toBlock,
+}) => {
+  if (configuredFromBlock !== null) {
+    return configuredFromBlock;
+  }
+
+  // Public RPCs often do not reliably support historical code lookups.
+  // Start from a bounded recent window to keep sync responsive.
+  if (chainId !== 31337) {
+    return Math.max(0, toBlock - getLookbackBlocks() + 1);
+  }
+
+  return getInitialFromBlock(provider, contractAddress, null);
+};
+
 const isLogRangeError = (error) => {
   const msg = String(error?.message || error).toLowerCase();
   return (
@@ -138,9 +158,10 @@ const getBlockTimestamp = async (provider, blockNumber) => {
 
 const parseEventTrade = async (eventName, log, args, provider, chainId, contractAddress) => {
   const blockTimestamp = await getBlockTimestamp(provider, log.blockNumber);
+  const getArg = (key, index) => (args?.[key] !== undefined ? args[key] : args?.[index]);
   const base = {
-    txHash: log.transactionHash,
-    logIndex: log.index,
+    txHash: String(log.transactionHash || '').toLowerCase(),
+    logIndex: Number(log.index ?? log.logIndex ?? 0),
     blockNumber: log.blockNumber,
     blockTimestamp,
     chainId,
@@ -150,33 +171,33 @@ const parseEventTrade = async (eventName, log, args, provider, chainId, contract
   if (eventName === 'EnergyListed') {
     return {
       ...base,
-      listingId: Number(args.listingId),
+      listingId: Number(getArg('listingId', 0)),
       eventType: 'listed',
-      seller: String(args.seller).toLowerCase(),
+      seller: String(getArg('seller', 1)).toLowerCase(),
       buyer: null,
-      energyAmount: Number(args.energyAmount),
-      price: ethers.formatEther(args.price),
+      energyAmount: Number(getArg('energyAmount', 2)),
+      price: ethers.formatEther(getArg('price', 3)),
     };
   }
 
   if (eventName === 'EnergyPurchased') {
     return {
       ...base,
-      listingId: Number(args.listingId),
+      listingId: Number(getArg('listingId', 0)),
       eventType: 'purchased',
-      seller: String(args.seller).toLowerCase(),
-      buyer: String(args.buyer).toLowerCase(),
-      energyAmount: Number(args.energyAmount),
-      price: ethers.formatEther(args.price),
+      buyer: String(getArg('buyer', 1)).toLowerCase(),
+      seller: String(getArg('seller', 2)).toLowerCase(),
+      energyAmount: Number(getArg('energyAmount', 3)),
+      price: ethers.formatEther(getArg('price', 4)),
     };
   }
 
   if (eventName === 'ListingCancelled') {
     return {
       ...base,
-      listingId: Number(args.listingId),
+      listingId: Number(getArg('listingId', 0)),
       eventType: 'cancelled',
-      seller: String(args.seller).toLowerCase(),
+      seller: String(getArg('seller', 1)).toLowerCase(),
       buyer: null,
       energyAmount: 0,
       price: '0',
@@ -213,7 +234,12 @@ const getSyncCursor = async (chainId, contractAddress) => {
 const syncBlockchainTrades = async () => {
   if (isSyncing) {
     const payload = { skipped: true, message: 'Sync already in progress' };
-    setLastSyncDebug({ status: 'skipped', message: payload.message, indexed: 0, lastSyncedBlock: 0 });
+    setLastSyncDebug({
+      status: 'skipped',
+      message: payload.message,
+      indexed: 0,
+      lastSyncedBlock: lastSyncDebug.lastSyncedBlock,
+    });
     return payload;
   }
 
@@ -224,7 +250,12 @@ const syncBlockchainTrades = async () => {
       indexed: 0,
       activeListings: 0,
     };
-    setLastSyncDebug({ status: 'skipped', message: payload.message, indexed: 0, lastSyncedBlock: 0 });
+    setLastSyncDebug({
+      status: 'skipped',
+      message: payload.message,
+      indexed: 0,
+      lastSyncedBlock: lastSyncDebug.lastSyncedBlock,
+    });
     return payload;
   }
 
@@ -244,8 +275,13 @@ const syncBlockchainTrades = async () => {
     const configuredFromBlock = process.env.BLOCKCHAIN_SYNC_FROM_BLOCK
       ? parseInt(process.env.BLOCKCHAIN_SYNC_FROM_BLOCK, 10)
       : null;
-    const deploymentBlock = configuredFromBlock
-      ?? await getInitialFromBlock(provider, contractAddress, null);
+    const deploymentBlock = await getInitialSyncStartBlock({
+      provider,
+      contractAddress,
+      chainId,
+      configuredFromBlock,
+      toBlock,
+    });
 
     let fromBlock;
     if (syncState.lastSyncedBlock > 0) {

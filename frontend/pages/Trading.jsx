@@ -122,32 +122,23 @@ const Trading = () => {
       });
     };
 
-    const walletPromise = account
-      ? fetchAllListings()
-          .then(mapFallback)
-          .catch(() => null)
-      : Promise.resolve(null);
-
     try {
-      const [response, walletOrders] = await Promise.all([
-        marketplaceApi.getOrders(params),
-        walletPromise,
-      ]);
-
+      const response = await marketplaceApi.getOrders(params);
       if (response?.data?.orders) {
         setOrders(response.data.orders);
         setOrderSummary(response.data.summary || null);
-      } else if (walletOrders) {
-        applyMapped(walletOrders);
+        return;
       }
     } catch {
-      const walletOrders = await walletPromise;
-      if (walletOrders) {
-        applyMapped(walletOrders);
-      } else {
-        setOrders([]);
-        setOrderSummary(null);
-      }
+      // Fall back to wallet RPC below.
+    }
+
+    try {
+      const walletOrders = await fetchAllListings().then(mapFallback);
+      applyMapped(walletOrders);
+    } catch {
+      setOrders([]);
+      setOrderSummary(null);
     } finally {
       setListingsLoading(false);
     }
@@ -155,31 +146,32 @@ const Trading = () => {
 
   const loadHistory = useCallback(async (wallet, syncFirst = false) => {
     setHistoryLoading(true);
-    try {
-      const params = buildHistoryParams({
-        wallet,
-        filterId: txFilter,
-        periodDays: txPeriodDays,
-        listingId: txListingId,
-        minPrice: txMinPrice,
-        maxPrice: txMaxPrice,
-        limit: 100,
-      });
+    const params = buildHistoryParams({
+      wallet,
+      filterId: txFilter,
+      periodDays: txPeriodDays,
+      listingId: txListingId,
+      minPrice: txMinPrice,
+      maxPrice: txMaxPrice,
+      limit: 100,
+    });
 
+    try {
       if (syncFirst) {
-        let response = null;
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          response = await tradesApi.syncHistory(params);
-          const sync = response.data?.sync;
-          if (!sync?.skipped || sync?.message !== 'Sync already in progress') {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+        const response = await tradesApi.syncHistory(params);
+        const sync = response.data?.sync;
+
+        if (sync?.skipped && sync?.message === 'Sync already in progress') {
+          const fallback = await tradesApi.getHistory(params);
+          setHistory(fallback.data?.trades || []);
+          setApiSummary(fallback.data?.summary || null);
+          return;
         }
+
         setHistory(response?.data?.trades || []);
         setApiSummary(response?.data?.summary || null);
-        if (response?.data?.sync?.skipped && response.data.sync.message) {
-          toast.error(response.data.sync.message);
+        if (sync?.skipped && sync?.message) {
+          toast.error(sync.message);
         }
       } else {
         const response = await tradesApi.getHistory(params);
@@ -198,7 +190,13 @@ const Trading = () => {
           toast.error(err.message || 'Failed to load transaction history');
         }
       } else {
-        toast.error(err.message || 'Failed to sync transaction history');
+        try {
+          const fallback = await tradesApi.getHistory(params);
+          setHistory(fallback.data?.trades || []);
+          setApiSummary(fallback.data?.summary || null);
+        } catch {
+          toast.error(err.message || 'Failed to sync transaction history');
+        }
       }
     } finally {
       setHistoryLoading(false);
@@ -225,8 +223,11 @@ const Trading = () => {
 
   useEffect(() => {
     loadOrders();
+  }, [loadOrders]);
+
+  useEffect(() => {
     loadHistory(account, false);
-  }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
+  }, [account, loadHistory]);
 
   useSocketReconnect(() => {
     loadOrders();
@@ -280,14 +281,11 @@ const Trading = () => {
   };
 
   const afterChainTx = async (receipt) => {
-    await loadOrders();
-    await refreshBalance();
-    try {
-      await analyticsApi.syncBlockchain();
-    } catch {
-      // best-effort
+    await Promise.all([loadOrders(), refreshBalance()]);
+    analyticsApi.syncBlockchain().catch(() => {});
+    if (account) {
+      loadHistory(account, true).catch(() => {});
     }
-    if (account) await loadHistory(account, true);
     if (receipt?.hash) {
       toast.info(`Tx: ${receipt.hash.slice(0, 10)}...`);
     }
