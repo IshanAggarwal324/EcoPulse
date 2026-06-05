@@ -22,6 +22,11 @@ const getSyncChunkSize = () => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SYNC_CHUNK_SIZE;
 };
 
+const getLookbackBlocks = () => {
+  const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_LOOKBACK || '3000', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3000;
+};
+
 const isLogRangeError = (error) => {
   const msg = String(error?.message || error).toLowerCase();
   return (
@@ -84,26 +89,30 @@ const indexLogs = async (contract, logs, eventName, provider, chainId, contractA
   let indexed = 0;
 
   for (const log of logs) {
-    const parsed = contract.interface.parseLog(log);
-    const tradeData = await parseEventTrade(
-      eventName,
-      log,
-      parsed.args,
-      provider,
-      chainId,
-      contractAddress
-    );
+    try {
+      const parsed = contract.interface.parseLog(log);
+      const tradeData = await parseEventTrade(
+        eventName,
+        log,
+        parsed.args,
+        provider,
+        chainId,
+        contractAddress
+      );
 
-    if (!tradeData) continue;
+      if (!tradeData) continue;
 
-    const result = await Trade.updateOne(
-      { txHash: tradeData.txHash, logIndex: tradeData.logIndex },
-      { $setOnInsert: tradeData },
-      { upsert: true }
-    );
+      const result = await Trade.updateOne(
+        { txHash: tradeData.txHash, logIndex: tradeData.logIndex },
+        { $setOnInsert: tradeData },
+        { upsert: true }
+      );
 
-    if (result.upsertedCount > 0 || result.upsertedId) {
-      indexed += 1;
+      if (result.upsertedCount > 0 || result.upsertedId) {
+        indexed += 1;
+      }
+    } catch (error) {
+      console.warn(`[Sync] Skipped ${eventName} log at block ${log.blockNumber}:`, error.message);
     }
   }
 
@@ -235,12 +244,17 @@ const syncBlockchainTrades = async () => {
     const configuredFromBlock = process.env.BLOCKCHAIN_SYNC_FROM_BLOCK
       ? parseInt(process.env.BLOCKCHAIN_SYNC_FROM_BLOCK, 10)
       : null;
+    const deploymentBlock = configuredFromBlock
+      ?? await getInitialFromBlock(provider, contractAddress, null);
 
     let fromBlock;
     if (syncState.lastSyncedBlock > 0) {
-      fromBlock = syncState.lastSyncedBlock + 1;
+      fromBlock = Math.max(
+        deploymentBlock,
+        syncState.lastSyncedBlock - getLookbackBlocks() + 1
+      );
     } else {
-      fromBlock = await getInitialFromBlock(provider, contractAddress, configuredFromBlock);
+      fromBlock = deploymentBlock;
       console.log(`[Sync] Starting from block ${fromBlock} (chunk size: ${chunkSize})`);
     }
 
@@ -254,14 +268,21 @@ const syncBlockchainTrades = async () => {
     }
 
     if (fromBlock > toBlock) {
-      return {
+      const result = {
         indexed: 0,
-        activeListings: await countActiveListings(contract),
+        activeListings: null,
         fromBlock,
         toBlock,
         lastSyncedBlock: syncState.lastSyncedBlock,
         syncedAt: new Date().toISOString(),
       };
+      setLastSyncDebug({
+        status: 'ok',
+        message: 'Already up to date',
+        indexed: 0,
+        lastSyncedBlock: syncState.lastSyncedBlock,
+      });
+      return result;
     }
 
     const filters = [
@@ -273,8 +294,13 @@ const syncBlockchainTrades = async () => {
     for (let start = fromBlock; start <= toBlock; start += chunkSize) {
       const end = Math.min(start + chunkSize - 1, toBlock);
 
-      for (const { name, filter } of filters) {
-        const logs = await fetchLogsForRange(contract, filter, start, end);
+      const logGroups = await Promise.all(
+        filters.map(({ name, filter }) =>
+          fetchLogsForRange(contract, filter, start, end).then((logs) => ({ name, logs }))
+        )
+      );
+
+      for (const { name, logs } of logGroups) {
         indexed += await indexLogs(
           contract,
           logs,
@@ -290,12 +316,12 @@ const syncBlockchainTrades = async () => {
       syncState.contractAddress = contractAddress;
       await syncState.save();
 
-      console.log(`[Sync] Indexed blocks ${start}-${end}, new trades: ${indexed}`);
+      console.log(`[Sync] Indexed blocks ${start}-${end}, total new trades this run: ${indexed}`);
     }
 
     const result = {
       indexed,
-      activeListings: await countActiveListings(contract),
+      activeListings: null,
       fromBlock,
       toBlock,
       lastSyncedBlock: toBlock,

@@ -11,12 +11,14 @@ const getListedEvent = async (listingId) =>
     .sort({ blockNumber: -1 })
     .lean();
 
-const enrichOrder = async (listing) => {
-  const listedEvent = await getListedEvent(listing.id);
+const enrichOrder = (listing) => {
   const energyAmount = Number(listing.energyAmount) || 0;
   const price = parsePrice(listing.price);
   const unitPrice = energyAmount > 0 ? price / energyAmount : 0;
   const createdAtSec = listing.createdAt || 0;
+  const createdAt = createdAtSec
+    ? new Date(createdAtSec * 1000).toISOString()
+    : null;
 
   return {
     listingId: listing.id,
@@ -25,12 +27,10 @@ const enrichOrder = async (listing) => {
     price,
     unitPrice,
     status: 'active',
-    createdAt: createdAtSec
-      ? new Date(createdAtSec * 1000).toISOString()
-      : listedEvent?.blockTimestamp || null,
-    listedAt: listedEvent?.blockTimestamp || null,
-    txHash: listedEvent?.txHash || null,
-    blockNumber: listedEvent?.blockNumber || null,
+    createdAt,
+    listedAt: createdAt,
+    txHash: null,
+    blockNumber: null,
   };
 };
 
@@ -79,7 +79,7 @@ const getActiveOrders = async ({
     filtered = filtered.filter((l) => l.seller.toLowerCase() === normalizedSeller);
   }
 
-  let orders = await Promise.all(filtered.map(enrichOrder));
+  let orders = filtered.map(enrichOrder);
 
   if (minPrice !== null && minPrice !== undefined) {
     orders = orders.filter((o) => o.price >= Number(minPrice));

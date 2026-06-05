@@ -77,17 +77,13 @@ const Trading = () => {
 
   const loadOrders = useCallback(async () => {
     setListingsLoading(true);
-    try {
-      const params = { sort, limit: 100 };
-      if (view === 'mine' && account) {
-        params.seller = account;
-      }
 
-      const response = await marketplaceApi.getOrders(params);
-      setOrders(response.data?.orders || []);
-      setOrderSummary(response.data?.summary || null);
-    } catch {
-      const fallback = await fetchAllListings();
+    const params = { sort, limit: 100 };
+    if (view === 'mine' && account) {
+      params.seller = account;
+    }
+
+    const mapFallback = (fallback) => {
       let mapped = fallback.map((listing) => {
         const energyAmount = Number(listing.energyAmount) || 0;
         const priceNum = Number(listing.price) || 0;
@@ -110,6 +106,10 @@ const Trading = () => {
         );
       }
 
+      return mapped;
+    };
+
+    const applyMapped = (mapped) => {
       setOrders(mapped);
       setOrderSummary({
         totalActive: mapped.length,
@@ -120,6 +120,34 @@ const Trading = () => {
             ? mapped.reduce((s, o) => s + o.unitPrice, 0) / mapped.length
             : 0,
       });
+    };
+
+    const walletPromise = account
+      ? fetchAllListings()
+          .then(mapFallback)
+          .catch(() => null)
+      : Promise.resolve(null);
+
+    try {
+      const [response, walletOrders] = await Promise.all([
+        marketplaceApi.getOrders(params),
+        walletPromise,
+      ]);
+
+      if (response?.data?.orders) {
+        setOrders(response.data.orders);
+        setOrderSummary(response.data.summary || null);
+      } else if (walletOrders) {
+        applyMapped(walletOrders);
+      }
+    } catch {
+      const walletOrders = await walletPromise;
+      if (walletOrders) {
+        applyMapped(walletOrders);
+      } else {
+        setOrders([]);
+        setOrderSummary(null);
+      }
     } finally {
       setListingsLoading(false);
     }
@@ -138,12 +166,26 @@ const Trading = () => {
         limit: 100,
       });
 
-      const response = syncFirst
-        ? await tradesApi.syncHistory(params)
-        : await tradesApi.getHistory(params);
-
-      setHistory(response.data?.trades || []);
-      setApiSummary(response.data?.summary || null);
+      if (syncFirst) {
+        let response = null;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          response = await tradesApi.syncHistory(params);
+          const sync = response.data?.sync;
+          if (!sync?.skipped || sync?.message !== 'Sync already in progress') {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+        setHistory(response?.data?.trades || []);
+        setApiSummary(response?.data?.summary || null);
+        if (response?.data?.sync?.skipped && response.data.sync.message) {
+          toast.error(response.data.sync.message);
+        }
+      } else {
+        const response = await tradesApi.getHistory(params);
+        setHistory(response.data?.trades || []);
+        setApiSummary(response.data?.summary || null);
+      }
     } catch (err) {
       if (!syncFirst) {
         try {
@@ -183,7 +225,7 @@ const Trading = () => {
 
   useEffect(() => {
     loadOrders();
-    loadHistory(account, Boolean(account));
+    loadHistory(account, false);
   }, [account, loadOrders, loadHistory, txFilter, txPeriodDays, txListingId, txMinPrice, txMaxPrice]);
 
   useSocketReconnect(() => {

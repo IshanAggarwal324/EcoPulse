@@ -55,24 +55,30 @@ class BlockchainService {
 
   static async getActiveListings() {
     const contract = this.getEnergyTradingContractReadOnly();
-    const nextId = await contract.nextListingId();
-    const numListings = Number(nextId);
+    const nextId = Number(await contract.nextListingId());
+
+    if (nextId === 0) {
+      return [];
+    }
+
+    const listings = await Promise.all(
+      Array.from({ length: nextId }, (_, i) => contract.listings(i))
+    );
+
     const activeListings = [];
 
-    for (let i = 0; i < numListings; i += 1) {
-      const listing = await contract.listings(i);
+    listings.forEach((listing, i) => {
       const status = Number(listing.status ?? listing[3]);
+      if (status !== 0) return;
 
-      if (status === 0) {
-        activeListings.push({
-          id: i,
-          seller: listing.seller,
-          energyAmount: listing.energyAmount.toString(),
-          price: ethers.formatEther(listing.price),
-          createdAt: Number(listing.createdAt ?? listing[4]),
-        });
-      }
-    }
+      activeListings.push({
+        id: i,
+        seller: listing.seller,
+        energyAmount: listing.energyAmount.toString(),
+        price: ethers.formatEther(listing.price),
+        createdAt: Number(listing.createdAt ?? listing[4]),
+      });
+    });
 
     return activeListings;
   }
