@@ -2,5 +2,4 @@
 node_modules
 .*json
 .*jsonl
-
-\ignition\deployments
+ignition/deployments
