@@ -5,9 +5,66 @@ const BlockchainService = require('./blockchainService');
 const socketBroadcastService = require('./socketBroadcastService');
 
 const SYNC_STATE_KEY = 'energy_trading';
+const DEFAULT_SYNC_CHUNK_SIZE = 2000;
 let isSyncing = false;
 
 const blockTimestampCache = new Map();
+
+const getSyncChunkSize = () => {
+  const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CHUNK_SIZE || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SYNC_CHUNK_SIZE;
+};
+
+const getInitialFromBlock = async (provider, contractAddress, configuredFromBlock) => {
+  if (configuredFromBlock !== null) {
+    return configuredFromBlock;
+  }
+
+  let low = 0;
+  let high = await provider.getBlockNumber();
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    const code = await provider.getCode(contractAddress, mid);
+    if (code && code !== '0x') {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return low;
+};
+
+const indexLogs = async (contract, logs, eventName, provider, chainId, contractAddress) => {
+  let indexed = 0;
+
+  for (const log of logs) {
+    const parsed = contract.interface.parseLog(log);
+    const tradeData = await parseEventTrade(
+      eventName,
+      log,
+      parsed.args,
+      provider,
+      chainId,
+      contractAddress
+    );
+
+    if (!tradeData) continue;
+
+    const result = await Trade.updateOne(
+      { txHash: tradeData.txHash, logIndex: tradeData.logIndex },
+      { $setOnInsert: tradeData },
+      { upsert: true }
+    );
+
+    if (result.upsertedCount > 0) {
+      indexed += 1;
+    }
+  }
+
+  return indexed;
+};
 
 const getBlockTimestamp = async (provider, blockNumber) => {
   if (blockTimestampCache.has(blockNumber)) {
@@ -125,8 +182,19 @@ const syncBlockchainTrades = async () => {
     const contractAddress = process.env.ENERGY_TRADING_ADDRESS.toLowerCase();
 
     const syncState = await getSyncCursor(chainId, contractAddress);
-    let fromBlock = syncState.lastSyncedBlock > 0 ? syncState.lastSyncedBlock + 1 : 0;
     const toBlock = await provider.getBlockNumber();
+    const chunkSize = getSyncChunkSize();
+    const configuredFromBlock = process.env.BLOCKCHAIN_SYNC_FROM_BLOCK
+      ? parseInt(process.env.BLOCKCHAIN_SYNC_FROM_BLOCK, 10)
+      : null;
+
+    let fromBlock;
+    if (syncState.lastSyncedBlock > 0) {
+      fromBlock = syncState.lastSyncedBlock + 1;
+    } else {
+      fromBlock = await getInitialFromBlock(provider, contractAddress, configuredFromBlock);
+      console.log(`[Sync] Starting from block ${fromBlock} (chunk size: ${chunkSize})`);
+    }
 
     // Detect local blockchain reset (e.g. npx hardhat node restarted)
     if (toBlock < syncState.lastSyncedBlock && chainId === 31337) {
@@ -154,38 +222,26 @@ const syncBlockchainTrades = async () => {
       { name: 'ListingCancelled', filter: contract.filters.ListingCancelled() },
     ];
 
-    for (const { name, filter } of filters) {
-      const logs = await contract.queryFilter(filter, fromBlock, toBlock);
+    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
+      const end = Math.min(start + chunkSize - 1, toBlock);
 
-      for (const log of logs) {
-        const parsed = contract.interface.parseLog(log);
-        const tradeData = await parseEventTrade(
+      for (const { name, filter } of filters) {
+        const logs = await contract.queryFilter(filter, start, end);
+        indexed += await indexLogs(
+          contract,
+          logs,
           name,
-          log,
-          parsed.args,
           provider,
           chainId,
           contractAddress
         );
-
-        if (!tradeData) continue;
-
-        const result = await Trade.updateOne(
-          { txHash: tradeData.txHash, logIndex: tradeData.logIndex },
-          { $setOnInsert: tradeData },
-          { upsert: true }
-        );
-
-        if (result.upsertedCount > 0) {
-          indexed += 1;
-        }
       }
-    }
 
-    syncState.lastSyncedBlock = toBlock;
-    syncState.chainId = chainId;
-    syncState.contractAddress = contractAddress;
-    await syncState.save();
+      syncState.lastSyncedBlock = end;
+      syncState.chainId = chainId;
+      syncState.contractAddress = contractAddress;
+      await syncState.save();
+    }
 
     return {
       indexed,
@@ -196,10 +252,11 @@ const syncBlockchainTrades = async () => {
       syncedAt: new Date().toISOString(),
     };
   } catch (error) {
+    console.error('[Sync] Blockchain trade sync failed:', error.message);
     return {
       skipped: true,
       message: error.message,
-      indexed: 0,
+      indexed,
       activeListings: 0,
       syncedAt: new Date().toISOString(),
     };
