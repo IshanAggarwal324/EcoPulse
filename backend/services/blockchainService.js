@@ -13,23 +13,29 @@ const provider = new ethers.JsonRpcProvider(rpcUrl);
 const baseWallet = new ethers.Wallet(privateKey, provider);
 const wallet = new ethers.NonceManager(baseWallet);
 
-// Load ABIs
-let carbonCreditAbi = [];
-let energyTradingAbi = [];
+const CARBON_CREDIT_ABI_FALLBACK = require('../constants/carbonCreditAbi');
+const ENERGY_TRADING_ABI_FALLBACK = require('../constants/energyTradingAbi');
 
-try {
-  const ccPath = path.join(__dirname, "../../artifacts/contracts/CarbonCredit.sol/CarbonCredit.json");
-  const etPath = path.join(__dirname, "../../artifacts/contracts/EnergyTrading.sol/EnergyTrading.json");
-  
-  if (fs.existsSync(ccPath)) {
-    carbonCreditAbi = JSON.parse(fs.readFileSync(ccPath, "utf8")).abi;
+const loadArtifactAbi = (relativePath, fallback) => {
+  try {
+    const artifactPath = path.join(__dirname, '../../', relativePath);
+    if (fs.existsSync(artifactPath)) {
+      return JSON.parse(fs.readFileSync(artifactPath, 'utf8')).abi;
+    }
+  } catch (error) {
+    console.warn(`Using bundled ABI fallback for ${relativePath}:`, error.message);
   }
-  if (fs.existsSync(etPath)) {
-    energyTradingAbi = JSON.parse(fs.readFileSync(etPath, "utf8")).abi;
-  }
-} catch (error) {
-  console.error("Error loading ABIs:", error.message);
-}
+  return fallback;
+};
+
+const carbonCreditAbi = loadArtifactAbi(
+  'artifacts/contracts/CarbonCredit.sol/CarbonCredit.json',
+  CARBON_CREDIT_ABI_FALLBACK
+);
+const energyTradingAbi = loadArtifactAbi(
+  'artifacts/contracts/EnergyTrading.sol/EnergyTrading.json',
+  ENERGY_TRADING_ABI_FALLBACK
+);
 
 class BlockchainService {
   static getCarbonCreditContract() {

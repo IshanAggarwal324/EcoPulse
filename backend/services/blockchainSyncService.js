@@ -5,14 +5,58 @@ const BlockchainService = require('./blockchainService');
 const socketBroadcastService = require('./socketBroadcastService');
 
 const SYNC_STATE_KEY = 'energy_trading';
-const DEFAULT_SYNC_CHUNK_SIZE = 2000;
+const DEFAULT_SYNC_CHUNK_SIZE = 500;
 let isSyncing = false;
+let lastSyncDebug = {
+  status: 'idle',
+  message: null,
+  indexed: 0,
+  lastSyncedBlock: 0,
+  at: null,
+};
 
 const blockTimestampCache = new Map();
 
 const getSyncChunkSize = () => {
   const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CHUNK_SIZE || '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SYNC_CHUNK_SIZE;
+};
+
+const isLogRangeError = (error) => {
+  const msg = String(error?.message || error).toLowerCase();
+  return (
+    msg.includes('block range')
+    || msg.includes('log response')
+    || msg.includes('exceed')
+    || msg.includes('too many')
+    || msg.includes('query returned more than')
+    || msg.includes('max block')
+  );
+};
+
+const setLastSyncDebug = (payload) => {
+  lastSyncDebug = {
+    ...payload,
+    at: new Date().toISOString(),
+  };
+};
+
+const fetchLogsForRange = async (contract, filter, start, end) => {
+  try {
+    return await contract.queryFilter(filter, start, end);
+  } catch (error) {
+    if (!isLogRangeError(error) || start >= end) {
+      throw error;
+    }
+
+    const mid = Math.floor((start + end) / 2);
+    const [left, right] = await Promise.all([
+      fetchLogsForRange(contract, filter, start, mid),
+      fetchLogsForRange(contract, filter, mid + 1, end),
+    ]);
+
+    return [...left, ...right];
+  }
 };
 
 const getInitialFromBlock = async (provider, contractAddress, configuredFromBlock) => {
@@ -58,7 +102,7 @@ const indexLogs = async (contract, logs, eventName, provider, chainId, contractA
       { upsert: true }
     );
 
-    if (result.upsertedCount > 0) {
+    if (result.upsertedCount > 0 || result.upsertedId) {
       indexed += 1;
     }
   }
@@ -159,23 +203,27 @@ const getSyncCursor = async (chainId, contractAddress) => {
 
 const syncBlockchainTrades = async () => {
   if (isSyncing) {
-    return { skipped: true, message: 'Sync already in progress' };
+    const payload = { skipped: true, message: 'Sync already in progress' };
+    setLastSyncDebug({ status: 'skipped', message: payload.message, indexed: 0, lastSyncedBlock: 0 });
+    return payload;
   }
 
-  if (!process.env.ENERGY_TRADING_ADDRESS || !process.env.CARBON_CREDIT_ADDRESS) {
-    return {
+  if (!process.env.ENERGY_TRADING_ADDRESS) {
+    const payload = {
       skipped: true,
-      message: 'Blockchain contracts not configured',
+      message: 'ENERGY_TRADING_ADDRESS not configured',
       indexed: 0,
       activeListings: 0,
     };
+    setLastSyncDebug({ status: 'skipped', message: payload.message, indexed: 0, lastSyncedBlock: 0 });
+    return payload;
   }
 
   isSyncing = true;
   let indexed = 0;
 
   try {
-    const contract = BlockchainService.getEnergyTradingContract();
+    const contract = BlockchainService.getEnergyTradingContractReadOnly();
     const provider = contract.runner.provider;
     const network = await provider.getNetwork();
     const chainId = Number(network.chainId);
@@ -226,7 +274,7 @@ const syncBlockchainTrades = async () => {
       const end = Math.min(start + chunkSize - 1, toBlock);
 
       for (const { name, filter } of filters) {
-        const logs = await contract.queryFilter(filter, start, end);
+        const logs = await fetchLogsForRange(contract, filter, start, end);
         indexed += await indexLogs(
           contract,
           logs,
@@ -241,9 +289,11 @@ const syncBlockchainTrades = async () => {
       syncState.chainId = chainId;
       syncState.contractAddress = contractAddress;
       await syncState.save();
+
+      console.log(`[Sync] Indexed blocks ${start}-${end}, new trades: ${indexed}`);
     }
 
-    return {
+    const result = {
       indexed,
       activeListings: await countActiveListings(contract),
       fromBlock,
@@ -251,15 +301,29 @@ const syncBlockchainTrades = async () => {
       lastSyncedBlock: toBlock,
       syncedAt: new Date().toISOString(),
     };
+    setLastSyncDebug({
+      status: 'ok',
+      message: null,
+      indexed,
+      lastSyncedBlock: toBlock,
+    });
+    return result;
   } catch (error) {
     console.error('[Sync] Blockchain trade sync failed:', error.message);
-    return {
+    const result = {
       skipped: true,
       message: error.message,
       indexed,
       activeListings: 0,
       syncedAt: new Date().toISOString(),
     };
+    setLastSyncDebug({
+      status: 'error',
+      message: error.message,
+      indexed,
+      lastSyncedBlock: lastSyncDebug.lastSyncedBlock,
+    });
+    return result;
   } finally {
     isSyncing = false;
   }
@@ -283,7 +347,7 @@ const countActiveListings = async (contract) => {
 
 const getChainStatus = async () => {
   try {
-    const contract = BlockchainService.getEnergyTradingContract();
+    const contract = BlockchainService.getEnergyTradingContractReadOnly();
     const provider = contract.runner.provider;
     const network = await provider.getNetwork();
     const [blockNumber, nextListingId, syncState] = await Promise.all([
@@ -299,18 +363,20 @@ const getChainStatus = async () => {
       nextListingId: Number(nextListingId),
       lastSyncedBlock: syncState?.lastSyncedBlock ?? 0,
       tradeCount: await Trade.countDocuments(),
+      lastSync: lastSyncDebug,
     };
   } catch (error) {
     return {
       connected: false,
       error: error.message,
+      lastSync: lastSyncDebug,
     };
   }
 };
 
 const listenToBlockchainEvents = () => {
-  if (!process.env.ENERGY_TRADING_ADDRESS || !process.env.CARBON_CREDIT_ADDRESS) {
-    console.warn('[Sync] Blockchain contracts not configured for real-time listening.');
+  if (!process.env.ENERGY_TRADING_ADDRESS) {
+    console.warn('[Sync] ENERGY_TRADING_ADDRESS not configured for real-time listening.');
     return;
   }
 
@@ -385,6 +451,7 @@ const listenToBlockchainEvents = () => {
 module.exports = {
   syncBlockchainTrades,
   getChainStatus,
+  getLastSyncDebug: () => lastSyncDebug,
   listenToBlockchainEvents,
 };
 
