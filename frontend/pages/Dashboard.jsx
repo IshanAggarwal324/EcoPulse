@@ -46,7 +46,9 @@ const Dashboard = () => {
       if (readings) setLiveReadings(readings);
       setNodes(nodesRes.data || []);
 
-      const forecastRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1'}/forecast`);
+      const forecastRes = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1'}/forecast`
+      );
       const forecastData = await forecastRes.json();
       if (forecastData.predictions?.length) {
         setForecastStatus(forecastData.meta?.useDummyData ? 'Ready (demo)' : 'Ready');

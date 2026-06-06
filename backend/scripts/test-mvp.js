@@ -4,7 +4,8 @@
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
-const BASE = process.env.API_BASE || 'http://localhost:5000/api/v1';
+const BASE = process.env.API_BASE || 'http://localhost:5001/api/v1';
+const API_ORIGIN = BASE.replace(/\/api\/v1\/?$/, '');
 
 const request = async (method, path, body) => {
   const res = await fetch(`${BASE}${path}`, {
@@ -23,7 +24,7 @@ const assert = (condition, message) => {
 const run = async () => {
   console.log('EcoPulse MVP E2E Test\n');
 
-  const healthRes = await fetch('http://localhost:5000/api/health');
+  const healthRes = await fetch(`${API_ORIGIN}/api/health`);
   assert(healthRes.ok, 'Health check failed');
 
   const summaryBefore = await request('GET', '/analytics/summary');
