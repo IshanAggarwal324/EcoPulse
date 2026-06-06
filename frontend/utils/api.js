@@ -2,11 +2,12 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
 export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
 
 export class ApiError extends Error {
-  constructor(message, status, details) {
+  constructor(message, status, details, code = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
@@ -20,8 +21,21 @@ export function configureApiAuth(handlers) {
   authHandlers = { ...authHandlers, ...handlers };
 }
 
+const DEFAULT_TIMEOUT_MS = 20000;
+
 async function parseResponse(response) {
-  return response.json().catch(() => ({}));
+  const contentType = response.headers.get('content-type') || '';
+  const raw = await response.text().catch(() => '');
+
+  if (!raw) return {};
+  if (contentType.includes('application/json')) {
+    return JSON.parse(raw);
+  }
+
+  return {
+    message: raw.slice(0, 500),
+    raw,
+  };
 }
 
 export async function fetchApi(path, options = {}) {
@@ -35,13 +49,38 @@ export async function fetchApi(path, options = {}) {
   });
 
   const execute = async (token, isRetry = false) => {
-    const response = await fetch(url, {
-      ...options,
-      headers: buildHeaders(options.token || token),
-      body: options.body,
-    });
+    const controller = new AbortController();
+    const timeoutMs = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    const data = await parseResponse(response);
+    let response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers: buildHeaders(options.token || token),
+        body: options.body,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const isTimeout = error?.name === 'AbortError';
+      throw new ApiError(
+        isTimeout
+          ? `Request timed out after ${timeoutMs}ms`
+          : 'Network request failed',
+        0,
+        { cause: error?.message || String(error), url, method: options.method || 'GET' },
+        isTimeout ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR',
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    let data = {};
+    try {
+      data = await parseResponse(response);
+    } catch {
+      data = { message: 'Invalid API response format' };
+    }
 
     if (
       response.status === 401 &&
@@ -60,7 +99,8 @@ export async function fetchApi(path, options = {}) {
       throw new ApiError(
         data.message || `Request failed (${response.status})`,
         response.status,
-        data
+        data,
+        data.code || null,
       );
     }
 
