@@ -122,23 +122,47 @@ const Trading = () => {
       });
     };
 
-    try {
-      const response = await marketplaceApi.getOrders(params);
-      if (response?.data?.orders) {
-        setOrders(response.data.orders);
-        setOrderSummary(response.data.summary || null);
-        return;
-      }
-    } catch {
-      // Fall back to wallet RPC below.
-    }
+    const applyApiSnapshot = (payload) => {
+      setOrders(payload?.orders || []);
+      setOrderSummary(payload?.summary || null);
+    };
 
     try {
-      const walletOrders = await fetchAllListings().then(mapFallback);
-      applyMapped(walletOrders);
-    } catch {
-      setOrders([]);
-      setOrderSummary(null);
+      try {
+        const response = await marketplaceApi.getOrders(params);
+        const apiOrders = response?.data?.orders;
+        if (Array.isArray(apiOrders) && apiOrders.length > 0) {
+          applyApiSnapshot(response.data);
+          return;
+        }
+
+        if (Array.isArray(apiOrders) && apiOrders.length === 0) {
+          // If backend returns empty while chain has fresh listings, use wallet RPC snapshot.
+          // This keeps UI responsive when backend indexing lags right after deploy/tx.
+          try {
+            const walletOrders = await fetchAllListings().then(mapFallback);
+            if (walletOrders.length > 0) {
+              applyMapped(walletOrders);
+              return;
+            }
+          } catch {
+            // Ignore and fall back to API snapshot below.
+          }
+
+          applyApiSnapshot(response.data);
+          return;
+        }
+      } catch {
+        // Fall back to wallet RPC below.
+      }
+
+      try {
+        const walletOrders = await fetchAllListings().then(mapFallback);
+        applyMapped(walletOrders);
+      } catch {
+        setOrders([]);
+        setOrderSummary(null);
+      }
     } finally {
       setListingsLoading(false);
     }

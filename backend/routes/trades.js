@@ -8,6 +8,7 @@ const {
 
 router.get('/history', getHistory);
 router.get('/history/sync', syncAndGetHistory);
+router.post('/history/sync', syncAndGetHistory);
 router.get('/tx/:txHash', getByTxHash);
 
 module.exports = router;
