@@ -264,8 +264,10 @@ const Trading = () => {
   useSocketEvent(SOCKET_EVENTS.SERVER.BLOCKCHAIN_EVENT, (data) => {
     loadOrders();
     refreshBalance();
+    // The backend already syncs to MongoDB before broadcasting this event, so a
+    // plain (non-syncing) history fetch is enough — no extra re-sync needed.
     if (account) {
-      loadHistory(account, true);
+      loadHistory(account, false);
     }
 
     if (data.eventType === 'listed') {
@@ -306,9 +308,13 @@ const Trading = () => {
 
   const afterChainTx = async (receipt) => {
     await Promise.all([loadOrders(), refreshBalance()]);
-    analyticsApi.syncBlockchain().catch(() => {});
+    // Trigger exactly one chain sync. loadHistory(syncFirst) already calls the
+    // sync endpoint, so we avoid stacking a second full re-sync here (stacked
+    // syncs compete for the same rate-limited RPC and slow everything down).
     if (account) {
       loadHistory(account, true).catch(() => {});
+    } else {
+      analyticsApi.syncBlockchain().catch(() => {});
     }
     if (receipt?.hash) {
       toast.info(`Tx: ${receipt.hash.slice(0, 10)}...`);

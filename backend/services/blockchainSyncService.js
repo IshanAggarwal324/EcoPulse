@@ -27,6 +27,14 @@ const getLookbackBlocks = () => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3000;
 };
 
+// Small re-org safety buffer applied to incremental syncs. Once caught up we
+// only re-scan a handful of recent blocks instead of the full lookback window,
+// which keeps steady-state syncs cheap and fast.
+const getConfirmationsBuffer = () => {
+  const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CONFIRMATIONS || '12', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 12;
+};
+
 const getInitialSyncStartBlock = async ({
   provider,
   contractAddress,
@@ -47,16 +55,48 @@ const getInitialSyncStartBlock = async ({
   return getInitialFromBlock(provider, contractAddress, null);
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getErrorCode = (error) =>
+  error?.code ?? error?.info?.error?.code ?? error?.error?.code ?? null;
+
+// Provider throttling (e.g. Alchemy "exceeded compute units per second").
+// These must be retried with backoff, NOT treated as oversized-range errors.
+const isRateLimitError = (error) => {
+  const msg = String(error?.message || error).toLowerCase();
+  const code = getErrorCode(error);
+  return (
+    code === 429
+    || code === -32005
+    || msg.includes('compute units')
+    || msg.includes('rate limit')
+    || msg.includes('too many requests')
+    || msg.includes('429')
+    || msg.includes('could not coalesce')
+  );
+};
+
+// Oversized block-range / too-many-results errors. We deliberately check the
+// rate-limit case first so throttling is never misclassified as a range error
+// (splitting the range on a 429 amplifies the throttling into a cascade).
 const isLogRangeError = (error) => {
+  if (isRateLimitError(error)) return false;
   const msg = String(error?.message || error).toLowerCase();
   return (
     msg.includes('block range')
     || msg.includes('log response')
-    || msg.includes('exceed')
-    || msg.includes('too many')
+    || msg.includes('more than')
+    || msg.includes('too many results')
     || msg.includes('query returned more than')
     || msg.includes('max block')
+    || msg.includes('limit exceeded')
   );
+};
+
+const MAX_RATE_LIMIT_RETRIES = 6;
+const getInterChunkDelayMs = () => {
+  const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CHUNK_DELAY_MS || '250', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 250;
 };
 
 const setLastSyncDebug = (payload) => {
@@ -66,21 +106,32 @@ const setLastSyncDebug = (payload) => {
   };
 };
 
-const fetchLogsForRange = async (contract, filter, start, end) => {
+const fetchLogsForRange = async (contract, filter, start, end, rateLimitAttempt = 0) => {
   try {
     return await contract.queryFilter(filter, start, end);
   } catch (error) {
-    if (!isLogRangeError(error) || start >= end) {
-      throw error;
+    // Provider throttling: wait with exponential backoff and retry the SAME
+    // range. Never split here — splitting issues more concurrent requests and
+    // makes the throttling worse.
+    if (isRateLimitError(error)) {
+      if (rateLimitAttempt >= MAX_RATE_LIMIT_RETRIES) {
+        throw error;
+      }
+      const backoff = Math.min(8000, 500 * 2 ** rateLimitAttempt);
+      await sleep(backoff);
+      return fetchLogsForRange(contract, filter, start, end, rateLimitAttempt + 1);
     }
 
-    const mid = Math.floor((start + end) / 2);
-    const [left, right] = await Promise.all([
-      fetchLogsForRange(contract, filter, start, mid),
-      fetchLogsForRange(contract, filter, mid + 1, end),
-    ]);
+    // Genuinely oversized range: split and fetch the halves sequentially to
+    // keep request concurrency low.
+    if (isLogRangeError(error) && start < end) {
+      const mid = Math.floor((start + end) / 2);
+      const left = await fetchLogsForRange(contract, filter, start, mid);
+      const right = await fetchLogsForRange(contract, filter, mid + 1, end);
+      return [...left, ...right];
+    }
 
-    return [...left, ...right];
+    throw error;
   }
 };
 
@@ -139,12 +190,25 @@ const indexLogs = async (contract, logs, eventName, provider, chainId, contractA
   return indexed;
 };
 
+const getBlockWithRetry = async (provider, blockNumber, rateLimitAttempt = 0) => {
+  try {
+    return await provider.getBlock(blockNumber);
+  } catch (error) {
+    if (isRateLimitError(error) && rateLimitAttempt < MAX_RATE_LIMIT_RETRIES) {
+      const backoff = Math.min(8000, 500 * 2 ** rateLimitAttempt);
+      await sleep(backoff);
+      return getBlockWithRetry(provider, blockNumber, rateLimitAttempt + 1);
+    }
+    throw error;
+  }
+};
+
 const getBlockTimestamp = async (provider, blockNumber) => {
   if (blockTimestampCache.has(blockNumber)) {
     return blockTimestampCache.get(blockNumber);
   }
 
-  const block = await provider.getBlock(blockNumber);
+  const block = await getBlockWithRetry(provider, blockNumber);
   const timestamp = block ? new Date(block.timestamp * 1000) : new Date();
   blockTimestampCache.set(blockNumber, timestamp);
 
@@ -285,9 +349,11 @@ const syncBlockchainTrades = async () => {
 
     let fromBlock;
     if (syncState.lastSyncedBlock > 0) {
+      // Incremental: resume just after the last synced block, re-scanning only
+      // a small confirmations buffer for re-org safety (not the full lookback).
       fromBlock = Math.max(
         deploymentBlock,
-        syncState.lastSyncedBlock - getLookbackBlocks() + 1
+        syncState.lastSyncedBlock - getConfirmationsBuffer() + 1
       );
     } else {
       fromBlock = deploymentBlock;
@@ -327,14 +393,18 @@ const syncBlockchainTrades = async () => {
       { name: 'ListingCancelled', filter: contract.filters.ListingCancelled() },
     ];
 
+    const interChunkDelayMs = getInterChunkDelayMs();
+
     for (let start = fromBlock; start <= toBlock; start += chunkSize) {
       const end = Math.min(start + chunkSize - 1, toBlock);
 
-      const logGroups = await Promise.all(
-        filters.map(({ name, filter }) =>
-          fetchLogsForRange(contract, filter, start, end).then((logs) => ({ name, logs }))
-        )
-      );
+      // Query each event filter sequentially (not in parallel) to keep the
+      // instantaneous request rate low and avoid provider throttling.
+      const logGroups = [];
+      for (const { name, filter } of filters) {
+        const logs = await fetchLogsForRange(contract, filter, start, end);
+        logGroups.push({ name, logs });
+      }
 
       for (const { name, logs } of logGroups) {
         indexed += await indexLogs(
@@ -347,12 +417,19 @@ const syncBlockchainTrades = async () => {
         );
       }
 
+      // Persist progress after every chunk so an interruption (or later
+      // throttling) never forces a full re-scan from the start.
       syncState.lastSyncedBlock = end;
       syncState.chainId = chainId;
       syncState.contractAddress = contractAddress;
       await syncState.save();
 
       console.log(`[Sync] Indexed blocks ${start}-${end}, total new trades this run: ${indexed}`);
+
+      // Brief pause between chunks to stay under the provider's CU/s budget.
+      if (interChunkDelayMs > 0 && end < toBlock) {
+        await sleep(interChunkDelayMs);
+      }
     }
 
     const result = {
