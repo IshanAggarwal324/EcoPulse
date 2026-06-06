@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AppLayout from '../../frontend/components/AppLayout';
 import PageLoader from '../../frontend/components/ui/PageLoader';

@@ -59,8 +59,8 @@ const DashboardSummaryCards = memo(function DashboardSummaryCards({
   ], [energy, nodeStats, tradeStats, carbon, forecastStatus]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-      {summaryCards.map((card) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      {summaryCards.map((card, i) => (
         <SummaryCard key={card.label} {...card} />
       ))}
     </div>

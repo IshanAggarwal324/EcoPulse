@@ -16,13 +16,29 @@ function buildChartData(data) {
   });
 }
 
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 rounded-xl p-3 shadow-xl shadow-black/30">
+      <p className="text-[11px] text-slate-500 mb-2">{label}</p>
+      {payload.map((entry) => (
+        <div key={entry.name} className="flex items-center gap-2 text-sm">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-slate-400">{entry.name}:</span>
+          <span className="font-semibold text-white">{entry.value} kW</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const EnergyChart = memo(function EnergyChart({ data }) {
   const chartData = useMemo(() => (data?.length ? buildChartData(data) : []), [data]);
 
   if (!chartData.length) {
     return (
       <div className="w-full h-[220px] sm:h-[280px] lg:h-[300px] flex items-center justify-center text-slate-500 flex-col gap-2">
-        <Zap className="animate-pulse text-slate-600" size={32} />
+        <Zap className="animate-pulse text-slate-700" size={32} />
         <p className="text-sm text-center px-4">Waiting for live node data...</p>
       </div>
     );
@@ -34,46 +50,38 @@ const EnergyChart = memo(function EnergyChart({ data }) {
         <AreaChart data={chartData} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
           <defs>
             <linearGradient id="colorGenerated" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
               <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="colorConsumed" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
+              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
               <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(51,65,85,0.4)" vertical={false} />
           <XAxis
             dataKey="name"
-            stroke="#94a3b8"
+            stroke="#475569"
             fontSize={10}
             tickLine={false}
             axisLine={false}
             interval="preserveStartEnd"
           />
           <YAxis
-            stroke="#94a3b8"
+            stroke="#475569"
             fontSize={10}
             tickLine={false}
             axisLine={false}
             width={40}
             tickFormatter={(value) => `${value}`}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '0.5rem',
-              color: '#f8fafc',
-              fontSize: '12px',
-            }}
-          />
+          <Tooltip content={<CustomTooltip />} />
           <Area
             type="monotone"
             dataKey="generated"
             name="Generated"
             stroke="#10b981"
-            strokeWidth={2}
+            strokeWidth={2.5}
             fillOpacity={1}
             fill="url(#colorGenerated)"
             isAnimationActive={false}

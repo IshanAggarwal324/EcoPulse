@@ -16,10 +16,10 @@ const AppLayout = memo(function AppLayout({ children }) {
   const openSidebar = () => setSidebarOpen(true);
 
   return (
-    <div className="flex h-[100dvh] bg-slate-900 overflow-hidden font-sans">
+    <div className="flex h-[100dvh] bg-slate-950 overflow-hidden font-sans">
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
           onClick={closeSidebar}
           aria-hidden="true"
         />
@@ -33,21 +33,26 @@ const AppLayout = memo(function AppLayout({ children }) {
         <Sidebar onClose={closeSidebar} />
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-900">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden ambient-bg">
         <header
-          className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/95 backdrop-blur-md z-30 shrink-0"
+          className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur-xl z-30 shrink-0"
           style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
         >
-          <h2 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent truncate">
-            EcoPulse
-          </h2>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
+              <Menu size={14} className="text-white" />
+            </div>
+            <h2 className="text-lg font-bold gradient-text truncate">
+              EcoPulse
+            </h2>
+          </div>
           <button
             type="button"
             onClick={openSidebar}
-            className="touch-target p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="touch-target p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
             aria-label="Open menu"
           >
-            <Menu size={24} />
+            <Menu size={22} />
           </button>
         </header>
 

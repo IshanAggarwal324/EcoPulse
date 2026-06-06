@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getProvider, getCarbonCreditBalance } from '../utils/blockchain';
 
 const WalletConnect = ({ onConnect, onDisconnect, account }) => {

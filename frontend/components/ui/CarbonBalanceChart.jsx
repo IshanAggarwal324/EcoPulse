@@ -58,11 +58,13 @@ const CarbonBalanceChart = ({ walletHistory = [], platformVolume = [], mode = 'w
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#0f172a',
-                border: '1px solid #334155',
+                backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                border: '1px solid rgba(51, 65, 85, 0.5)',
                 borderRadius: '0.75rem',
                 color: '#f8fafc',
                 fontSize: '12px',
+                backdropFilter: 'blur(20px)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
               }}
               formatter={(value, name) => [
                 name === 'Trade count' ? value : `${Number(value).toFixed(2)} CC`,
@@ -111,11 +113,13 @@ const CarbonBalanceChart = ({ walletHistory = [], platformVolume = [], mode = 'w
           <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={48} />
           <Tooltip
             contentStyle={{
-              backgroundColor: '#0f172a',
-              border: '1px solid #334155',
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              border: '1px solid rgba(51, 65, 85, 0.5)',
               borderRadius: '0.75rem',
               color: '#f8fafc',
               fontSize: '12px',
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
             }}
             formatter={(value) => [`${Number(value).toFixed(2)} CC`, '']}
             labelFormatter={(label) => label}

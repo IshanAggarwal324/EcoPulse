@@ -104,7 +104,7 @@ const Dashboard = () => {
         type="button"
         disabled={refreshing}
         onClick={handleRefresh}
-        className="touch-target px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
+        className="touch-target px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-60 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/15"
       >
         {refreshing ? 'Refreshing...' : 'Refresh Data'}
       </button>
@@ -117,7 +117,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="space-y-6 sm:space-y-8 pb-4 sm:pb-8">
+    <div className="space-y-7 sm:space-y-8 pb-4 sm:pb-8">
       <SectionTitle
         title="Dashboard Overview"
         subtitle="Real-time grid summary synced from MongoDB, blockchain, and AI services."
@@ -125,7 +125,7 @@ const Dashboard = () => {
       />
 
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300">
+        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 animate-fade-in-up">
           <AlertCircle size={20} />
           <p className="text-sm">{error}</p>
         </div>
@@ -141,9 +141,8 @@ const Dashboard = () => {
         forecastStatus={forecastStatus}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <LiveGridPanel liveReadings={liveReadings} />
-
         <DashboardNodePanel nodeStatus={nodeStatus} />
       </div>
     </div>

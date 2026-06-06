@@ -28,7 +28,6 @@ const WalletConnect = memo(function WalletConnect() {
         await connect();
       }
     } catch {
-      // Error state is set in context
     }
   };
 
@@ -49,7 +48,7 @@ const WalletConnect = memo(function WalletConnect() {
         : 'Connect MetaMask';
 
   return (
-    <div className="p-4 sm:p-6 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl shadow-xl flex flex-col justify-center min-h-[140px]">
+    <div className="glass-card rounded-2xl p-5 sm:p-6 card-hover-glow glow-emerald flex flex-col justify-center min-h-[140px]">
       <h3 className="text-lg sm:text-xl font-bold text-white mb-4">Wallet Connection</h3>
 
       {reconnecting && (
@@ -61,7 +60,7 @@ const WalletConnect = memo(function WalletConnect() {
       {!account ? (
         <div className="space-y-2">
           {hadPreviousSession && !reconnecting && (
-            <p className="text-slate-400 text-xs">
+            <p className="text-slate-500 text-xs">
               Previous session detected. Reconnect to continue trading.
             </p>
           )}
@@ -69,7 +68,7 @@ const WalletConnect = memo(function WalletConnect() {
             type="button"
             onClick={handleConnect}
             disabled={connecting}
-            className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium px-4 py-3 rounded-lg transition-colors disabled:opacity-50"
+            className="touch-target w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold px-4 py-3 rounded-xl transition-all duration-200 disabled:opacity-50 shadow-lg shadow-emerald-500/15"
           >
             {connectLabel}
           </button>
@@ -93,7 +92,7 @@ const WalletConnect = memo(function WalletConnect() {
               <button
                 type="button"
                 onClick={handleSwitchNetwork}
-                className="touch-target w-full bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 font-medium px-4 py-2 rounded-lg transition-colors text-sm"
+                className="touch-target w-full bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 font-medium px-4 py-2 rounded-xl transition-colors text-sm"
               >
                 Switch Network
               </button>
@@ -103,7 +102,7 @@ const WalletConnect = memo(function WalletConnect() {
           <button
             type="button"
             onClick={disconnect}
-            className="touch-target w-full bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 font-medium px-4 py-3 rounded-lg transition-colors"
+            className="touch-target w-full bg-rose-500/10 text-rose-400 border border-rose-500/25 hover:bg-rose-500/20 font-medium px-4 py-2.5 rounded-xl transition-colors"
           >
             Disconnect Wallet
           </button>
