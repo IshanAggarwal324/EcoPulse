@@ -161,7 +161,7 @@ const Credits = () => {
   const cards = account ? walletCards : platformCards;
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="page-section">
       <SectionTitle
         title="Carbon Credits"
         subtitle="Balance analytics, credit flows, and platform-wide CC metrics synced from chain."
@@ -170,7 +170,7 @@ const Credits = () => {
             type="button"
             onClick={handleSync}
             disabled={syncing}
-            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/15 w-full sm:w-auto"
           >
             <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Syncing...' : 'Sync Blockchain'}
@@ -184,10 +184,10 @@ const Credits = () => {
             key={option.days}
             type="button"
             onClick={() => setPeriodDays(option.days)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
               periodDays === option.days
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                : 'bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:text-slate-200'
+                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm shadow-emerald-500/10'
+                : 'bg-slate-800/40 text-slate-500 border border-slate-700/30 hover:text-slate-200 hover:border-slate-600/40'
             }`}
           >
             {option.label}
@@ -196,16 +196,16 @@ const Credits = () => {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300">
+        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 animate-fade-in-up">
           <AlertCircle size={20} />
           <p className="text-sm">{error}</p>
         </div>
       )}
 
       {!account && (
-        <div className="p-4 bg-slate-800/80 border border-slate-700/50 rounded-xl text-sm text-slate-300">
+        <div className="p-4 content-card rounded-xl text-sm text-slate-400">
           Connect your wallet on the{' '}
-          <Link to="/" className="text-emerald-400 hover:underline">
+          <Link to="/" className="text-emerald-400 hover:text-emerald-300 transition-colors">
             Dashboard
           </Link>{' '}
           to see personal balance analytics, or view platform-wide metrics below.
@@ -216,38 +216,38 @@ const Credits = () => {
         <PageLoader message="Loading carbon credit analytics..." />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
             {cards.map((card) => (
               <SummaryCard key={card.label} {...card} />
             ))}
           </div>
 
           {account && wallet && (
-            <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">
+            <div className="content-card">
               <h3 className="text-lg font-bold text-white mb-4">Balance breakdown</h3>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Current balance</dt>
-                  <dd className="text-2xl font-bold text-emerald-400 mt-1">
+              <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Current balance</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-emerald-400 mt-1.5 font-mono">
                     {parseAmount(displayBalance).toFixed(2)} CC
                   </dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Marketplace allowance</dt>
-                  <dd className="text-2xl font-bold text-white mt-1">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Allowance</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-white mt-1.5 font-mono">
                     {parseAmount(wallet.allowance).toFixed(2)} CC
                   </dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Unapproved balance</dt>
-                  <dd className="text-2xl font-bold text-slate-200 mt-1">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Unapproved</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-slate-300 mt-1.5 font-mono">
                     {parseAmount(wallet.unapprovedBalance).toFixed(2)} CC
                   </dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Period net flow</dt>
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Net flow</dt>
                   <dd
-                    className={`text-2xl font-bold mt-1 ${
+                    className={`text-xl md:text-2xl font-bold mt-1.5 font-mono ${
                       (wallet.netFlow || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
@@ -259,19 +259,19 @@ const Credits = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="content-card">
               <h3 className="text-lg font-bold text-white mb-1">
                 {account ? 'Your credit flow' : 'Platform credit volume'}
               </h3>
-              <p className="text-sm text-slate-400 mb-4">
+              <p className="text-sm text-slate-500 mb-4">
                 {account
                   ? 'Daily credits received vs spent, with cumulative net balance change.'
                   : 'Daily CC volume settled through marketplace purchases.'}
               </p>
               <Suspense
                 fallback={
-                  <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
+                  <div className="h-64 flex items-center justify-center text-slate-600 text-sm">
                     Loading chart...
                   </div>
                 }
@@ -284,40 +284,42 @@ const Credits = () => {
               </Suspense>
             </div>
 
-            <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">
+            <div className="content-card">
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <Zap size={20} className="text-emerald-400" />
+                <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+                  <Zap size={18} className="text-emerald-400" />
+                </div>
                 Credit ledger summary
               </h3>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Total listings indexed</dt>
-                  <dd className="text-2xl font-bold text-white mt-1">{trades?.totalListings || 0}</dd>
+              <dl className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Listings indexed</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-white mt-1.5">{trades?.totalListings || 0}</dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Credits traded (CC)</dt>
-                  <dd className="text-2xl font-bold text-emerald-400 mt-1">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Credits traded</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-emerald-400 mt-1.5 font-mono">
                     {(platform?.totalCreditsTraded ?? carbon?.totalCreditsTraded ?? 0).toFixed(4)}
                   </dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Completed trades</dt>
-                  <dd className="text-2xl font-bold text-white mt-1">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Completed trades</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-white mt-1.5">
                     {platform?.completedTrades ?? trades?.completedTrades ?? 0}
                   </dd>
                 </div>
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-                  <dt className="text-slate-400">Energy traded</dt>
-                  <dd className="text-2xl font-bold text-blue-400 mt-1">
+                <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-700/30">
+                  <dt className="text-slate-500 text-xs uppercase tracking-wider">Energy traded</dt>
+                  <dd className="text-xl md:text-2xl font-bold text-blue-400 mt-1.5 font-mono">
                     {(trades?.totalEnergyTraded || 0).toLocaleString()} kWh
                   </dd>
                 </div>
               </dl>
               <Link
                 to="/transactions"
-                className="inline-flex mt-4 text-sm text-emerald-400 hover:text-emerald-300 font-medium"
+                className="inline-flex mt-5 text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
               >
-                View transaction ledger →
+                View transaction ledger &rarr;
               </Link>
             </div>
           </div>

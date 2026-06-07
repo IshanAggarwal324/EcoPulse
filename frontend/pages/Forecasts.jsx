@@ -7,6 +7,7 @@ import { TrendingUp, AlertCircle, Network, GitCompare } from 'lucide-react';
 import { forecastApi, nodesApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { Loader2 } from 'lucide-react';
+import EmptyState from '../components/ui/EmptyState';
 
 const VIEW_MODES = {
   AGGREGATE: 'aggregate',
@@ -18,27 +19,27 @@ const ForecastSummaryCards = ({ predictions }) => {
   const { avgGeneration, avgConsumption, avgConfidence } = forecastSummary(predictions);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+      <div className="glass-card p-4 rounded-xl">
         <div className="flex items-center gap-2 text-emerald-400 mb-2">
-          <div className="w-3 h-3 rounded-full bg-emerald-400" />
-          <span className="font-semibold">Predicted Generation</span>
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+          <span className="text-sm font-semibold">Predicted Generation</span>
         </div>
-        <p className="text-sm text-slate-400">Avg: {avgGeneration.toFixed(2)} kW</p>
+        <p className="text-sm text-slate-400 font-mono">Avg: {avgGeneration.toFixed(2)} kW</p>
       </div>
-      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+      <div className="glass-card p-4 rounded-xl">
         <div className="flex items-center gap-2 text-rose-400 mb-2">
-          <div className="w-3 h-3 rounded-full bg-rose-400" />
-          <span className="font-semibold">Predicted Consumption</span>
+          <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
+          <span className="text-sm font-semibold">Predicted Consumption</span>
         </div>
-        <p className="text-sm text-slate-400">Avg: {avgConsumption.toFixed(2)} kW</p>
+        <p className="text-sm text-slate-400 font-mono">Avg: {avgConsumption.toFixed(2)} kW</p>
       </div>
-      <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+      <div className="glass-card p-4 rounded-xl">
         <div className="flex items-center gap-2 text-violet-400 mb-2">
-          <div className="w-3 h-3 rounded-full bg-violet-400" />
-          <span className="font-semibold">Prediction Confidence</span>
+          <div className="w-2.5 h-2.5 rounded-full bg-violet-400" />
+          <span className="text-sm font-semibold">Prediction Confidence</span>
         </div>
-        <p className="text-sm text-slate-400">Avg: {avgConfidence.toFixed(0)}%</p>
+        <p className="text-sm text-slate-400 font-mono">Avg: {avgConfidence.toFixed(0)}%</p>
       </div>
     </div>
   );
@@ -128,33 +129,35 @@ const Forecasts = () => {
         : 'Network aggregate forecast';
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="page-section">
       <SectionTitle
         title="AI Forecasts"
         subtitle="7-day predictions per node or across your full energy network."
       />
 
-      <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <div className="content-card">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <TrendingUp className="text-purple-400" />
+            <div className="p-1.5 bg-purple-500/10 rounded-lg">
+              <TrendingUp className="text-purple-400" size={18} />
+            </div>
             {chartTitle}
             {meta && (
-              <span className="text-xs font-normal text-slate-400 ml-2">
+              <span className="text-xs font-normal text-slate-500 ml-2">
                 ({meta.useDummyData ? 'demo data' : 'live data'})
               </span>
             )}
           </h3>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex rounded-lg border border-slate-600/60 overflow-hidden">
+            <div className="flex rounded-xl border border-slate-600/40 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setViewMode(VIEW_MODES.AGGREGATE)}
-                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 ${
+                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 transition-colors ${
                   viewMode === VIEW_MODES.AGGREGATE
                     ? 'bg-purple-600 text-white'
-                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                    : 'bg-slate-900/60 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
                 }`}
               >
                 <Network size={14} />
@@ -163,10 +166,10 @@ const Forecasts = () => {
               <button
                 type="button"
                 onClick={() => setViewMode(VIEW_MODES.SINGLE)}
-                className={`px-3 py-2 text-xs sm:text-sm ${
+                className={`px-3 py-2 text-xs sm:text-sm transition-colors ${
                   viewMode === VIEW_MODES.SINGLE
                     ? 'bg-purple-600 text-white'
-                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                    : 'bg-slate-900/60 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
                 }`}
               >
                 Single node
@@ -174,10 +177,10 @@ const Forecasts = () => {
               <button
                 type="button"
                 onClick={() => setViewMode(VIEW_MODES.COMPARE)}
-                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 ${
+                className={`px-3 py-2 text-xs sm:text-sm flex items-center gap-1.5 transition-colors ${
                   viewMode === VIEW_MODES.COMPARE
                     ? 'bg-purple-600 text-white'
-                    : 'bg-slate-900/60 text-slate-300 hover:bg-slate-700/60'
+                    : 'bg-slate-900/60 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
                 }`}
               >
                 <GitCompare size={14} />
@@ -189,7 +192,7 @@ const Forecasts = () => {
               <select
                 value={selectedNodeId}
                 onChange={(e) => setSelectedNodeId(e.target.value)}
-                className="bg-slate-900/70 border border-slate-600/60 rounded-lg px-3 py-2 text-sm text-slate-200 min-w-[180px]"
+                className="bg-slate-900/60 border border-slate-600/40 rounded-xl px-3 py-2 text-sm text-slate-200 min-w-[180px] focus:outline-none focus:border-purple-500/50"
                 disabled={nodes.length === 0}
               >
                 {nodes.length === 0 ? (
@@ -207,32 +210,37 @@ const Forecasts = () => {
         </div>
 
         {loading ? (
-          <div className="h-48 sm:h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+          <div className="h-48 sm:h-64 flex flex-col items-center justify-center text-slate-400 gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 bg-emerald-500/15 rounded-full blur-lg animate-pulse" />
+              <Loader2 className="relative h-8 w-8 animate-spin text-emerald-500" />
+            </div>
             <p className="text-sm">Generating predictions...</p>
           </div>
         ) : error ? (
-          <div className="h-64 flex flex-col items-center justify-center text-rose-400 gap-3">
+          <div className="h-64 flex flex-col items-center justify-center text-rose-400 gap-3 animate-fade-in-up">
             <AlertCircle size={32} />
-            <p>{error}</p>
-            <p className="text-sm text-slate-500">Ensure the AI service is running on port 8000</p>
+            <p className="font-medium">{error}</p>
+            <p className="text-sm text-slate-600">Ensure the AI service is running on port 8000</p>
           </div>
         ) : viewMode === VIEW_MODES.COMPARE ? (
           nodeForecasts.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-slate-400">
-              <p>No per-node forecast data available.</p>
-            </div>
+            <EmptyState
+              illustration="nodes"
+              title="No forecast data available"
+              description="Add energy nodes to the system to generate per-node forecasts."
+            />
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {nodeForecasts.map((entry) => (
                 <div
                   key={entry.nodeId}
-                  className="bg-slate-900/40 border border-slate-700/50 rounded-xl p-4"
+                  className="bg-slate-900/30 border border-slate-700/30 rounded-xl p-4"
                 >
                   <h4 className="text-sm font-semibold text-white mb-3">{entry.nodeName}</h4>
                   <Suspense
                     fallback={
-                      <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
+                      <div className="h-48 flex items-center justify-center text-slate-600 text-sm">
                         Loading chart...
                       </div>
                     }
@@ -249,15 +257,17 @@ const Forecasts = () => {
             </div>
           )
         ) : forecastData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center text-slate-400">
-            <p>No forecast data available.</p>
-          </div>
+          <EmptyState
+            illustration="energy"
+            title="No forecast data available"
+            description="The AI service needs energy readings to generate predictions."
+          />
         ) : (
           <div className="space-y-6">
-            <div className="border-b border-slate-700/50 pb-3">
+            <div className="border-b border-slate-700/30 pb-3">
               <Suspense
                 fallback={
-                  <div className="h-64 flex items-center justify-center text-slate-500 text-sm">
+                  <div className="h-64 flex items-center justify-center text-slate-600 text-sm">
                     Loading chart...
                   </div>
                 }

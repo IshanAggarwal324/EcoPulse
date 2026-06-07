@@ -260,7 +260,7 @@ const CarbonTransactions = () => {
   ];
 
   return (
-    <div className="space-y-6 pb-4 sm:pb-8">
+    <div className="page-section">
       <SectionTitle
         title="Carbon Credit Transactions"
         subtitle="Transfer CC tokens, review marketplace settlements, and track your on-chain credit activity."
@@ -269,7 +269,7 @@ const CarbonTransactions = () => {
             type="button"
             onClick={() => refreshAll(true)}
             disabled={historyLoading}
-            className="touch-target flex items-center gap-2 px-5 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-slate-700/80 hover:bg-slate-600/80 disabled:opacity-50 text-white font-medium rounded-xl transition-colors w-full sm:w-auto border border-slate-600/30"
           >
             <RefreshCw size={18} className={historyLoading ? 'animate-spin' : ''} />
             {historyLoading ? 'Refreshing...' : 'Refresh'}
@@ -278,15 +278,15 @@ const CarbonTransactions = () => {
       />
 
       {!account && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-slate-800/80 border border-slate-700/50 rounded-xl">
-          <p className="text-slate-300 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 content-card rounded-xl">
+          <p className="text-slate-400 text-sm">
             Connect MetaMask to send credits and view your personal transaction ledger.
           </p>
           <button
             type="button"
             onClick={() => (hadPreviousSession ? reconnect() : connect()).catch(() => {})}
             disabled={connecting}
-            className="touch-target shrink-0 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+            className="touch-target shrink-0 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/15"
           >
             {connecting ? 'Connecting...' : 'Connect Wallet'}
           </button>
@@ -294,32 +294,32 @@ const CarbonTransactions = () => {
       )}
 
       {account && !isCorrectNetwork && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-          <p className="text-amber-200 text-sm">Switch to the expected network before sending credits.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <p className="text-amber-300 text-sm">Switch to the expected network before sending credits.</p>
           <button
             type="button"
             onClick={() => ensureNetwork().catch((e) => toast.error(e.message))}
-            className="touch-target shrink-0 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 font-medium px-4 py-2 rounded-lg transition-colors"
+            className="touch-target shrink-0 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 font-medium px-4 py-2 rounded-xl transition-colors"
           >
             Switch Network
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {summaryCards.map((card) => (
           <SummaryCard key={card.label} {...card} />
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl h-fit space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="lg:col-span-1 content-card h-fit space-y-6">
           <div>
             <h3 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
               <Send size={20} className="text-emerald-400" />
               Send Credits
             </h3>
-            <p className="text-sm text-slate-400">Transfer CC directly to another wallet address.</p>
+            <p className="text-sm text-slate-500">Transfer CC directly to another wallet address.</p>
           </div>
 
           <form onSubmit={handleTransfer} className="space-y-4">
@@ -347,24 +347,24 @@ const CarbonTransactions = () => {
             <button
               type="submit"
               disabled={transferLoading || !account || !isCorrectNetwork}
-              className="touch-target w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-medium py-3 rounded-lg transition-colors"
+              className="touch-target w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/15"
             >
               {transferLoading ? 'Sending...' : 'Send Carbon Credits'}
             </button>
           </form>
 
-          <div className="pt-4 border-t border-slate-700/50 space-y-3">
-            <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-700/50 text-sm">
-              <p className="text-slate-400">Marketplace allowance</p>
-              <p className="text-white font-semibold mt-1">{parseAmount(allowance).toFixed(2)} CC</p>
-              <p className="text-xs text-slate-500 mt-1">
+          <div className="pt-4 border-t border-slate-700/30 space-y-3">
+            <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30 text-sm">
+              <p className="text-slate-500 text-xs uppercase tracking-wider">Marketplace allowance</p>
+              <p className="text-white font-semibold mt-1.5">{parseAmount(allowance).toFixed(2)} CC</p>
+              <p className="text-[11px] text-slate-600 mt-1.5">
                 Approved for the energy trading contract to settle purchases.
               </p>
             </div>
 
             <Link
               to="/trading"
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700/50 text-sm font-medium transition-colors"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-slate-600/40 text-slate-300 hover:bg-slate-700/30 text-sm font-medium transition-colors"
             >
               <Coins size={16} />
               Open Energy Marketplace
@@ -373,13 +373,13 @@ const CarbonTransactions = () => {
             <button
               type="button"
               onClick={handleSync}
-              className="w-full py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm transition-colors"
+              className="w-full py-2.5 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 text-sm transition-colors border border-slate-600/20"
             >
               Sync blockchain ledger
             </button>
 
             <div>
-              <p className="text-xs text-slate-500 mb-2">Dev tools (Hardhat local only)</p>
+              <p className="text-[10px] text-slate-600 mb-2 uppercase tracking-wider">Dev tools</p>
               <button
                 type="button"
                 onClick={() =>
@@ -391,7 +391,7 @@ const CarbonTransactions = () => {
                     .catch((e) => toast.error(e.message))
                 }
                 disabled={!account || !isCorrectNetwork}
-                className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 text-sm py-2 rounded-lg"
+                className="w-full bg-slate-700/40 hover:bg-slate-600/40 disabled:opacity-50 text-slate-400 text-sm py-2 rounded-xl border border-slate-600/20 transition-colors"
               >
                 Mint 100 CC to self
               </button>
@@ -399,11 +399,11 @@ const CarbonTransactions = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl min-w-0">
+        <div className="lg:col-span-2 content-card min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
             <div>
               <h3 className="text-lg sm:text-xl font-bold text-white">Credit Activity Ledger</h3>
-              <p className="text-sm text-slate-400 mt-1">
+              <p className="text-sm text-slate-500 mt-1">
                 Indexed marketplace settlements mapped to carbon credit flows.
               </p>
             </div>
@@ -426,24 +426,32 @@ const CarbonTransactions = () => {
           <TransactionSummary summary={displaySummary} wallet={account} />
 
           {historyLoading && filteredHistory.length === 0 ? (
-            <p className="text-slate-400 text-center py-12">Loading transactions...</p>
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+              <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500/15 rounded-full blur-lg animate-pulse" />
+                <Loader2 className="relative h-7 w-7 animate-spin text-emerald-500" />
+              </div>
+              <p className="text-sm">Loading transactions...</p>
+            </div>
           ) : filteredHistory.length === 0 ? (
             <EmptyState
-              icon={<Coins size={40} />}
+              illustration="credits"
               title="No credit activity yet"
               description="Complete an energy trade or sync from chain to populate your ledger."
+              actionTo="/trading"
+              actionLabel="Go to Marketplace"
             />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto -mx-2 px-2">
               <table className="w-full text-sm text-left min-w-[720px]">
                 <thead>
-                  <tr className="text-slate-400 border-b border-slate-700">
-                    <th className="py-3 pr-4 font-medium">Activity</th>
-                    <th className="py-3 pr-4 font-medium">CC impact</th>
-                    <th className="py-3 pr-4 font-medium">Counterparty</th>
-                    <th className="py-3 pr-4 font-medium">Listing</th>
-                    <th className="py-3 pr-4 font-medium">Tx hash</th>
-                    <th className="py-3 font-medium">Time</th>
+                  <tr className="text-slate-500 border-b border-slate-700/40">
+                    <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Activity</th>
+                    <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">CC impact</th>
+                    <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Counterparty</th>
+                    <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Listing</th>
+                    <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Tx hash</th>
+                    <th className="py-3 font-medium text-xs uppercase tracking-wider">Time</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -460,22 +468,22 @@ const CarbonTransactions = () => {
                       <tr
                         key={`${trade.txHash}-${trade.logIndex}`}
                         onClick={() => setSelectedTx(trade)}
-                        className="border-b border-slate-700/50 text-slate-200 hover:bg-slate-900/40 cursor-pointer transition-colors"
+                        className="border-b border-slate-700/20 text-slate-200 hover:bg-slate-800/30 cursor-pointer transition-colors"
                       >
                         <td className="py-3 pr-4">
                           <span
-                            className={`text-xs px-2 py-1 rounded-md ${
+                            className={`text-xs px-2 py-1 rounded-lg font-medium ${
                               info.direction === 'received'
-                                ? 'bg-emerald-500/10 text-emerald-300'
+                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                                 : info.direction === 'sent'
-                                  ? 'bg-rose-500/10 text-rose-300'
-                                  : 'bg-slate-500/10 text-slate-300'
+                                  ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                                  : 'bg-slate-500/10 text-slate-300 border border-slate-500/20'
                             }`}
                           >
                             {info.label}
                           </span>
                         </td>
-                        <td className="py-3 pr-4 font-medium">
+                        <td className="py-3 pr-4 font-medium font-mono">
                           {info.direction === 'received' && info.amount > 0 && (
                             <span className="text-emerald-400">+{info.amount.toFixed(2)} CC</span>
                           )}
@@ -489,7 +497,7 @@ const CarbonTransactions = () => {
                           )}
                         </td>
                         <td className="py-3 pr-4 font-mono text-xs">{formatAddress(counterparty)}</td>
-                        <td className="py-3 pr-4">#{trade.listingId}</td>
+                        <td className="py-3 pr-4 font-mono">#{trade.listingId}</td>
                         <td className="py-3 pr-4">
                           <button
                             type="button"
@@ -497,13 +505,13 @@ const CarbonTransactions = () => {
                               e.stopPropagation();
                               copyTxHash(trade.txHash);
                             }}
-                            className="inline-flex items-center gap-1 font-mono text-xs text-slate-400 hover:text-emerald-400"
+                            className="inline-flex items-center gap-1 font-mono text-xs text-slate-500 hover:text-emerald-400 transition-colors"
                           >
                             {formatAddress(trade.txHash)}
                             <Copy size={12} />
                           </button>
                         </td>
-                        <td className="py-3 text-slate-400">{formatDate(trade.blockTimestamp)}</td>
+                        <td className="py-3 text-slate-500 text-xs">{formatDate(trade.blockTimestamp)}</td>
                       </tr>
                     );
                   })}
@@ -515,50 +523,50 @@ const CarbonTransactions = () => {
       </div>
 
       {selectedTx && (
-        <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">
-          <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="content-card animate-fade-in-up">
+          <div className="flex items-start justify-between gap-4 mb-5">
             <div>
               <h3 className="text-lg font-bold text-white">Transaction details</h3>
-              <p className="text-sm text-slate-400 mt-1 font-mono break-all">{selectedTx.txHash}</p>
+              <p className="text-sm text-slate-500 mt-1 font-mono break-all">{selectedTx.txHash}</p>
             </div>
             <button
               type="button"
               onClick={() => setSelectedTx(null)}
-              className="text-slate-400 hover:text-white text-sm"
+              className="text-slate-500 hover:text-white text-sm transition-colors"
             >
               Close
             </button>
           </div>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-              <dt className="text-slate-400">Event</dt>
-              <dd className="text-white font-medium mt-1 capitalize">{selectedTx.eventType}</dd>
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30">
+              <dt className="text-slate-500 text-xs uppercase tracking-wider">Event</dt>
+              <dd className="text-white font-medium mt-1.5 capitalize">{selectedTx.eventType}</dd>
             </div>
-            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-              <dt className="text-slate-400">Energy amount</dt>
-              <dd className="text-white font-medium mt-1">{selectedTx.energyAmount || '—'}</dd>
+            <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30">
+              <dt className="text-slate-500 text-xs uppercase tracking-wider">Energy</dt>
+              <dd className="text-white font-medium mt-1.5">{selectedTx.energyAmount || '—'}</dd>
             </div>
-            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-              <dt className="text-slate-400">Price (CC)</dt>
-              <dd className="text-emerald-400 font-medium mt-1">{selectedTx.price || '—'}</dd>
+            <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30">
+              <dt className="text-slate-500 text-xs uppercase tracking-wider">Price (CC)</dt>
+              <dd className="text-emerald-400 font-medium mt-1.5 font-mono">{selectedTx.price || '—'}</dd>
             </div>
-            <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-              <dt className="text-slate-400">Block</dt>
-              <dd className="text-white font-medium mt-1">{selectedTx.blockNumber ?? '—'}</dd>
+            <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30">
+              <dt className="text-slate-500 text-xs uppercase tracking-wider">Block</dt>
+              <dd className="text-white font-medium mt-1.5 font-mono">{selectedTx.blockNumber ?? '—'}</dd>
             </div>
           </dl>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => copyTxHash(selectedTx.txHash)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm text-white"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-700/50 hover:bg-slate-600/50 text-sm text-white transition-colors border border-slate-600/20"
             >
               <Copy size={14} />
               Copy hash
             </button>
             <Link
               to="/trading"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-600 text-sm text-slate-300 hover:bg-slate-700/50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-600/30 text-sm text-slate-300 hover:bg-slate-700/30 transition-colors"
             >
               <ExternalLink size={14} />
               View marketplace

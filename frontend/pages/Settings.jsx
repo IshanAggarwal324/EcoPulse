@@ -123,16 +123,15 @@ const Settings = () => {
   if (!user) return null;
 
   return (
-    <div className="space-y-6 sm:space-y-8 pb-4 sm:pb-8 max-w-2xl mx-auto w-full">
+    <div className="page-section max-w-2xl mx-auto w-full">
       <SectionTitle
         title="Settings"
         subtitle="Manage your profile, security, and grid preferences"
       />
 
-      {/* Profile */}
-      <section className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <section className="content-card">
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
-          <User className="text-emerald-400" size={20} /> Profile
+          <div className="p-1.5 bg-emerald-500/10 rounded-lg"><User className="text-emerald-400" size={18} /></div> Profile
         </h3>
         <ErrorBanner message={profileError} />
         <form onSubmit={handleProfileSubmit} className="space-y-5" noValidate>
@@ -161,7 +160,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingProfile}
-            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all duration-200 w-full sm:w-auto shadow-lg shadow-emerald-500/15"
           >
             <Save size={18} />
             {savingProfile ? 'Saving...' : 'Save profile'}
@@ -169,10 +168,9 @@ const Settings = () => {
         </form>
       </section>
 
-      {/* Preferences */}
-      <section className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <section className="content-card">
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
-          <Bell className="text-blue-400" size={20} /> Grid preferences
+          <div className="p-1.5 bg-blue-500/10 rounded-lg"><Bell className="text-blue-400" size={18} /></div> Grid preferences
         </h3>
         <form onSubmit={handleProfileSubmit} className="space-y-4">
           <label className="flex items-center gap-3 cursor-pointer">
@@ -215,7 +213,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingProfile}
-            className="touch-target flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-all duration-200 w-full sm:w-auto shadow-lg shadow-emerald-500/15"
           >
             <Save size={18} />
             {savingProfile ? 'Saving...' : 'Save preferences'}
@@ -223,10 +221,9 @@ const Settings = () => {
         </form>
       </section>
 
-      {/* Password */}
-      <section className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <section className="content-card">
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
-          <Lock className="text-amber-400" size={20} /> Security
+          <div className="p-1.5 bg-amber-500/10 rounded-lg"><Lock className="text-amber-400" size={18} /></div> Security
         </h3>
         <ErrorBanner message={passwordError} />
         <form onSubmit={handlePasswordSubmit} className="space-y-5" noValidate>
@@ -271,7 +268,7 @@ const Settings = () => {
           <button
             type="submit"
             disabled={savingPassword}
-            className="touch-target flex items-center gap-2 px-5 py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors w-full sm:w-auto"
+            className="touch-target flex items-center gap-2 px-5 py-3 bg-slate-700/70 hover:bg-slate-600/70 disabled:opacity-50 text-white font-medium rounded-xl transition-colors w-full sm:w-auto border border-slate-600/30"
           >
             <Lock size={18} />
             {savingPassword ? 'Updating...' : 'Update password'}
@@ -279,8 +276,8 @@ const Settings = () => {
         </form>
       </section>
 
-      <section className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-6">
-        <p className="text-sm text-slate-400 mb-4">Signed in as {user.email}</p>
+      <section className="content-card">
+        <p className="text-sm text-slate-500 mb-4">Signed in as <span className="text-slate-300">{user.email}</span></p>
         <button
           onClick={logout}
           className="text-sm text-rose-400 hover:text-rose-300 font-medium"

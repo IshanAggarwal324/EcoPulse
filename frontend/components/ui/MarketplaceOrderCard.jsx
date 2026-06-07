@@ -23,34 +23,34 @@ const MarketplaceOrderCard = ({
     account && order.seller?.toLowerCase() === account.toLowerCase();
 
   return (
-    <article className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 hover:border-slate-600/80 transition-colors">
+    <article className="glass-card p-4 rounded-xl card-hover-glow">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="text-xs px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-md font-medium">
+          <div className="flex flex-wrap items-center gap-2 mb-2.5">
+            <span className="text-xs px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg font-medium border border-emerald-500/20">
               Order #{order.listingId}
             </span>
-            <span className="text-xs px-2 py-1 bg-slate-700/50 text-slate-300 rounded-md">
+            <span className="text-xs px-2 py-1 bg-slate-700/30 text-slate-500 rounded-lg border border-slate-700/20">
               Active
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-white font-semibold text-lg mb-1">
+          <div className="flex items-center gap-2 text-white font-semibold text-lg mb-1.5">
             <Zap size={18} className="text-yellow-400 shrink-0" />
             {order.energyAmount} energy units
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400">
-            <span className="font-mono">Seller {formatAddress(order.seller)}</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+            <span className="font-mono text-xs">Seller {formatAddress(order.seller)}</span>
             {order.unitPrice > 0 && (
-              <span className="flex items-center gap-1">
-                <Tag size={14} />
+              <span className="flex items-center gap-1 text-xs">
+                <Tag size={12} />
                 {order.unitPrice.toFixed(4)} CC / unit
               </span>
             )}
             {order.createdAt && (
-              <span className="flex items-center gap-1">
-                <Clock size={14} />
+              <span className="flex items-center gap-1 text-xs">
+                <Clock size={12} />
                 {formatDate(order.createdAt)}
               </span>
             )}
@@ -59,8 +59,8 @@ const MarketplaceOrderCard = ({
 
         <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
           <div className="text-right">
-            <p className="text-xs text-slate-500 uppercase tracking-wider">Total price</p>
-            <p className="text-emerald-400 font-bold text-xl">{order.price} CC</p>
+            <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">Total price</p>
+            <p className="text-emerald-400 font-bold text-xl font-mono">{order.price} CC</p>
           </div>
 
           {isOwner ? (
@@ -68,7 +68,7 @@ const MarketplaceOrderCard = ({
               type="button"
               onClick={() => onCancel(order.listingId)}
               disabled={loading || !isCorrectNetwork}
-              className="touch-target bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium transition-colors w-full sm:w-auto"
+              className="touch-target bg-amber-600/80 hover:bg-amber-500/80 disabled:bg-slate-700/50 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 w-full sm:w-auto"
             >
               Cancel order
             </button>
@@ -77,7 +77,7 @@ const MarketplaceOrderCard = ({
               type="button"
               onClick={() => onPurchase(order.listingId, order.price)}
               disabled={loading || !isCorrectNetwork || !account}
-              className="touch-target bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white px-4 py-3 rounded-lg font-medium transition-colors w-full sm:w-auto"
+              className="touch-target bg-blue-600/80 hover:bg-blue-500/80 disabled:bg-slate-700/50 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 w-full sm:w-auto"
             >
               Buy now
             </button>

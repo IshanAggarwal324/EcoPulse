@@ -26,7 +26,7 @@ const AppLayout = memo(function AppLayout({ children }) {
       )}
 
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:w-72 ${
+        className={`fixed inset-y-0 left-0 z-50 w-[min(18rem,85vw)] transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 lg:w-64 xl:w-72 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -57,7 +57,7 @@ const AppLayout = memo(function AppLayout({ children }) {
         </header>
 
         <main
-          className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 custom-scrollbar"
+          className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6 lg:p-8 custom-scrollbar"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
           <div className="max-w-7xl mx-auto w-full">{children}</div>

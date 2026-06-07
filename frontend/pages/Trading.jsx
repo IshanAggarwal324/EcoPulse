@@ -410,15 +410,15 @@ const Trading = () => {
   ];
 
   return (
-    <div className="space-y-6 pb-4 sm:pb-8">
+    <div className="page-section">
       <SectionTitle
         title="Energy Marketplace"
         subtitle="List energy orders and trade peer-to-peer using carbon credits."
       />
 
       {!account && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-slate-800/80 border border-slate-700/50 rounded-xl">
-          <p className="text-slate-300 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 content-card rounded-xl">
+          <p className="text-slate-400 text-sm">
             {hadPreviousSession
               ? 'Reconnect MetaMask to list orders or buy energy.'
               : 'Connect MetaMask to participate in the marketplace.'}
@@ -427,7 +427,7 @@ const Trading = () => {
             type="button"
             onClick={() => (hadPreviousSession ? reconnect() : connect()).catch(() => {})}
             disabled={connecting}
-            className="touch-target shrink-0 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+            className="touch-target shrink-0 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/15"
           >
             {connecting ? 'Connecting...' : 'Connect Wallet'}
           </button>
@@ -435,14 +435,14 @@ const Trading = () => {
       )}
 
       {account && !isCorrectNetwork && (
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-          <p className="text-amber-200 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+          <p className="text-amber-300 text-sm">
             Your wallet is on the wrong network. Switch before listing or buying.
           </p>
           <button
             type="button"
             onClick={() => ensureNetwork().catch((e) => toast.error(e.message))}
-            className="touch-target shrink-0 bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 font-medium px-4 py-2 rounded-lg transition-colors"
+            className="touch-target shrink-0 bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 font-medium px-4 py-2 rounded-xl transition-colors"
           >
             Switch Network
           </button>
@@ -455,10 +455,10 @@ const Trading = () => {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div className="lg:col-span-1 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl h-fit">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="lg:col-span-1 content-card h-fit">
           <h3 className="text-xl font-bold text-white mb-1">Create order</h3>
-          <p className="text-sm text-slate-400 mb-4">
+          <p className="text-sm text-slate-500 mb-5">
             Post energy for sale. Buyers pay in CC when they fill your order.
           </p>
           <form onSubmit={handleListEnergy} className="space-y-4">
@@ -522,7 +522,7 @@ const Trading = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl min-w-0">
+        <div className="lg:col-span-2 content-card min-w-0">
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <h3 className="text-lg sm:text-xl font-bold text-white">Order book</h3>
@@ -581,17 +581,20 @@ const Trading = () => {
           </div>
 
           {listingsLoading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+            <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
+              <div className="relative">
+                <div className="absolute inset-0 bg-emerald-500/15 rounded-full blur-lg animate-pulse" />
+                <Loader2 className="relative h-8 w-8 animate-spin text-emerald-500" />
+              </div>
               <p className="text-sm">Loading marketplace orders...</p>
             </div>
           ) : orders.length === 0 ? (
             <EmptyState
-              icon={<Store size={40} />}
+              illustration="trading"
               title={view === 'mine' ? 'No active listings' : 'No open orders'}
               description={
                 view === 'mine'
-                  ? 'Create an order on the left to list energy for sale.'
+                  ? 'Create an order to list energy for sale.'
                   : 'Be the first to list energy on the marketplace.'
               }
             />
@@ -613,11 +616,11 @@ const Trading = () => {
         </div>
       </div>
 
-      <div className="bg-slate-800/80 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 sm:p-6 shadow-xl">
+      <div className="content-card">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <div>
             <h3 className="text-lg sm:text-xl font-bold text-white">Transaction history</h3>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               {account ? 'Your indexed marketplace activity' : 'All indexed transactions'}
             </p>
           </div>
@@ -625,7 +628,7 @@ const Trading = () => {
             type="button"
             onClick={() => loadHistory(account, true)}
             disabled={historyLoading}
-            className="touch-target text-emerald-400 hover:text-emerald-300 text-sm font-medium py-2 disabled:opacity-50"
+            className="touch-target text-emerald-400 hover:text-emerald-300 text-sm font-medium py-2 disabled:opacity-50 transition-colors"
           >
             {historyLoading ? 'Syncing...' : 'Sync from chain'}
           </button>
@@ -648,54 +651,61 @@ const Trading = () => {
         <TransactionSummary summary={txDisplaySummary} wallet={account} compact />
 
         {historyLoading && filteredHistory.length === 0 ? (
-          <p className="text-slate-400 text-center py-8">Loading transaction history...</p>
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
+            <div className="relative">
+              <div className="absolute inset-0 bg-emerald-500/15 rounded-full blur-lg animate-pulse" />
+              <Loader2 className="relative h-7 w-7 animate-spin text-emerald-500" />
+            </div>
+            <p className="text-sm">Loading transaction history...</p>
+          </div>
         ) : filteredHistory.length === 0 ? (
           <EmptyState
+            illustration="transactions"
             title="No transactions match filters"
             description="Adjust filters or sync from chain to load more activity."
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-2 px-2">
             <table className="w-full text-sm text-left min-w-[640px]">
               <thead>
-                <tr className="text-slate-400 border-b border-slate-700">
-                  <th className="py-3 pr-4 font-medium">Type</th>
-                  <th className="py-3 pr-4 font-medium">Order</th>
-                  <th className="py-3 pr-4 font-medium">Energy</th>
-                  <th className="py-3 pr-4 font-medium">Price (CC)</th>
-                  <th className="py-3 pr-4 font-medium">Parties</th>
-                  <th className="py-3 pr-4 font-medium">Block</th>
-                  <th className="py-3 font-medium">Time</th>
+                <tr className="text-slate-500 border-b border-slate-700/50">
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Type</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Order</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Energy</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Price (CC)</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Parties</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Block</th>
+                  <th className="py-3 font-medium text-xs uppercase tracking-wider">Time</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredHistory.map((trade) => (
                   <tr
                     key={`${trade.txHash}-${trade.logIndex}`}
-                    className="border-b border-slate-700/50 text-slate-200"
+                    className="border-b border-slate-700/30 text-slate-200 hover:bg-slate-800/30 transition-colors"
                   >
                     <td className="py-3 pr-4">
                       <span
-                        className={`text-xs px-2 py-1 rounded-md ${
+                        className={`text-xs px-2 py-1 rounded-lg font-medium ${
                           trade.eventType === 'purchased'
-                            ? 'bg-blue-500/10 text-blue-300'
+                            ? 'bg-blue-500/10 text-blue-300 border border-blue-500/20'
                             : trade.eventType === 'cancelled'
-                              ? 'bg-amber-500/10 text-amber-300'
-                              : 'bg-emerald-500/10 text-emerald-300'
+                              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                              : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                         }`}
                       >
                         {EVENT_LABELS[trade.eventType] || trade.eventType}
                       </span>
                     </td>
-                    <td className="py-3 pr-4">#{trade.listingId}</td>
+                    <td className="py-3 pr-4 font-mono">#{trade.listingId}</td>
                     <td className="py-3 pr-4">{trade.energyAmount || '—'}</td>
-                    <td className="py-3 pr-4">{trade.price !== '0' ? trade.price : '—'}</td>
+                    <td className="py-3 pr-4 font-mono">{trade.price !== '0' ? trade.price : '—'}</td>
                     <td className="py-3 pr-4 font-mono text-xs">
                       <div>S: {formatAddress(trade.seller)}</div>
                       {trade.buyer && <div>B: {formatAddress(trade.buyer)}</div>}
                     </td>
-                    <td className="py-3 pr-4">{trade.blockNumber ?? '—'}</td>
-                    <td className="py-3 text-slate-400">{formatDate(trade.blockTimestamp)}</td>
+                    <td className="py-3 pr-4 font-mono text-xs">{trade.blockNumber ?? '—'}</td>
+                    <td className="py-3 text-slate-400 text-xs">{formatDate(trade.blockTimestamp)}</td>
                   </tr>
                 ))}
               </tbody>
