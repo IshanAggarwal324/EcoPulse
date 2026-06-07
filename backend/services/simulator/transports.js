@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const { io } = require('socket.io-client');
 const { SOCKET_EVENTS } = require('../../socket/events');
 
@@ -6,6 +7,7 @@ const MAX_PENDING_READINGS = 200;
 
 const createRestTransport = (baseUrl) => {
   const url = new URL(baseUrl.endsWith('/readings') ? baseUrl : `${baseUrl}/api/v1/readings`);
+  const client = url.protocol === 'https:' ? https : http;
 
   return {
     name: 'rest',
@@ -20,7 +22,7 @@ const createRestTransport = (baseUrl) => {
         const options = {
           hostname: url.hostname,
           port: url.port || (url.protocol === 'https:' ? 443 : 80),
-          path: url.pathname,
+          path: `${url.pathname}${url.search}`,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -28,7 +30,7 @@ const createRestTransport = (baseUrl) => {
           },
         };
 
-        const req = http.request(options, (res) => {
+        const req = client.request(options, (res) => {
           let data = '';
           res.on('data', (chunk) => { data += chunk; });
           res.on('end', () => {
