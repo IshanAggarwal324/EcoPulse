@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,9 @@ class Settings:
     model_dir: str = "models/saved"
     model_filename: str = "lstm_model.keras"
     scaler_filename: str = "scaler.save"
+    registry_dir: str = "models/registry"
+    registry_model_name: str = "lstm_energy_forecast"
+    registry_version: Optional[str] = None
     look_back_days: int = 30
     history_days: int = 60
 
@@ -33,6 +37,11 @@ def get_settings() -> Settings:
     return Settings(
         debug=os.getenv("DEBUG", "false").lower() in ("1", "true", "yes"),
         model_dir=os.getenv("MODEL_DIR", "models/saved"),
+        model_filename=os.getenv("MODEL_FILENAME", "lstm_model.keras"),
+        scaler_filename=os.getenv("SCALER_FILENAME", "scaler.save"),
+        registry_dir=os.getenv("ECOPULSE_MODEL_REGISTRY_DIR", "models/registry"),
+        registry_model_name=os.getenv("ECOPULSE_MODEL_NAME", "lstm_energy_forecast"),
+        registry_version=os.getenv("ECOPULSE_MODEL_VERSION") or None,
         mongo_uri=os.getenv(
             "MONGODB_URI", os.getenv("MONGO_URI", "mongodb://localhost:27017")
         ),
