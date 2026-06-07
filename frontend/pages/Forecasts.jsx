@@ -55,6 +55,7 @@ const Forecasts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const toast = useToast();
+  const fallbackNotifiedRef = React.useRef(false);
 
   useEffect(() => {
     const loadNodes = async () => {
@@ -73,6 +74,30 @@ const Forecasts = () => {
   }, []);
 
   const fetchForecasts = useCallback(async () => {
+    const fetchWithModelFallback = async (options = {}) => {
+      try {
+        return await forecastApi.get(7, options);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          const detailsText = JSON.stringify(err.details || {});
+          const shouldFallback =
+            err.code === 'MODEL_UNAVAILABLE'
+            || detailsText.includes('MODEL_UNAVAILABLE')
+            || /error communicating with ai service/i.test(err.message || '');
+
+          if (shouldFallback) {
+            const fallbackData = await forecastApi.get(7, { ...options, useDummy: true });
+            if (!fallbackNotifiedRef.current) {
+              toast.info('AI model unavailable — showing forecast from fallback mode');
+              fallbackNotifiedRef.current = true;
+            }
+            return fallbackData;
+          }
+        }
+        throw err;
+      }
+    };
+
     try {
       setLoading(true);
       setError(null);
@@ -84,7 +109,7 @@ const Forecasts = () => {
           setError('No energy nodes found. Add nodes to compare forecasts.');
           return;
         }
-        const data = await forecastApi.get(7, { allNodes: true });
+        const data = await fetchWithModelFallback({ allNodes: true });
         setNodeForecasts(data.forecasts || []);
         setMeta(data.meta || null);
         return;
@@ -95,13 +120,13 @@ const Forecasts = () => {
           setError('Select a node to view its forecast.');
           return;
         }
-        const data = await forecastApi.get(7, { nodeId: selectedNodeId });
+        const data = await fetchWithModelFallback({ nodeId: selectedNodeId });
         setForecastData(data.predictions || []);
         setMeta(data.meta || null);
         return;
       }
 
-      const data = await forecastApi.get(7);
+      const data = await fetchWithModelFallback();
       setForecastData(data.predictions || []);
       setMeta(data.meta || null);
     } catch (err) {
