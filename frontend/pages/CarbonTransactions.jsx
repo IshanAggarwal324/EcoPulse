@@ -6,6 +6,7 @@ import {
   Coins,
   Copy,
   ExternalLink,
+  Loader2,
   RefreshCw,
   Send,
   Wallet,
