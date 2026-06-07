@@ -16,6 +16,7 @@ class Settings:
     registry_dir: str = "models/registry"
     registry_model_name: str = "lstm_energy_forecast"
     registry_version: Optional[str] = None
+    allow_model_free_dummy: bool = True
     look_back_days: int = 30
     history_days: int = 60
 
@@ -42,6 +43,9 @@ def get_settings() -> Settings:
         registry_dir=os.getenv("ECOPULSE_MODEL_REGISTRY_DIR", "models/registry"),
         registry_model_name=os.getenv("ECOPULSE_MODEL_NAME", "lstm_energy_forecast"),
         registry_version=os.getenv("ECOPULSE_MODEL_VERSION") or None,
+        allow_model_free_dummy=os.getenv(
+            "ALLOW_MODEL_FREE_DUMMY", "true"
+        ).lower() in ("1", "true", "yes"),
         mongo_uri=os.getenv(
             "MONGODB_URI", os.getenv("MONGO_URI", "mongodb://localhost:27017")
         ),
