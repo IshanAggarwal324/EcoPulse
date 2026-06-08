@@ -96,6 +96,28 @@ async function buildReportMeta({ period, scope, walletAddress }) {
   };
 }
 
+function filterByScope(metrics, scope) {
+  const result = { ...metrics };
+
+  if (scope === 'grid') {
+    delete result.personalEnergy;
+    delete result.personalProfit;
+    delete result.carbon;
+  } else if (scope === 'personal') {
+    delete result.gridEnergy;
+    delete result.gridTrading;
+    delete result.nodeOverview;
+  }
+
+  return result;
+}
+
+function truncateDailyVolume(rows, maxDays = 30) {
+  if (!Array.isArray(rows)) return rows;
+  if (rows.length <= maxDays) return rows;
+  return rows.slice(rows.length - maxDays);
+}
+
 module.exports = {
   buildGridEnergySection,
   buildGridTradingSection,
@@ -103,4 +125,6 @@ module.exports = {
   buildPersonalProfitSection,
   buildCarbonSection,
   buildReportMeta,
+  filterByScope,
+  truncateDailyVolume,
 };
