@@ -3,6 +3,7 @@ const { getEnergyTotals } = require('./analytics/energyAnalytics');
 const { getTradeStats, getPlatformVolumeByDay, getWalletFlowHistory } = require('./analytics/tradeAnalytics');
 const { getNodeStats } = require('./analytics/nodeAnalytics');
 const { getCarbonStats } = require('./analytics/carbonAnalytics');
+const { parsePeriod } = require('../utils/periodHelpers');
 
 async function buildGridEnergySection(since) {
   const { totalGenerated, totalConsumed, readingCount } = await getEnergyTotals(since);
@@ -118,6 +119,40 @@ function truncateDailyVolume(rows, maxDays = 30) {
   return rows.slice(rows.length - maxDays);
 }
 
+async function buildReportMetrics({ period, walletAddress, scope = 'both' }) {
+  const parsed = parsePeriod(period);
+  if (!parsed) throw new Error(`Invalid period: ${period}`);
+
+  const { sinceDate, label } = parsed;
+
+  const [gridEnergy, gridTrading, nodeOverview, personalProfit, carbon, meta] = await Promise.all([
+    buildGridEnergySection(sinceDate),
+    buildGridTradingSection(sinceDate),
+    buildNodeOverviewSection(),
+    buildPersonalProfitSection(walletAddress, sinceDate),
+    buildCarbonSection(walletAddress),
+    buildReportMeta({ period, scope, walletAddress }),
+  ]);
+
+  if (gridTrading.dailyVolume) {
+    gridTrading.dailyVolume = truncateDailyVolume(gridTrading.dailyVolume);
+  }
+  if (personalProfit?.dailyHistory) {
+    personalProfit.dailyHistory = truncateDailyVolume(personalProfit.dailyHistory);
+  }
+
+  const metrics = filterByScope({
+    gridEnergy,
+    gridTrading,
+    nodeOverview,
+    personalProfit,
+    carbon,
+    periodLabel: label,
+  }, scope);
+
+  return { ...metrics, meta };
+}
+
 module.exports = {
   buildGridEnergySection,
   buildGridTradingSection,
@@ -127,4 +162,5 @@ module.exports = {
   buildReportMeta,
   filterByScope,
   truncateDailyVolume,
+  buildReportMetrics,
 };
