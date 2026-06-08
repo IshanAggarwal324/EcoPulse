@@ -1,6 +1,8 @@
+const EnergyReading = require('../models/EnergyReading');
 const { getEnergyTotals } = require('./analytics/energyAnalytics');
-const { getTradeStats, getPlatformVolumeByDay } = require('./analytics/tradeAnalytics');
+const { getTradeStats, getPlatformVolumeByDay, getWalletFlowHistory } = require('./analytics/tradeAnalytics');
 const { getNodeStats } = require('./analytics/nodeAnalytics');
+const { getCarbonStats } = require('./analytics/carbonAnalytics');
 
 async function buildGridEnergySection(since) {
   const { totalGenerated, totalConsumed, readingCount } = await getEnergyTotals(since);
@@ -39,4 +41,66 @@ async function buildNodeOverviewSection() {
   };
 }
 
-module.exports = { buildGridEnergySection, buildGridTradingSection, buildNodeOverviewSection };
+async function buildPersonalProfitSection(walletAddress, since) {
+  if (!walletAddress) return null;
+
+  const {
+    creditsReceived,
+    creditsSpent,
+    netFlow,
+    saleCount,
+    purchaseCount,
+    history,
+  } = await getWalletFlowHistory(walletAddress, since);
+
+  return {
+    creditsReceived,
+    creditsSpent,
+    netFlow,
+    saleCount,
+    purchaseCount,
+    dailyHistory: history,
+  };
+}
+
+async function buildCarbonSection(walletAddress) {
+  if (!walletAddress) return null;
+
+  const {
+    totalCreditsTraded,
+    completedTrades,
+    walletBalance,
+    estimatedGridCredits,
+    balanceAnalytics,
+  } = await getCarbonStats(walletAddress);
+
+  return {
+    totalCreditsTraded,
+    completedTrades,
+    walletBalance,
+    estimatedGridCredits,
+    walletNetFlow: balanceAnalytics?.wallet?.netFlow ?? null,
+  };
+}
+
+async function buildReportMeta({ period, scope, walletAddress }) {
+  const readingCount = await EnergyReading.countDocuments();
+  const isDemoData = readingCount < 30 && process.env.NODE_ENV !== 'production';
+
+  return {
+    isDemoData,
+    period,
+    scope,
+    generatedAt: new Date().toISOString(),
+    walletConnected: !!walletAddress,
+  };
+}
+
+module.exports = {
+  buildGridEnergySection,
+  buildGridTradingSection,
+  buildNodeOverviewSection,
+  buildPersonalProfitSection,
+  buildCarbonSection,
+  buildReportMeta,
+};
