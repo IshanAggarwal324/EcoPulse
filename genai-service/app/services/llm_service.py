@@ -7,6 +7,7 @@ import google.generativeai as genai
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
+from app.services.fallback_templates import render_chat_reply, render_report_summary
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +114,30 @@ class LlmService:
             raise ValueError(
                 f"Gemini response failed schema validation: {exc}"
             ) from exc
+
+    def complete_with_fallback(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        mode: str = "chat",
+        metrics: dict[str, Any] | None = None,
+        retrieved_data: dict[str, Any] | None = None,
+    ) -> LlmCompletionResult:
+        try:
+            return self.complete(system_prompt, user_prompt)
+        except Exception:
+            logger.warning(
+                "Gemini call failed — using fallback template (mode=%s)", mode
+            )
+
+        if mode == "report" and metrics is not None:
+            fallback_text = render_report_summary(metrics)
+        else:
+            fallback_text = render_chat_reply(user_prompt, retrieved_data)
+
+        return LlmCompletionResult(
+            text=fallback_text,
+            model="fallback-template",
+            tokens_used=0,
+        )
