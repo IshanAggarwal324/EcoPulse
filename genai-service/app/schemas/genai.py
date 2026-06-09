@@ -82,3 +82,61 @@ class ReportNarrateResponse(BaseModel):
     disclaimer: str = Field(
         description="Data source disclaimer, e.g. demo data notice"
     )
+
+
+class DocChunk(BaseModel):
+    doc_id: str = Field(
+        alias="docId",
+        description="Source document identifier, e.g. 'trading-guide.md'",
+    )
+    title: str = Field(
+        description="Section or document title",
+    )
+    excerpt: str = Field(
+        description="Relevant text excerpt from the document",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ConversationTurn(BaseModel):
+    role: str = Field(
+        description="Speaker role: 'user' or 'assistant'",
+        pattern=r"^(user|assistant)$",
+    )
+    content: str = Field(
+        description="Message text for this turn",
+    )
+
+
+class AssistantChatRequest(BaseModel):
+    message: str = Field(
+        min_length=1,
+        description="User's chat message",
+    )
+    retrieved_data: Optional[dict[str, Any]] = Field(
+        default=None,
+        alias="retrieved_data",
+        description="Pre-fetched analytics data relevant to the message",
+    )
+    doc_chunks: Optional[list[DocChunk]] = Field(
+        default=None,
+        alias="doc_chunks",
+        description="Optional document RAG excerpts for FAQ-style questions",
+    )
+    conversation_history: Optional[list[ConversationTurn]] = Field(
+        default=None,
+        alias="conversation_history",
+        description="Prior conversation turns for multi-turn context",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class AssistantChatResponse(BaseModel):
+    reply: str = Field(
+        description="Assistant's reply to the user message"
+    )
+    disclaimer: str = Field(
+        description="Data source disclaimer, e.g. demo data notice"
+    )
