@@ -1,4 +1,5 @@
 const reportService = require('../services/reportService');
+const { postNarrate } = require('../services/genaiClient');
 const asyncHandler = require('../utils/asyncHandler');
 
 const VALID_PERIODS = ['7d', '14d', '30d'];
@@ -66,4 +67,53 @@ const getReportPreview = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { validateReportRequest, buildSourcesFromMetrics, getReportPreview };
+const generateReport = asyncHandler(async (req, res) => {
+  const { period, scope, delivery } = req.body;
+
+  const validation = validateReportRequest({ period, scope, delivery });
+  if (!validation.valid) {
+    return res.status(validation.status).json({ success: false, message: validation.message });
+  }
+
+  const walletAddress = req.user?.walletAddress || null;
+  const reportData = await reportService.buildReportMetrics({ period, walletAddress, scope });
+
+  const { meta, periodLabel, ...metricsSections } = reportData;
+  const sources = buildSourcesFromMetrics(metricsSections);
+
+  let narrateResponse;
+  try {
+    narrateResponse = await postNarrate(reportData, null);
+  } catch (error) {
+    return res.status(503).json({
+      success: false,
+      message: 'GenAI service unavailable',
+      details: error.message,
+    });
+  }
+
+  if (!narrateResponse.ok) {
+    const errorText = await narrateResponse.text();
+    return res.status(narrateResponse.status).json({
+      success: false,
+      message: 'Error communicating with GenAI service',
+      details: errorText,
+    });
+  }
+
+  const narrateResult = await narrateResponse.json();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      summary: narrateResult.summary,
+      highlights: narrateResult.highlights,
+      metrics: metricsSections,
+      meta,
+      sources,
+      disclaimer: narrateResult.disclaimer,
+    },
+  });
+});
+
+module.exports = { validateReportRequest, buildSourcesFromMetrics, getReportPreview, generateReport };
