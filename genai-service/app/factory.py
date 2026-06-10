@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import health, reports
+from app.routers import assistant, health, reports
 from app.services.llm_service import LlmService
 
 
@@ -36,5 +36,6 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(reports.router)
+    app.include_router(assistant.router)
 
     return app

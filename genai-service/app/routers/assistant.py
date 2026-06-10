@@ -1,0 +1,90 @@
+import json
+import logging
+import re
+
+from fastapi import APIRouter, Request
+
+from app.schemas.genai import AssistantChatRequest, AssistantChatResponse
+from app.services.fallback_templates import render_chat_reply
+from app.services.llm_service import LlmService
+from app.services.prompts import build_assistant_chat_prompt, trim_history
+
+router = APIRouter(prefix="/assistant", tags=["Assistant"])
+logger = logging.getLogger(__name__)
+
+_DEFAULT_DISCLAIMER = "Based on simulated demo data."
+
+
+def _parse_chat_response(
+    text: str,
+    fallback_reply: str,
+    is_demo: bool,
+) -> AssistantChatResponse:
+    cleaned = re.sub(
+        r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.MULTILINE
+    ).strip()
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse chat JSON — using fallback reply")
+        return AssistantChatResponse(
+            reply=fallback_reply,
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+        )
+
+    try:
+        return AssistantChatResponse(
+            reply=parsed.get("reply", fallback_reply),
+            disclaimer=parsed.get(
+                "disclaimer",
+                _DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+            ),
+        )
+    except Exception:
+        logger.warning("Chat response validation failed — using fallback reply")
+        return AssistantChatResponse(
+            reply=fallback_reply,
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+        )
+
+
+@router.post("/chat", response_model=AssistantChatResponse)
+async def post_assistant_chat(request: AssistantChatRequest, http_request: Request):
+    llm: LlmService = http_request.app.state.llm_service
+
+    history = trim_history(request.conversation_history or [])
+
+    system_prompt, user_prompt = build_assistant_chat_prompt(
+        message=request.message,
+        retrieved_data=request.retrieved_data,
+        doc_chunks=request.doc_chunks,
+    )
+
+    if history:
+        history_text = "\n".join(
+            f"{turn.role.capitalize()}: {turn.content}" for turn in history
+        )
+        user_prompt = f"Conversation history:\n{history_text}\n\n{user_prompt}"
+
+    fallback_reply = render_chat_reply(request.message, request.retrieved_data)
+    is_demo = bool(
+        request.retrieved_data and request.retrieved_data.get("meta", {}).get("isDemoData", True)
+    )
+
+    if not llm.is_available():
+        logger.info("Gemini unavailable — returning fallback chat reply")
+        return AssistantChatResponse(
+            reply=fallback_reply,
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+        )
+
+    try:
+        result = llm.complete(system_prompt, user_prompt)
+        return _parse_chat_response(result.text, fallback_reply, is_demo)
+    except Exception:
+        logger.exception("Gemini chat call failed — returning fallback reply")
+        return AssistantChatResponse(
+            reply=fallback_reply,
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+        )
