@@ -1,4 +1,4 @@
-const { postChat } = require('../services/genaiClient');
+const { postChat, GenaiServiceError } = require('../services/genaiClient');
 const asyncHandler = require('../utils/asyncHandler');
 
 const postAssistantChat = asyncHandler(async (req, res) => {
@@ -7,27 +7,15 @@ const postAssistantChat = asyncHandler(async (req, res) => {
 
   const retrieved_data = { gridSummary: true, walletConnected: !!walletAddress };
 
-  let chatResponse;
+  let chatResult;
   try {
-    chatResponse = await postChat({ message, retrieved_data });
+    chatResult = await postChat({ message, retrieved_data });
   } catch (error) {
-    return res.status(503).json({
-      success: false,
-      message: 'GenAI service unavailable',
-      details: error.message,
-    });
+    if (error instanceof GenaiServiceError) {
+      return res.status(error.status).json({ success: false, message: error.message, details: error.details });
+    }
+    throw error;
   }
-
-  if (!chatResponse.ok) {
-    const errorText = await chatResponse.text();
-    return res.status(chatResponse.status).json({
-      success: false,
-      message: 'Error communicating with GenAI service',
-      details: errorText,
-    });
-  }
-
-  const chatResult = await chatResponse.json();
 
   res.status(200).json({
     success: true,

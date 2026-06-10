@@ -1,5 +1,5 @@
 const reportService = require('../services/reportService');
-const { postNarrate } = require('../services/genaiClient');
+const { postNarrate, GenaiServiceError } = require('../services/genaiClient');
 const asyncHandler = require('../utils/asyncHandler');
 
 const VALID_PERIODS = ['7d', '14d', '30d'];
@@ -81,27 +81,15 @@ const generateReport = asyncHandler(async (req, res) => {
   const { meta, periodLabel, ...metricsSections } = reportData;
   const sources = buildSourcesFromMetrics(metricsSections);
 
-  let narrateResponse;
+  let narrateResult;
   try {
-    narrateResponse = await postNarrate(reportData, null);
+    narrateResult = await postNarrate(reportData, null);
   } catch (error) {
-    return res.status(503).json({
-      success: false,
-      message: 'GenAI service unavailable',
-      details: error.message,
-    });
+    if (error instanceof GenaiServiceError) {
+      return res.status(error.status).json({ success: false, message: error.message, details: error.details });
+    }
+    throw error;
   }
-
-  if (!narrateResponse.ok) {
-    const errorText = await narrateResponse.text();
-    return res.status(narrateResponse.status).json({
-      success: false,
-      message: 'Error communicating with GenAI service',
-      details: errorText,
-    });
-  }
-
-  const narrateResult = await narrateResponse.json();
 
   res.status(200).json({
     success: true,
