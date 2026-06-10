@@ -35,6 +35,24 @@ function validateReportRequest({ period, scope, delivery }) {
   return { valid: true };
 }
 
+const SECTION_SOURCES = {
+  gridEnergy: { type: 'analytics', label: 'Grid energy totals', endpoint: '/analytics/energy' },
+  gridTrading: { type: 'analytics', label: 'Grid trading stats', endpoint: '/analytics/trades' },
+  nodeOverview: { type: 'analytics', label: 'Node overview', endpoint: '/analytics/nodes' },
+  personalProfit: { type: 'analytics', label: 'Wallet profit', endpoint: '/analytics/wallet' },
+  carbon: { type: 'analytics', label: 'Carbon credits', endpoint: '/analytics/carbon' },
+};
+
+function buildSourcesFromMetrics(metrics) {
+  const sources = [];
+  for (const [key, source] of Object.entries(SECTION_SOURCES)) {
+    if (metrics[key] != null) {
+      sources.push(source);
+    }
+  }
+  return sources;
+}
+
 const getReportPreview = asyncHandler(async (req, res) => {
   const period = req.query.period || '7d';
   const scope = req.query.scope || 'both';
@@ -48,4 +66,4 @@ const getReportPreview = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { validateReportRequest, getReportPreview };
+module.exports = { validateReportRequest, buildSourcesFromMetrics, getReportPreview };
