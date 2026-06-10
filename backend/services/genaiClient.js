@@ -10,4 +10,17 @@ async function postToGenaiService(path, body) {
   return response;
 }
 
-module.exports = { postToGenaiService };
+async function postNarrate(metrics, meta) {
+  const { meta: _meta, periodLabel, ...rest } = metrics;
+  const payload = {
+    metrics: { ...rest, periodLabel },
+    meta: meta ?? _meta,
+  };
+  return postToGenaiService('/reports/narrate', payload);
+}
+
+async function postChat(payload) {
+  return postToGenaiService('/assistant/chat', payload);
+}
+
+module.exports = { postToGenaiService, postNarrate, postChat };
