@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import health
+from app.routers import health, reports
+from app.services.llm_service import LlmService
 
 
 def create_app() -> FastAPI:
@@ -29,6 +30,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.on_event("startup")
+    def _init_services():
+        app.state.llm_service = LlmService(settings)
+
     app.include_router(health.router)
+    app.include_router(reports.router)
 
     return app
