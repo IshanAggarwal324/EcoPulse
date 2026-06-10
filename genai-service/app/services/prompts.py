@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from app.schemas.genai import (
     AssistantChatRequest,
+    ConversationTurn,
     DocChunk,
     ReportMeta,
     ReportMetrics,
@@ -96,3 +97,12 @@ def build_assistant_chat_prompt(
         user_prompt = "\n\n".join(parts) + "\n\n" + user_prompt
 
     return system_prompt, user_prompt
+
+
+def trim_history(
+    history: list[ConversationTurn],
+    max_turns: int = 6,
+) -> list[ConversationTurn]:
+    if not history:
+        return []
+    return history[-max_turns:]
