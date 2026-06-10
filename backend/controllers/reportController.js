@@ -1,6 +1,40 @@
 const reportService = require('../services/reportService');
 const asyncHandler = require('../utils/asyncHandler');
 
+const VALID_PERIODS = ['7d', '14d', '30d'];
+const VALID_SCOPES = ['personal', 'grid', 'both'];
+const VALID_DELIVERIES = ['chat', 'email'];
+
+function validateReportRequest({ period, scope, delivery }) {
+  const errors = [];
+
+  if (!period || !VALID_PERIODS.includes(period)) {
+    errors.push(`Invalid period "${period}". Must be one of: ${VALID_PERIODS.join(', ')}`);
+  }
+
+  if (!scope || !VALID_SCOPES.includes(scope)) {
+    errors.push(`Invalid scope "${scope}". Must be one of: ${VALID_SCOPES.join(', ')}`);
+  }
+
+  if (!delivery || !VALID_DELIVERIES.includes(delivery)) {
+    errors.push(`Invalid delivery "${delivery}". Must be one of: ${VALID_DELIVERIES.join(', ')}`);
+  }
+
+  if (delivery === 'email') {
+    return {
+      valid: false,
+      status: 501,
+      message: 'Email delivery is not yet available. Use "chat" delivery for now.',
+    };
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, status: 400, message: errors.join(' ') };
+  }
+
+  return { valid: true };
+}
+
 const getReportPreview = asyncHandler(async (req, res) => {
   const period = req.query.period || '7d';
   const scope = req.query.scope || 'both';
@@ -14,4 +48,4 @@ const getReportPreview = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { getReportPreview };
+module.exports = { validateReportRequest, getReportPreview };
