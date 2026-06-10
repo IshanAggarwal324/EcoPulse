@@ -1,7 +1,12 @@
 import json
-from typing import Any
+from typing import Any, Optional
 
-from app.schemas.genai import ReportMeta, ReportMetrics
+from app.schemas.genai import (
+    AssistantChatRequest,
+    DocChunk,
+    ReportMeta,
+    ReportMetrics,
+)
 
 
 def build_report_narrate_prompt(
@@ -42,5 +47,52 @@ def build_report_narrate_prompt(
         f"scope: {meta.scope}.\n\n"
         f"Metrics JSON:\n{json.dumps(metrics_dict, indent=2)}"
     )
+
+    return system_prompt, user_prompt
+
+
+def build_assistant_chat_prompt(
+    message: str,
+    retrieved_data: Optional[dict[str, Any]] = None,
+    doc_chunks: Optional[list[DocChunk]] = None,
+) -> tuple[str, str]:
+    system_prompt = (
+        "You are the EcoPulse Energy Assistant — a helpful chatbot that answers questions "
+        "about EcoPulse energy data, trading, carbon credits, forecasts, and the platform.\n\n"
+        "STRICT RULES:\n"
+        "- Answer ONLY from the provided `retrieved_data` and `doc_chunks`.\n"
+        "- Do NOT invent, estimate, or fabricate any numbers or facts.\n"
+        "- If the data needed to answer is not present, say you don't have that information "
+        "rather than guessing.\n"
+        "- When citing numbers, use the exact values from the provided data.\n"
+        "- Use metric units: kWh for energy, CC for carbon credits.\n"
+        "- Keep answers concise and relevant to the user's question.\n\n"
+        "OUTPUT FORMAT — respond with a JSON object:\n"
+        '{"reply": "Your answer to the user\'s question.", '
+        '"disclaimer": "A one-line data source notice."}'
+    )
+
+    parts: list[str] = []
+
+    if retrieved_data:
+        parts.append(f"Retrieved analytics data:\n{json.dumps(retrieved_data, indent=2)}")
+
+    if doc_chunks:
+        chunks_text = "\n\n".join(
+            f"[{chunk.doc_id} — {chunk.title}]\n{chunk.excerpt}"
+            for chunk in doc_chunks
+        )
+        parts.append(f"Document excerpts:\n{chunks_text}")
+
+    if not parts:
+        system_prompt += (
+            "\n\nNOTE: No data or documents were provided for this question. "
+            "Answer from general EcoPulse platform knowledge if you can, "
+            "otherwise state that you need more specific data."
+        )
+
+    user_prompt = f"User question:\n{message}"
+    if parts:
+        user_prompt = "\n\n".join(parts) + "\n\n" + user_prompt
 
     return system_prompt, user_prompt
