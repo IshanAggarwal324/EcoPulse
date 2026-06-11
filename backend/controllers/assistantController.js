@@ -4,7 +4,7 @@ const { retrieveForIntent } = require('../services/retrievalService');
 const asyncHandler = require('../utils/asyncHandler');
 
 const postAssistantChat = asyncHandler(async (req, res) => {
-  const { message, sessionId } = req.body;
+  const { message, sessionId, conversationHistory } = req.body;
   const walletAddress = req.user?.walletAddress || null;
 
   const { intent, period } = classifyIntent(message);
@@ -12,7 +12,11 @@ const postAssistantChat = asyncHandler(async (req, res) => {
 
   let chatResult;
   try {
-    chatResult = await postChat({ message, retrieved_data });
+    chatResult = await postChat({
+      message,
+      retrieved_data,
+      conversation_history: Array.isArray(conversationHistory) ? conversationHistory.slice(-12) : [],
+    });
   } catch (error) {
     if (error instanceof GenaiServiceError) {
       return res.status(error.status).json({ success: false, message: error.message, details: error.details });
