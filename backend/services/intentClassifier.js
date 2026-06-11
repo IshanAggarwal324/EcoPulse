@@ -14,4 +14,54 @@ function detectPeriodFromMessage(message) {
   return null;
 }
 
-module.exports = { detectPeriodFromMessage };
+const GRID_ENERGY_PATTERN = /\b(energ(?:y|ies)|generat(?:e|ed|ion)|consum(?:e|ed|ption)|kwh|kilowatt|grid\s*(?:output|supply|power)|power\s*(?:output|supply)|electricity)\b/i;
+
+const WALLET_PROFIT_PATTERN = /\b(profit|earn(?:ed|ings?)|spent|spend|sales?|bought|purchas(?:e|ed)|revenue|income|net\s*flow|wallet\s*(?:balance|activity|flow)|credits?\s*(?:received|spent|earned))\b/i;
+
+const CARBON_PATTERN = /\b(carbon|cc|credits?\s*balance|emission|offset|greenhouse|co2|sustainability)\b/i;
+
+const TRADES_PATTERN = /\b(trad(?:e|ed|es|ing)|market(?:place)?|volume|list(?:ing|ed)?|buy|sell|order|transaction|deal)\b/i;
+
+const FORECAST_PATTERN = /\b(forecast|predict(?:ion)?|future|outlook|trend|upcoming|next\s*(?:week|month|days?)|expected|projection)\b/i;
+
+const NODES_PATTERN = /\b(node|nodes|solar|wind|turbine|panel|active\s*node|status|capacity|farm)\b/i;
+
+function matchGridEnergyIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return GRID_ENERGY_PATTERN.test(message);
+}
+
+function matchWalletProfitIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return WALLET_PROFIT_PATTERN.test(message);
+}
+
+function matchCarbonIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return CARBON_PATTERN.test(message);
+}
+
+function matchTradesIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return TRADES_PATTERN.test(message);
+}
+
+function matchForecastIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return FORECAST_PATTERN.test(message);
+}
+
+function matchNodesIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return NODES_PATTERN.test(message);
+}
+
+module.exports = {
+  detectPeriodFromMessage,
+  matchGridEnergyIntent,
+  matchWalletProfitIntent,
+  matchCarbonIntent,
+  matchTradesIntent,
+  matchForecastIntent,
+  matchNodesIntent,
+};
