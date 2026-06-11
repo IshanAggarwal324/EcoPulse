@@ -171,6 +171,36 @@ async function retrieveNodes() {
   };
 }
 
+const INTENT_RETRIEVER_MAP = {
+  grid_energy: (ctx) => retrieveGridEnergy(ctx.period),
+  wallet_profit: (ctx) => retrieveWalletProfit(ctx.walletAddress, ctx.period),
+  carbon: (ctx) => retrieveCarbon(ctx.walletAddress),
+  trades: (ctx) => retrieveTrades(ctx.period),
+  forecast: () => retrieveForecast(),
+  nodes: () => retrieveNodes(),
+};
+
+async function retrieveForIntent(intent, { walletAddress = null, period = null } = {}) {
+  const ctx = { walletAddress, period };
+  const retriever = INTENT_RETRIEVER_MAP[intent];
+
+  if (!retriever) {
+    return {
+      retrieved_data: { intent: 'general', explanation: 'No structured data retrieved for this query.' },
+      sources: [],
+    };
+  }
+
+  try {
+    return await retriever(ctx);
+  } catch (error) {
+    return {
+      retrieved_data: { intent, error: error.message, explanation: 'Failed to retrieve data for this query.' },
+      sources: [],
+    };
+  }
+}
+
 module.exports = {
   retrieveGridEnergy,
   retrieveWalletProfit,
@@ -178,4 +208,5 @@ module.exports = {
   retrieveTrades,
   retrieveForecast,
   retrieveNodes,
+  retrieveForIntent,
 };
