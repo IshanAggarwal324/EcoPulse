@@ -1,11 +1,14 @@
 const { postChat, GenaiServiceError } = require('../services/genaiClient');
+const { classifyIntent } = require('../services/intentClassifier');
+const { retrieveForIntent } = require('../services/retrievalService');
 const asyncHandler = require('../utils/asyncHandler');
 
 const postAssistantChat = asyncHandler(async (req, res) => {
   const { message, sessionId } = req.body;
   const walletAddress = req.user?.walletAddress || null;
 
-  const retrieved_data = { gridSummary: true, walletConnected: !!walletAddress };
+  const { intent, period } = classifyIntent(message);
+  const { retrieved_data, sources } = await retrieveForIntent(intent, { walletAddress, period });
 
   let chatResult;
   try {
@@ -21,7 +24,7 @@ const postAssistantChat = asyncHandler(async (req, res) => {
     success: true,
     data: {
       reply: chatResult.reply,
-      sources: [],
+      sources,
       disclaimer: chatResult.disclaimer,
       sessionId: sessionId || null,
     },
