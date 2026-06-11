@@ -168,3 +168,21 @@ export const forecastApi = {
     return fetchApi(`/forecast?${params}`);
   },
 };
+
+export const assistantApi = {
+  chat: (message, sessionId, history) =>
+    fetchApi('/assistant/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        message,
+        ...(sessionId ? { sessionId } : {}),
+        ...(history?.length ? { conversationHistory: history } : {}),
+      }),
+    }),
+
+  generateReport: ({ period, scope, delivery }) =>
+    fetchApi('/assistant/report', {
+      method: 'POST',
+      body: JSON.stringify({ period, scope, delivery }),
+    }),
+};
