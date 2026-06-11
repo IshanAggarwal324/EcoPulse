@@ -1,7 +1,7 @@
 const PERIOD_PATTERNS = [
-  { pattern: /\b(7\s*days?|this\s*week|past\s*week|last\s*week|weekly)\b/i, period: '7d' },
+  { pattern: /\b(7\s*days?|this\s*week|past\s*week|last\s*week|next\s*week|weekly)\b/i, period: '7d' },
   { pattern: /\b(14\s*days?|fortnight|biweekly|past\s*fortnight|last\s*fortnight|2\s*weeks?)\b/i, period: '14d' },
-  { pattern: /\b(30\s*days?|this\s*month|past\s*month|last\s*month|monthly)\b/i, period: '30d' },
+  { pattern: /\b(30\s*days?|this\s*month|past\s*month|last\s*month|next\s*month|monthly)\b/i, period: '30d' },
 ];
 
 function detectPeriodFromMessage(message) {
@@ -56,6 +56,29 @@ function matchNodesIntent(message) {
   return NODES_PATTERN.test(message);
 }
 
+const INTENT_MATCHERS = [
+  { intent: 'wallet_profit', matcher: matchWalletProfitIntent },
+  { intent: 'carbon', matcher: matchCarbonIntent },
+  { intent: 'forecast', matcher: matchForecastIntent },
+  { intent: 'trades', matcher: matchTradesIntent },
+  { intent: 'nodes', matcher: matchNodesIntent },
+  { intent: 'grid_energy', matcher: matchGridEnergyIntent },
+];
+
+function classifyIntent(message) {
+  if (!message || typeof message !== 'string') {
+    return { intent: 'general', period: null };
+  }
+
+  for (const { intent, matcher } of INTENT_MATCHERS) {
+    if (matcher(message)) {
+      return { intent, period: detectPeriodFromMessage(message) };
+    }
+  }
+
+  return { intent: 'general', period: detectPeriodFromMessage(message) };
+}
+
 module.exports = {
   detectPeriodFromMessage,
   matchGridEnergyIntent,
@@ -64,4 +87,5 @@ module.exports = {
   matchTradesIntent,
   matchForecastIntent,
   matchNodesIntent,
+  classifyIntent,
 };
