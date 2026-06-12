@@ -3,6 +3,7 @@ import logging
 import re
 
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, Field
 
 from app.schemas.genai import AssistantChatRequest, AssistantChatResponse
 from app.services.fallback_templates import render_chat_reply
@@ -13,6 +14,11 @@ router = APIRouter(prefix="/assistant", tags=["Assistant"])
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DISCLAIMER = "Based on simulated demo data."
+
+
+class DocChunksRequest(BaseModel):
+    query: str = Field(min_length=1, description="Search query for document retrieval")
+    top_k: int = Field(default=3, ge=1, le=10, description="Number of chunks to return")
 
 
 def _parse_chat_response(
@@ -88,3 +94,12 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
             reply=fallback_reply,
             disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
         )
+
+
+@router.post("/doc-chunks")
+async def get_doc_chunks(request: DocChunksRequest, http_request: Request):
+    rag = getattr(http_request.app.state, "doc_rag_service", None)
+    if not rag or not rag.is_available:
+        return {"chunks": []}
+    chunks = rag.retrieveDocChunks(request.query, top_k=request.top_k)
+    return {"chunks": chunks}

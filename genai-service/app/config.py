@@ -17,9 +17,17 @@ class Settings:
     genai_enabled: bool = True
     genai_max_tokens: int = 800
 
+    embedding_model: str = "text-embedding-004"
+    docs_dir: str = ""
+    embedding_cache_path: str = ""
+
     @property
     def genai_available(self) -> bool:
         return self.genai_enabled and bool(self.gemini_api_key)
+
+    @property
+    def embedding_available(self) -> bool:
+        return bool(self.gemini_api_key)
 
 
 @lru_cache
@@ -33,4 +41,7 @@ def get_settings() -> Settings:
         genai_enabled=os.getenv("GENAI_ENABLED", "true").lower()
         in ("1", "true", "yes"),
         genai_max_tokens=int(os.getenv("GENAI_MAX_TOKENS", "800")),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-004"),
+        docs_dir=os.getenv("DOCS_DIR", ""),
+        embedding_cache_path=os.getenv("EMBEDDING_CACHE_PATH", ""),
     )

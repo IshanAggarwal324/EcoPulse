@@ -26,6 +26,10 @@ const FORECAST_PATTERN = /\b(forecast|predict(?:ion)?|future|outlook|trend|upcom
 
 const NODES_PATTERN = /\b(node|nodes|solar|wind|turbine|panel|active\s*node|status|capacity|farm)\b/i;
 
+const FAQ_PATTERN = /\b(how\s+(?:do(?:es)?|can|to|should|is|are|will)|what\s+(?:is|are|do|does|can|should|will)|explain|tell\s+me\s+about|describe|guide|help\s+me\s+(?:understand|with)|overview|walkthrough|tutorial|definition)\b/i;
+
+const FAQ_KEYWORD_PATTERN = /\b(ecopulse|platform|assistant|dashboard|wallet|metamask|blockchain|smart\s*contract|erc[\s-]?20|hardhat|simulator|demo|register|sign\s*up|login|password|settings|page|pages)\b/i;
+
 function matchGridEnergyIntent(message) {
   if (!message || typeof message !== 'string') return false;
   return GRID_ENERGY_PATTERN.test(message);
@@ -56,6 +60,11 @@ function matchNodesIntent(message) {
   return NODES_PATTERN.test(message);
 }
 
+function matchFaqIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return FAQ_PATTERN.test(message) || FAQ_KEYWORD_PATTERN.test(message);
+}
+
 const INTENT_MATCHERS = [
   { intent: 'wallet_profit', matcher: matchWalletProfitIntent },
   { intent: 'carbon', matcher: matchCarbonIntent },
@@ -76,6 +85,10 @@ function classifyIntent(message) {
     }
   }
 
+  if (matchFaqIntent(message)) {
+    return { intent: 'faq', period: null };
+  }
+
   return { intent: 'general', period: detectPeriodFromMessage(message) };
 }
 
@@ -87,5 +100,6 @@ module.exports = {
   matchTradesIntent,
   matchForecastIntent,
   matchNodesIntent,
+  matchFaqIntent,
   classifyIntent,
 };

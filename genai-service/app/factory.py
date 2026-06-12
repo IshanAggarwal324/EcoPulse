@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.routers import assistant, health, reports
+from app.services.doc_rag_service import DocRagService
 from app.services.llm_service import LlmService
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,10 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _init_services():
         app.state.llm_service = LlmService(settings)
+
+        rag = DocRagService(settings)
+        rag.initialize()
+        app.state.doc_rag_service = rag
 
     app.include_router(health.router)
     app.include_router(reports.router)

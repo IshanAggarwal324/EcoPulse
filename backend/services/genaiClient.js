@@ -52,4 +52,15 @@ async function postChat(payload) {
   return sendGenaiRequest(() => postToGenaiService('/assistant/chat', payload));
 }
 
-module.exports = { GenaiServiceError, sendGenaiRequest, postToGenaiService, postNarrate, postChat };
+async function fetchDocChunks(query, topK = 3) {
+  try {
+    const response = await postToGenaiService('/assistant/doc-chunks', { query, top_k: topK });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.chunks || [];
+  } catch {
+    return [];
+  }
+}
+
+module.exports = { GenaiServiceError, sendGenaiRequest, postToGenaiService, postNarrate, postChat, fetchDocChunks };
