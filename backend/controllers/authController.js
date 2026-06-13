@@ -17,7 +17,9 @@ const toUserResponse = (user) => ({
   email: user.email,
   walletAddress: user.walletAddress,
   role: user.role,
+  isBanned: user.isBanned,
   preferences: user.preferences,
+  lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -38,6 +40,12 @@ const register = asyncHandler(async (req, res) => {
 
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
+    if (existingUser.deletedAt) {
+      return res.status(403).json({ success: false, message: 'This account has been deactivated', code: 'ACCOUNT_DEACTIVATED' });
+    }
+    if (existingUser.isBanned) {
+      return res.status(403).json({ success: false, message: 'This account has been banned', code: 'ACCOUNT_BANNED' });
+    }
     return res.status(409).json({ success: false, message: 'A user with this email already exists' });
   }
 
@@ -68,10 +76,32 @@ const login = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Validation failed', errors });
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  const user = await User.findOne({ email: email.toLowerCase() }).select('+password +loginAttempts +lockUntil');
+  if (!user) {
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
+
+  if (user.deletedAt) {
+    return res.status(401).json({ success: false, message: 'This account has been deactivated', code: 'ACCOUNT_DEACTIVATED' });
+  }
+
+  if (user.isBanned) {
+    return res.status(403).json({ success: false, message: 'This account has been banned', code: 'ACCOUNT_BANNED' });
+  }
+
+  if (user.isLocked) {
+    return res.status(423).json({ success: false, message: 'Account temporarily locked due to too many failed login attempts. Try again later.', code: 'ACCOUNT_LOCKED' });
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    await user.incLoginAttempts();
+    return res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+
+  await user.resetLoginAttempts();
+  await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
+  user.lastLoginAt = new Date();
 
   const tokens = generateTokenPair(user._id);
 
@@ -95,6 +125,14 @@ const refresh = asyncHandler(async (req, res) => {
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+    }
+
+    if (user.deletedAt) {
+      return res.status(401).json({ success: false, message: 'This account has been deactivated', code: 'ACCOUNT_DEACTIVATED' });
+    }
+
+    if (user.isBanned) {
+      return res.status(403).json({ success: false, message: 'This account has been banned', code: 'ACCOUNT_BANNED' });
     }
 
     const tokens = generateTokenPair(user._id);

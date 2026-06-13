@@ -26,6 +26,22 @@ const protect = async (req, res, next) => {
         });
       }
 
+      if (req.user.deletedAt) {
+        return res.status(401).json({
+          success: false,
+          message: 'This account has been deactivated',
+          code: 'ACCOUNT_DEACTIVATED',
+        });
+      }
+
+      if (req.user.isBanned) {
+        return res.status(403).json({
+          success: false,
+          message: 'This account has been banned',
+          code: 'ACCOUNT_BANNED',
+        });
+      }
+
       return next();
     } catch (error) {
       if (error.name === 'TokenExpiredError') {

@@ -4,9 +4,10 @@ const {
   createReading,
   getReadings,
 } = require('../controllers/readingController');
+const { protect, authorize } = require('../middleware/auth');
 
 router.route('/')
-  .post(createReading)
+  .post(protect, authorize('admin'), createReading)
   .get(getReadings);
 
 module.exports = router;
