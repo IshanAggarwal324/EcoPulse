@@ -138,9 +138,18 @@ const generateReport = asyncHandler(async (req, res) => {
         error: sendError.message,
       });
 
-      return res.status(502).json({
-        success: false,
-        message: 'Failed to send report email. Please try again later.',
+      return res.status(200).json({
+        success: true,
+        data: {
+          fallback: 'chat',
+          summary: narrateResult.summary,
+          highlights: narrateResult.highlights,
+          metrics: metricsSections,
+          meta,
+          sources,
+          disclaimer: narrateResult.disclaimer,
+          message: 'Email delivery failed. Showing summary in chat instead.',
+        },
       });
     }
 
@@ -161,6 +170,7 @@ const generateReport = asyncHandler(async (req, res) => {
       highlights: narrateResult.highlights,
       metrics: metricsSections,
       meta,
+      walletWarning: meta?.walletWarning || null,
       sources,
       disclaimer: narrateResult.disclaimer,
     },

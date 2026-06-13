@@ -19,12 +19,22 @@ async function postToGenaiService(path, body) {
   return response;
 }
 
-async function sendGenaiRequest(fn) {
+const RETRY_DELAY_MS = 1500;
+const MAX_RETRIES = 1;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function sendGenaiRequest(fn, retries = MAX_RETRIES) {
   let response;
   try {
     response = await fn();
   } catch (error) {
     throw new GenaiServiceError('GenAI service unavailable', 503, error.message);
+  }
+
+  if (response.status === 429 && retries > 0) {
+    await sleep(RETRY_DELAY_MS);
+    return sendGenaiRequest(fn, retries - 1);
   }
 
   if (!response.ok) {

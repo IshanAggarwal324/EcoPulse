@@ -1,8 +1,8 @@
 import React from 'react';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, AlertTriangle } from 'lucide-react';
 import SourceChips from './SourceChips';
 
-const ChatMessage = ({ role, content, disclaimer, sources, highlights }) => {
+const ChatMessage = ({ role, content, disclaimer, sources, highlights, walletWarning }) => {
   const isUser = role === 'user';
 
   return (
@@ -40,6 +40,13 @@ const ChatMessage = ({ role, content, disclaimer, sources, highlights }) => {
         </div>
 
         {!isUser && <SourceChips sources={sources} />}
+
+        {walletWarning && !isUser && (
+          <div className="flex items-start gap-1.5 mt-1.5 px-1">
+            <AlertTriangle size={12} className="text-amber-400 mt-0.5 flex-shrink-0" />
+            <p className="text-[11px] text-amber-400/80">{walletWarning}</p>
+          </div>
+        )}
 
         {disclaimer && !isUser && (
           <p className="text-[10px] text-slate-500 mt-1 px-1">{disclaimer}</p>

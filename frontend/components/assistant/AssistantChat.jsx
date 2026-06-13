@@ -2,13 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, FileText, Loader2, Trash2 } from 'lucide-react';
 import ChatMessage from './ChatMessage';
 import ReportWizardModal from './ReportWizardModal';
+import SuggestedPrompts from './SuggestedPrompts';
 import useAssistantChat from '../../hooks/useAssistantChat';
-
-const SUGGESTED_PROMPTS = [
-  'What is the total grid energy generated?',
-  'How much energy was consumed this week?',
-  'Show me the grid trading volume',
-];
 
 const AssistantChat = () => {
   const [open, setOpen] = useState(false);
@@ -110,20 +105,9 @@ const AssistantChat = () => {
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
                   <MessageCircle size={22} className="text-emerald-400" />
                 </div>
-                <p className="text-sm font-medium text-slate-300 mb-1">Ask me anything about your energy data</p>
-                <p className="text-xs text-slate-500 mb-4">Grid stats, trading volume, carbon credits, and more</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {SUGGESTED_PROMPTS.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      onClick={() => handleSuggestedPrompt(prompt)}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors"
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
+                <p className="text-sm font-medium text-slate-300 mb-1">Ask me about grid energy, trading, or forecasts</p>
+                <p className="text-xs text-slate-500 mb-4">I can look up live stats, generate reports, and explain how things work</p>
+                <SuggestedPrompts onSelect={handleSuggestedPrompt} />
               </div>
             )}
 
@@ -135,6 +119,7 @@ const AssistantChat = () => {
                 disclaimer={msg.disclaimer}
                 sources={msg.sources}
                 highlights={msg.highlights}
+                walletWarning={msg.walletWarning}
               />
             ))}
 

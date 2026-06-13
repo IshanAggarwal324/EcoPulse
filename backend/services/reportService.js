@@ -88,12 +88,18 @@ async function buildReportMeta({ period, scope, walletAddress }) {
   const readingCount = await EnergyReading.countDocuments();
   const isDemoData = readingCount < 30 && process.env.NODE_ENV !== 'production';
 
+  const walletConnected = !!walletAddress;
+  const walletWarning = !walletConnected
+    ? 'No wallet connected. Personal profit and carbon sections are omitted. Connect a wallet to see personal data.'
+    : null;
+
   return {
     isDemoData,
     period,
     scope,
     generatedAt: new Date().toISOString(),
-    walletConnected: !!walletAddress,
+    walletConnected,
+    walletWarning,
   };
 }
 

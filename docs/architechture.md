@@ -24,26 +24,29 @@ The system is designed to simulate decentralized renewable energy trading betwee
  ┌────────────────────┐
  │ Node.js Backend    │
  │ Express + SocketIO │
- └───────┬─────┬──────┘
-         │     │
-         │     │
-         ▼     ▼
- ┌──────────┐  ┌────────────────┐
- │ MongoDB  │  │ FastAPI AI     │
- │ Database │  │ Forecasting    │
- └──────────┘  └────────────────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │ LSTM Model   │
-              └──────────────┘
+ └───┬─────┬────┬─────┘
+     │     │    │
+     │     │    │
+     ▼     ▼    ▼
+┌────────┐ ┌──────────────┐  ┌────────────────┐
+│MongoDB │ │ FastAPI      │  │ FastAPI        │
+│Database│ │ AI Service   │  │ GenAI Service  │
+└────────┘ │ (LSTM)       │  │ (Gemini)       │
+           │ Port 8000    │  │ Port 8001      │
+           └──────┬───────┘  └───┬────────────┘
+                  │               │
+                  ▼               ▼
+           ┌──────────┐   ┌──────────────┐
+           │ LSTM     │   │ Gemini LLM   │
+           │ Model    │   │ + Doc RAG    │
+           └──────────┘   └──────────────┘
 
-         Backend ↔ Blockchain
+     Backend ↔ Blockchain
 
-              ┌──────────────┐
-              │ Solidity     │
-              │ Contracts    │
-              └──────────────┘
+          ┌──────────────┐
+          │ Solidity     │
+          │ Contracts    │
+          └──────────────┘
 ```
 
 ---
@@ -98,6 +101,45 @@ The system is designed to simulate decentralized renewable energy trading betwee
 - TensorFlow
 - Pandas
 - NumPy
+
+---
+
+# Gen AI Service Architecture
+
+## Responsibilities
+- Natural language chat assistant (Energy Assistant)
+- Report narration from structured metrics
+- Document RAG over platform docs (FAQ)
+- Hybrid retrieval: structured analytics + doc chunks
+
+## Technologies
+- Python
+- FastAPI
+- Google Gemini (`google-generativeai`)
+- NumPy (cosine similarity for doc RAG)
+
+## Service separation
+
+| Service | Port | Responsibility |
+|---------|------|----------------|
+| `ai_service` | 8000 | LSTM energy forecasting only |
+| `genai-service` | 8001 | Gemini chat, report narration, doc RAG |
+
+## Key flows
+
+### Chat Q&A
+1. User sends message via frontend chat widget
+2. Backend classifies intent (grid, wallet, carbon, forecast, FAQ)
+3. Backend fetches relevant analytics from MongoDB
+4. Payload sent to genai-service `/assistant/chat`
+5. Gemini responds with grounded answer + sources
+
+### Report generation
+1. User picks period/scope/delivery in Report Wizard
+2. Backend assembles metrics via `reportService`
+3. Metrics sent to genai-service `/reports/narrate`
+4. Gemini produces narrative summary + highlights
+5. If email delivery: PDF generated and emailed; else shown in chat
 
 ---
 
@@ -156,6 +198,12 @@ The system is designed to simulate decentralized renewable energy trading betwee
 - Forecasting
 - Preprocessing
 - Prediction API
+
+## Gen AI Service
+- Energy Assistant chat
+- Report narration
+- Document RAG (FAQ)
+- Hybrid retrieval
 
 ## Blockchain
 - EnergyTrade.sol

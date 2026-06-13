@@ -44,12 +44,14 @@ export default function useAssistantChat() {
           disclaimer: data.disclaimer || null,
         });
       } catch (err) {
-        const msg =
-          err.status === 429
-            ? 'Too many messages. Please wait a moment.'
-            : err.status === 503
-              ? 'Assistant is temporarily unavailable. Please try again.'
-              : err.message || 'Failed to send message.';
+        let msg;
+        if (err.status === 429) {
+          msg = 'Too many messages. Please wait a moment and try again.';
+        } else if (err.status === 503 || err.code === 'NETWORK_ERROR') {
+          msg = 'The assistant service is currently unavailable. Your message was not sent. Please try again in a few seconds.';
+        } else {
+          msg = err.message || 'Something went wrong. Please try again.';
+        }
 
         showError(msg);
         addMessage({
@@ -87,6 +89,16 @@ export default function useAssistantChat() {
             sources: [],
             disclaimer: null,
           });
+        } else if (data.fallback === 'chat') {
+          showError(data.message || 'Email delivery failed. Showing summary in chat.');
+          addMessage({
+            role: 'assistant',
+            content: data.summary || 'Report generated (email delivery failed).',
+            highlights: data.highlights || [],
+            sources: data.sources || [],
+            disclaimer: data.disclaimer || null,
+            walletWarning: data.walletWarning || null,
+          });
         } else {
           addMessage({
             role: 'assistant',
@@ -94,15 +106,18 @@ export default function useAssistantChat() {
             highlights: data.highlights || [],
             sources: data.sources || [],
             disclaimer: data.disclaimer || null,
+            walletWarning: data.walletWarning || null,
           });
         }
       } catch (err) {
-        const msg =
-          err.status === 429
-            ? 'Too many report requests. Please wait.'
-            : err.status === 503
-              ? 'Report service is temporarily unavailable.'
-              : err.message || 'Failed to generate report.';
+        let msg;
+        if (err.status === 429) {
+          msg = 'Too many report requests. Please wait before generating another.';
+        } else if (err.status === 503 || err.code === 'NETWORK_ERROR') {
+          msg = 'The report service is currently unavailable. Please try again shortly.';
+        } else {
+          msg = err.message || 'Failed to generate report.';
+        }
 
         showError(msg);
         addMessage({

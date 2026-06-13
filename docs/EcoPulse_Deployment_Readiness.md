@@ -36,13 +36,14 @@ EcoPulse is a full-stack decentralized energy platform combining a **React (Vite
 ┌────────────────────┐
 │ Node.js Backend    │  ← Railway / Render / Fly.io / AWS
 │ Express + Socket.io│
-└─────┬──────┬───────┘
-      │      │
-      ▼      ▼
-┌──────────┐  ┌────────────────┐
-│ MongoDB  │  │ FastAPI AI     │  ← Docker / Cloud Run / Railway
-│ Atlas    │  │ LSTM Forecast  │
-└──────────┘  └────────────────┘
+└──┬───────┬─────┬───┘
+   │       │     │
+   ▼       ▼     ▼
+┌──────┐ ┌──────────────┐  ┌────────────────┐
+│Mongo │ │ FastAPI AI   │  │ FastAPI GenAI  │
+│Atlas │ │ LSTM Forecast│  │ Gemini Assist  │
+└──────┘ │ Port 8000    │  │ Port 8001      │
+         └──────────────┘  └────────────────┘
 
 Frontend ──MetaMask──► Blockchain (testnet/mainnet via Alchemy/Infura)
 Backend  ──ethers.js──► Same contracts (sync, mint)
@@ -56,6 +57,7 @@ Backend  ──ethers.js──► Same contracts (sync, mint)
 | `frontend/` | Shared pages, components, utils |
 | `backend/` | Express API, Socket.io, Mongoose |
 | `ai_service/` | FastAPI LSTM forecasting |
+| `genai-service/` | FastAPI Gemini assistant, report narration, doc RAG |
 | `contracts/` | CarbonCredit.sol, EnergyTrading.sol |
 | `docs/` | Architecture and this document |
 
@@ -264,13 +266,15 @@ Use this checklist before pointing any public domain at the application.
 | **Frontend** | Vercel | `ecopulse/`, `npm run build` | Static SPA only |
 | **Backend** | Railway, Render, Fly.io | `backend/`, `npm start` | Requires WebSocket support |
 | **AI service** | Cloud Run, Railway (Docker) | `ai_service/Dockerfile` | TensorFlow; long cold starts |
-| **Database** | MongoDB Atlas | — | Shared by backend + AI |
+| **Gen AI service** | Cloud Run, Railway (Docker) | `genai-service/` | Gemini SDK; lightweight |
+| **Database** | MongoDB Atlas | — | Shared by backend + AI + GenAI |
 | **Blockchain** | Sepolia / Polygon + Alchemy | — | Redeploy contracts; update env vars |
 
 **Do not deploy to Vercel:**
 
 - `backend/server.js` (Express + Socket.io + background sync)
 - `ai_service/` (Python + TensorFlow)
+- `genai-service/` (Python + Gemini SDK)
 - Hardhat local node
 - MongoDB (use Atlas)
 
@@ -315,6 +319,32 @@ See `.env.example` files in:
 |----------|----------|-------------|
 | `MONGODB_URI` or `MONGO_URI` | **Yes** | Same Atlas cluster as backend |
 | `PORT` | No | Uvicorn port (default `8000`) |
+
+### Gen AI Service (`genai-service/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GEMINI_API_KEY` | **Yes** | Google Gemini API key |
+| `GENAI_MODEL` | No | Model name (default `gemini-2.0-flash`) |
+| `GENAI_ENABLED` | No | `true`/`false` (default `true`) |
+| `GENAI_MAX_TOKENS` | No | Max response tokens (default `800`) |
+| `GENAI_PORT` | No | Service port (default `8001`) |
+| `EMBEDDING_MODEL` | No | Embedding model for doc RAG (default `text-embedding-004`) |
+| `DOCS_DIR` | No | Path to docs for RAG indexing |
+| `DEBUG` | No | `true`/`false` (default `false`) |
+
+### Backend — Gen AI & Email (`backend/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GENAI_SERVICE_URL` | **Yes** | e.g. `https://genai.yourdomain.com` |
+| `RESEND_API_KEY` | If using Resend | Resend API key for email delivery |
+| `SMTP_HOST` | If using SMTP | SMTP server hostname |
+| `SMTP_PORT` | If using SMTP | SMTP port (default `587`) |
+| `SMTP_SECURE` | No | `true` for port 465 |
+| `SMTP_USER` | If using SMTP | SMTP username |
+| `SMTP_PASS` | If using SMTP | SMTP password |
+| `REPORT_FROM_EMAIL` | No | Sender address (default `reports@ecopulse.local`) |
 
 ---
 
@@ -388,7 +418,52 @@ Fix any missing dependencies (e.g. `recharts`) before first deploy.
 
 ---
 
-## 9. Testing and Sign-Off Criteria
+## 9. Testing the Energy Assistant (Local Dev)
+
+### Prerequisites
+
+1. Backend running on port 5000 (`cd backend && npm start`)
+2. genai-service running on port 8001 (`cd genai-service && source venv/bin/activate && uvicorn main:app --port 8001 --reload`)
+3. MongoDB running (local or Atlas)
+4. A `GEMINI_API_KEY` in `genai-service/.env` (assistant works in fallback mode without it)
+
+### Quick start
+
+```bash
+# Terminal 1 — Backend
+cd backend
+cp .env.example .env   # fill in MONGO_URI, JWT_SECRET, GENAI_SERVICE_URL
+npm start
+
+# Terminal 2 — Gen AI service
+cd genai-service
+cp .env.example .env   # fill in GEMINI_API_KEY (optional for fallback mode)
+source venv/bin/activate
+uvicorn main:app --port 8001 --reload
+
+# Terminal 3 — Frontend
+cd ecopulse
+npm run dev
+```
+
+### Test checklist
+
+| Test | Steps | Expected |
+|------|-------|----------|
+| Chat opens | Log in → click floating button bottom-right | Chat panel opens with empty state + suggested prompts |
+| Grid energy question | Type "What is the total grid energy generated?" | Reply with numbers + analytics source chip |
+| FAQ question | Type "How does trading work?" | Reply with doc source chip (requires doc RAG) |
+| Report in chat | Click report icon → 7d → Both → Summary in Chat | Report summary with highlights appears in chat |
+| Report email | Click report icon → 7d → Both → Email PDF | Confirmation toast; PDF received at registered email |
+| No wallet report | Generate report without wallet connected | Wallet warning shown; no personal profit section |
+| Service down | Stop genai-service → send a chat message | Friendly "unavailable" error message shown |
+| Rate limit | Send 20+ messages rapidly | 429 message shown; user told to wait |
+
+### Fallback mode (no GEMINI_API_KEY)
+
+When `GEMINI_API_KEY` is not set, the genai-service returns template-based responses using `fallback_templates.py`. The assistant still functions with basic metric summaries but without natural language narration.
+
+---
 
 Before go-live, confirm:
 
