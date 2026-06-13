@@ -9,6 +9,7 @@ const adminTradeController = require('../controllers/admin/adminTradeController'
 const adminSyncController = require('../controllers/admin/adminSyncController');
 const adminReportJobController = require('../controllers/admin/adminReportJobController');
 const adminAuditController = require('../controllers/admin/adminAuditController');
+const adminHealthController = require('../controllers/admin/adminHealthController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -38,5 +39,7 @@ router.get('/report-jobs/:id', adminReportJobController.getReportJob);
 router.post('/report-jobs/:id/retry', adminOnly, adminReportJobController.retryReportJob);
 
 router.get('/audit-logs', adminAuditController.listAuditLogs);
+
+router.get('/health', adminHealthController.getHealth);
 
 module.exports = router;

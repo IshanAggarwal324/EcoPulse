@@ -18,7 +18,7 @@ router.get('/nodes', getNodeAnalytics);
 router.get('/trades', getTradeAnalytics);
 router.get('/carbon', getCarbonAnalytics);
 router.get('/carbon/balance', getCarbonBalanceAnalytics);
-router.get('/status', getPlatformStatus);
+router.get('/status', protect, authorize('admin', 'moderator'), getPlatformStatus);
 router.post('/sync', protect, authorize('admin'), syncBlockchain);
 
 module.exports = router;

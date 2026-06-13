@@ -186,3 +186,51 @@ export const assistantApi = {
       body: JSON.stringify({ period, scope, delivery }),
     }),
 };
+
+const buildQuery = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, value);
+    }
+  });
+  const str = query.toString();
+  return str ? `?${str}` : '';
+};
+
+export const adminApi = {
+  // Users
+  listUsers: (params = {}) => fetchApi(`/admin/users${buildQuery(params)}`),
+  getUser: (id) => fetchApi(`/admin/users/${id}`),
+  setUserRole: (id, role) =>
+    fetchApi(`/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  banUser: (id, reason) =>
+    fetchApi(`/admin/users/${id}/ban`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+  unbanUser: (id) => fetchApi(`/admin/users/${id}/unban`, { method: 'PATCH' }),
+  deleteUser: (id) => fetchApi(`/admin/users/${id}`, { method: 'DELETE' }),
+
+  // Nodes
+  listNodes: (params = {}) => fetchApi(`/admin/nodes${buildQuery(params)}`),
+  createNode: (body) => fetchApi('/admin/nodes', { method: 'POST', body: JSON.stringify(body) }),
+  updateNode: (id, body) => fetchApi(`/admin/nodes/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteNode: (id, params = {}) => fetchApi(`/admin/nodes/${id}${buildQuery(params)}`, { method: 'DELETE' }),
+
+  // Trades
+  listTrades: (params = {}) => fetchApi(`/admin/trades${buildQuery(params)}`),
+  getTrade: (txHash) => fetchApi(`/admin/trades/${txHash}`),
+
+  // Blockchain sync
+  getSyncStatus: () => fetchApi('/admin/sync/status'),
+  forceSync: () => fetchApi('/admin/sync/force', { method: 'POST' }),
+
+  // Report jobs
+  listReportJobs: (params = {}) => fetchApi(`/admin/report-jobs${buildQuery(params)}`),
+  getReportJob: (id) => fetchApi(`/admin/report-jobs/${id}`),
+  retryReportJob: (id) => fetchApi(`/admin/report-jobs/${id}/retry`, { method: 'POST' }),
+
+  // Audit logs
+  listAuditLogs: (params = {}) => fetchApi(`/admin/audit-logs${buildQuery(params)}`),
+
+  // System health (Phase 5)
+  getSystemHealth: () => fetchApi('/admin/health'),
+};

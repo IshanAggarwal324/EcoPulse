@@ -47,7 +47,25 @@ const listNodes = asyncHandler(async (req, res) => {
           ownerName: { $arrayElemAt: ['$owner.name', 0] },
         },
       },
-      { $project: { owner: 0 } },
+      {
+        $lookup: {
+          from: 'energyreadings',
+          let: { nodeId: '$_id' },
+          pipeline: [
+            { $match: { nodeId: '$$nodeId' } },
+            { $sort: { timestamp: -1 } },
+            { $limit: 1 },
+            { $project: { _id: 0, timestamp: 1 } },
+          ],
+          as: 'lastReading',
+        },
+      },
+      {
+        $addFields: {
+          lastReadingAt: { $arrayElemAt: ['$lastReading.timestamp', 0] },
+        },
+      },
+      { $project: { owner: 0, lastReading: 0 } },
     ]),
     EnergyNode.countDocuments(filter),
   ]);

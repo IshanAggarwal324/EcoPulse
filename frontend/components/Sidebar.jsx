@@ -1,13 +1,15 @@
 import React, { memo } from 'react';
 import { NavLink } from 'react-router-dom';
-import { X, LogOut, User, Zap } from 'lucide-react';
+import { X, LogOut, User, Zap, ShieldCheck } from 'lucide-react';
 import { NAV_LINKS } from '../utils/constants';
+import { hasAdminAccess } from '../utils/adminNav';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
 const Sidebar = memo(function Sidebar({ onClose }) {
   const { user, logout } = useAuth();
   const toast = useToast();
+  const showAdmin = hasAdminAccess(user);
 
   return (
     <aside className="h-full flex flex-col bg-gradient-to-b from-slate-800/95 via-slate-850 to-slate-900/95 backdrop-blur-xl border-r border-slate-700/40 shadow-2xl shadow-black/20">
@@ -54,6 +56,30 @@ const Sidebar = memo(function Sidebar({ onClose }) {
             <span className="text-sm tracking-wide">{link.label}</span>
           </NavLink>
         ))}
+
+        {showAdmin && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 px-3 mb-2 mt-5">
+              Administration
+            </p>
+            <NavLink
+              to="/admin"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3.5 px-3.5 py-3 min-h-[44px] rounded-xl transition-all duration-200 group relative ${
+                  isActive
+                    ? 'bg-emerald-500/10 text-emerald-400 font-semibold before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-[3px] before:h-5 before:bg-emerald-400 before:rounded-full'
+                    : 'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
+                }`
+              }
+            >
+              <div className="transition-transform duration-200 group-hover:scale-110">
+                <ShieldCheck size={20} />
+              </div>
+              <span className="text-sm tracking-wide">Admin Console</span>
+            </NavLink>
+          </>
+        )}
       </nav>
 
       <div className="p-3 border-t border-slate-700/30 space-y-3">

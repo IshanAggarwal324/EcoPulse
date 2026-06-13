@@ -1,6 +1,7 @@
 const analyticsService = require('../services/analyticsService');
 const blockchainSyncService = require('../services/blockchainSyncService');
 const socketBroadcastService = require('../services/socketBroadcastService');
+const healthService = require('../services/healthService');
 const asyncHandler = require('../utils/asyncHandler');
 
 const getSummary = asyncHandler(async (req, res) => {
@@ -82,31 +83,39 @@ const syncBlockchain = asyncHandler(async (req, res) => {
 });
 
 const getPlatformStatus = asyncHandler(async (req, res) => {
-  const [chain, readingCount] = await Promise.all([
-    blockchainSyncService.getChainStatus(),
-    require('../models/EnergyReading').countDocuments(),
+  const EnergyReading = require('../models/EnergyReading');
+
+  const [health, readingCount] = await Promise.all([
+    healthService.getHealth(),
+    EnergyReading.estimatedDocumentCount().catch(() => 0),
   ]);
 
-  const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-  let aiStatus = { connected: false };
-
-  try {
-    const response = await fetch(`${aiServiceUrl}/`);
-    aiStatus = {
-      connected: response.ok,
-      status: response.ok ? 'online' : 'degraded',
-    };
-  } catch (error) {
-    aiStatus = { connected: false, status: 'offline', error: error.message };
-  }
+  const c = health.components;
+  const blockchain = c.blockchain.details || {};
 
   res.status(200).json({
     success: true,
     data: {
-      mongodb: { connected: true, readingCount },
-      blockchain: chain,
-      ai: aiStatus,
-      syncedAt: new Date().toISOString(),
+      overall: health.overall,
+      mongodb: { connected: c.mongodb.status === 'up', readingCount },
+      blockchain: {
+        connected: c.blockchain.status !== 'down',
+        chainName: blockchain.chainName || null,
+        chainId: blockchain.chainId ?? null,
+        blockNumber: blockchain.blockNumber ?? null,
+        lastSyncedBlock: blockchain.lastSyncedBlock ?? null,
+        syncLagBlocks: blockchain.syncLagBlocks ?? null,
+        isSyncHealthy: blockchain.isSyncHealthy ?? false,
+      },
+      ai: {
+        connected: c.aiService.status !== 'down',
+        status: c.aiService.status,
+      },
+      genai: {
+        connected: c.genaiService.status !== 'down',
+        status: c.genaiService.status,
+      },
+      syncedAt: health.checkedAt,
     },
   });
 });

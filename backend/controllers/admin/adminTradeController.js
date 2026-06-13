@@ -5,7 +5,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 
 const listTrades = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query, { maxLimit: 100 });
-  const { eventType, seller, buyer, since, until } = req.query;
+  const { eventType, seller, buyer, wallet, since, until } = req.query;
 
   const conditions = [];
 
@@ -19,6 +19,11 @@ const listTrades = asyncHandler(async (req, res) => {
 
   if (buyer) {
     conditions.push({ buyer: buyer.toLowerCase() });
+  }
+
+  if (wallet) {
+    const w = wallet.toLowerCase();
+    conditions.push({ $or: [{ seller: w }, { buyer: w }] });
   }
 
   if (since) {

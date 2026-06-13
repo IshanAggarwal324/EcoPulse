@@ -542,7 +542,7 @@ const getChainStatus = async () => {
       lastSyncedBlock,
       syncLagBlocks,
       isSyncHealthy: syncLagBlocks <= lagThreshold,
-      tradeCount: await Trade.countDocuments(),
+      tradeCount: await Trade.estimatedDocumentCount(),
       lastSync: lastSyncDebug,
     };
   } catch (error) {
