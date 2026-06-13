@@ -18,7 +18,7 @@ const energyNodeSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'inactive', 'maintenance'],
+    enum: ['active', 'inactive', 'maintenance', 'failed'],
     default: 'active',
   },
   location: {

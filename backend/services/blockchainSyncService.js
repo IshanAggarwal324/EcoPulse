@@ -484,29 +484,50 @@ const countActiveListings = async (contract) => {
   }
 };
 
+const CHAIN_NAMES = {
+  11155111: 'Sepolia',
+  31337: 'Hardhat',
+};
+
+const getSyncLagThreshold = () => {
+  const parsed = parseInt(process.env.HEALTH_SYNC_LAG_THRESHOLD || '50', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+};
+
 const getChainStatus = async () => {
   try {
     const contract = BlockchainService.getEnergyTradingContractReadOnly();
     const provider = contract.runner.provider;
     const network = await provider.getNetwork();
+    const chainId = Number(network.chainId);
     const [blockNumber, nextListingId, syncState] = await Promise.all([
       provider.getBlockNumber(),
       contract.nextListingId(),
       SyncState.findOne({ key: SYNC_STATE_KEY }).lean(),
     ]);
 
+    const lastSyncedBlock = syncState?.lastSyncedBlock ?? 0;
+    const syncLagBlocks = Math.max(0, blockNumber - lastSyncedBlock);
+    const lagThreshold = getSyncLagThreshold();
+
     return {
       connected: true,
+      chainName: CHAIN_NAMES[chainId] || `Chain ${chainId}`,
       blockNumber,
-      chainId: Number(network.chainId),
+      chainId,
       nextListingId: Number(nextListingId),
-      lastSyncedBlock: syncState?.lastSyncedBlock ?? 0,
+      lastSyncedBlock,
+      syncLagBlocks,
+      isSyncHealthy: syncLagBlocks <= lagThreshold,
       tradeCount: await Trade.countDocuments(),
       lastSync: lastSyncDebug,
     };
   } catch (error) {
     return {
       connected: false,
+      chainName: null,
+      syncLagBlocks: null,
+      isSyncHealthy: false,
       error: error.message,
       lastSync: lastSyncDebug,
     };

@@ -40,4 +40,6 @@ const reportJobSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+reportJobSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model('ReportJob', reportJobSchema);
