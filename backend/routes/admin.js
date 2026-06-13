@@ -1,14 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { authorize } = require('../middleware/auth');
+const { createAdminRateLimiter } = require('../middleware/rateLimit');
 
 const adminUserController = require('../controllers/admin/adminUserController');
 const adminNodeController = require('../controllers/admin/adminNodeController');
 const adminTradeController = require('../controllers/admin/adminTradeController');
 const adminSyncController = require('../controllers/admin/adminSyncController');
 const adminReportJobController = require('../controllers/admin/adminReportJobController');
+const adminAuditController = require('../controllers/admin/adminAuditController');
 
 router.use(authorize('admin', 'moderator'));
+router.use(createAdminRateLimiter());
 
 const adminOnly = authorize('admin');
 
@@ -33,5 +36,7 @@ router.post('/sync/force', adminOnly, adminSyncController.forceSync);
 router.get('/report-jobs', adminReportJobController.listReportJobs);
 router.get('/report-jobs/:id', adminReportJobController.getReportJob);
 router.post('/report-jobs/:id/retry', adminOnly, adminReportJobController.retryReportJob);
+
+router.get('/audit-logs', adminAuditController.listAuditLogs);
 
 module.exports = router;

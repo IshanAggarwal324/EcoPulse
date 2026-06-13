@@ -10,6 +10,7 @@ const {
 } = require('../services/emailService');
 const ReportJob = require('../models/ReportJob');
 const asyncHandler = require('../utils/asyncHandler');
+const auditService = require('../services/auditService');
 
 const VALID_PERIODS = ['7d', '14d', '30d'];
 const VALID_SCOPES = ['personal', 'grid', 'both'];
@@ -128,14 +129,33 @@ const generateReport = asyncHandler(async (req, res) => {
         status: 'sent',
         sentAt: new Date(),
       });
+
+      await auditService.log({
+        actor: req.user,
+        action: 'REPORT_GENERATED',
+        resourceType: 'report_job',
+        resourceId: reportJob._id,
+        metadata: { period, scope, delivery: 'email', status: 'sent' },
+        req,
+      });
     } catch (sendError) {
-      await ReportJob.create({
+      const failedJob = await ReportJob.create({
         userId: req.user._id,
         period,
         scope,
         delivery: 'email',
         status: 'failed',
         error: sendError.message,
+      });
+
+      await auditService.log({
+        actor: req.user,
+        action: 'REPORT_GENERATED',
+        resourceType: 'report_job',
+        resourceId: failedJob._id,
+        metadata: { period, scope, delivery: 'email', status: 'failed', error: sendError.message },
+        req,
+        severity: 'warn',
       });
 
       return res.status(200).json({
@@ -174,6 +194,15 @@ const generateReport = asyncHandler(async (req, res) => {
       sources,
       disclaimer: narrateResult.disclaimer,
     },
+  });
+
+  await auditService.log({
+    actor: req.user,
+    action: 'REPORT_GENERATED',
+    resourceType: 'report_job',
+    resourceId: null,
+    metadata: { period, scope, delivery: 'chat' },
+    req,
   });
 });
 

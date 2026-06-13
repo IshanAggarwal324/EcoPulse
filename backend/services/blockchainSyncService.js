@@ -3,6 +3,7 @@ const Trade = require('../models/Trade');
 const SyncState = require('../models/SyncState');
 const BlockchainService = require('./blockchainService');
 const socketBroadcastService = require('./socketBroadcastService');
+const auditService = require('./auditService');
 
 const SYNC_STATE_KEY = 'energy_trading';
 const DEFAULT_SYNC_CHUNK_SIZE = 500;
@@ -181,6 +182,28 @@ const indexLogs = async (contract, logs, eventName, provider, chainId, contractA
 
       if (result.upsertedCount > 0 || result.upsertedId) {
         indexed += 1;
+
+        const actorUser = await auditService.resolveActorFromWallet(
+          tradeData.seller || tradeData.buyer
+        );
+
+        auditService.log({
+          actor: actorUser || { _id: null, email: null, role: null },
+          action: 'TRADE_SYNCED',
+          resourceType: 'trade',
+          resourceId: tradeData.txHash,
+          metadata: {
+            eventType: tradeData.eventType,
+            listingId: tradeData.listingId,
+            seller: tradeData.seller,
+            buyer: tradeData.buyer,
+            energyAmount: tradeData.energyAmount,
+            price: tradeData.price,
+            blockNumber: tradeData.blockNumber,
+            chainId,
+          },
+          severity: 'info',
+        });
       }
     } catch (error) {
       console.warn(`[Sync] Skipped ${eventName} log at block ${log.blockNumber}:`, error.message);

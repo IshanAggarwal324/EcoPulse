@@ -3,6 +3,7 @@ const EnergyNode = require('../../models/EnergyNode');
 const EnergyReading = require('../../models/EnergyReading');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
+const auditService = require('../../services/auditService');
 
 const VALID_NODE_TYPES = ['producer', 'consumer', 'prosumer'];
 const VALID_SOURCE_TYPES = ['solar', 'wind', 'home', 'industry', 'other'];
@@ -95,6 +96,15 @@ const createNode = asyncHandler(async (req, res) => {
     userId: owner,
   });
 
+  await auditService.log({
+    actor: req.user,
+    action: 'NODE_CREATED',
+    resourceType: 'node',
+    resourceId: node._id,
+    metadata: { name, nodeType, sourceType, status: status || 'active', userId: owner },
+    req,
+  });
+
   res.status(201).json({
     success: true,
     data: node,
@@ -138,6 +148,15 @@ const updateNode = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Node not found' });
   }
 
+  await auditService.log({
+    actor: req.user,
+    action: 'NODE_UPDATED',
+    resourceType: 'node',
+    resourceId: id,
+    metadata: { updates, nodeName: node.name },
+    req,
+  });
+
   res.status(200).json({
     success: true,
     data: node,
@@ -162,6 +181,16 @@ const deleteNode = asyncHandler(async (req, res) => {
   }
 
   await node.deleteOne();
+
+  await auditService.log({
+    actor: req.user,
+    action: 'NODE_DELETED',
+    resourceType: 'node',
+    resourceId: id,
+    metadata: { nodeName: node.name, cascade: cascade === 'true' },
+    req,
+    severity: 'warn',
+  });
 
   res.status(200).json({
     success: true,

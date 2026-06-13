@@ -3,6 +3,7 @@ const ReportJob = require('../../models/ReportJob');
 const User = require('../../models/User');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
+const auditService = require('../../services/auditService');
 
 const listReportJobs = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query);
@@ -133,6 +134,15 @@ const retryReportJob = asyncHandler(async (req, res) => {
     job.sentAt = new Date();
     job.error = undefined;
     await job.save();
+
+    await auditService.log({
+      actor: req.user,
+      action: 'REPORT_RETRIED',
+      resourceType: 'report_job',
+      resourceId: job._id,
+      metadata: { period: job.period, scope: job.scope, delivery: job.delivery, userId: job.userId?._id || job.userId },
+      req,
+    });
 
     res.status(200).json({
       success: true,

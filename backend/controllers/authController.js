@@ -10,6 +10,7 @@ const {
   validateWalletAddress,
   collectErrors,
 } = require('../utils/validators');
+const auditService = require('../services/auditService');
 
 const toUserResponse = (user) => ({
   _id: user._id,
@@ -78,6 +79,16 @@ const login = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email: email.toLowerCase() }).select('+password +loginAttempts +lockUntil');
   if (!user) {
+    await auditService.log({
+      actor: null,
+      action: 'AUTH_FAILED',
+      resourceType: 'auth',
+      resourceId: email.toLowerCase(),
+      metadata: { reason: 'user_not_found', email: email.toLowerCase() },
+      req,
+      severity: 'warn',
+    });
+
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 
@@ -96,6 +107,21 @@ const login = asyncHandler(async (req, res) => {
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     await user.incLoginAttempts();
+
+    await auditService.log({
+      actor: null,
+      action: 'AUTH_FAILED',
+      resourceType: 'auth',
+      resourceId: email.toLowerCase(),
+      metadata: {
+        reason: 'invalid_password',
+        loginAttempts: user.loginAttempts + 1,
+        email: email.toLowerCase(),
+      },
+      req,
+      severity: 'warn',
+    });
+
     return res.status(401).json({ success: false, message: 'Invalid credentials' });
   }
 

@@ -3,6 +3,7 @@ const User = require('../../models/User');
 const EnergyNode = require('../../models/EnergyNode');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
+const auditService = require('../../services/auditService');
 
 const VALID_ROLES = ['user', 'admin', 'moderator'];
 
@@ -107,8 +108,19 @@ const setRole = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Cannot change role of a deactivated user' });
   }
 
+  const previousRole = user.role;
   user.role = role;
   await user.save();
+
+  await auditService.log({
+    actor: req.user,
+    action: 'USER_ROLE_CHANGED',
+    resourceType: 'user',
+    resourceId: user._id,
+    metadata: { previousRole, newRole: role },
+    req,
+    severity: 'warn',
+  });
 
   res.status(200).json({
     success: true,
@@ -148,6 +160,16 @@ const banUser = asyncHandler(async (req, res) => {
   user.bannedBy = req.user._id;
   await user.save();
 
+  await auditService.log({
+    actor: req.user,
+    action: 'USER_BANNED',
+    resourceType: 'user',
+    resourceId: user._id,
+    metadata: { reason: reason.trim(), userEmail: user.email },
+    req,
+    severity: 'critical',
+  });
+
   res.status(200).json({
     success: true,
     message: 'User has been banned',
@@ -176,6 +198,16 @@ const unbanUser = asyncHandler(async (req, res) => {
   user.bannedReason = null;
   user.bannedBy = null;
   await user.save();
+
+  await auditService.log({
+    actor: req.user,
+    action: 'USER_UNBANNED',
+    resourceType: 'user',
+    resourceId: user._id,
+    metadata: { userEmail: user.email },
+    req,
+    severity: 'warn',
+  });
 
   res.status(200).json({
     success: true,
@@ -206,6 +238,16 @@ const deleteUser = asyncHandler(async (req, res) => {
 
   user.deletedAt = new Date();
   await user.save();
+
+  await auditService.log({
+    actor: req.user,
+    action: 'USER_DELETED',
+    resourceType: 'user',
+    resourceId: user._id,
+    metadata: { userEmail: user.email, userName: user.name },
+    req,
+    severity: 'critical',
+  });
 
   res.status(200).json({
     success: true,

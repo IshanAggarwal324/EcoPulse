@@ -23,6 +23,23 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
     entry.count++;
 
     if (entry.count > maxRequests) {
+      const auditService = require('../services/auditService');
+      auditService.log({
+        actor: req.user || null,
+        action: 'API_RATE_LIMITED',
+        resourceType: 'api',
+        resourceId: userId,
+        metadata: {
+          path: req.originalUrl,
+          method: req.method,
+          count: entry.count,
+          windowMs,
+          maxRequests,
+        },
+        req,
+        severity: 'warn',
+      });
+
       return res.status(429).json({
         success: false,
         message: message || 'Too many requests. Please try again later.',
@@ -53,4 +70,12 @@ function createReportRateLimiter() {
   });
 }
 
-module.exports = { createChatRateLimiter, createReportRateLimiter };
+function createAdminRateLimiter() {
+  return createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: parseInt(process.env.ADMIN_RATE_LIMIT_MAX || '200', 10),
+    message: 'Admin API rate limit exceeded. Please try again later.',
+  });
+}
+
+module.exports = { createChatRateLimiter, createReportRateLimiter, createAdminRateLimiter };
