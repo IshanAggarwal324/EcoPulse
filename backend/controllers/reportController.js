@@ -1,5 +1,14 @@
 const reportService = require('../services/reportService');
 const { postNarrate, GenaiServiceError } = require('../services/genaiClient');
+const { generateReportPdf, buildReportFilename } = require('../services/pdfReportService');
+const {
+  isConfigured: isEmailConfigured,
+  canSendEmail,
+  sendReport,
+  buildReportEmailSubject,
+  buildReportEmailBody,
+} = require('../services/emailService');
+const ReportJob = require('../models/ReportJob');
 const asyncHandler = require('../utils/asyncHandler');
 
 const VALID_PERIODS = ['7d', '14d', '30d'];
@@ -19,14 +28,6 @@ function validateReportRequest({ period, scope, delivery }) {
 
   if (!delivery || !VALID_DELIVERIES.includes(delivery)) {
     errors.push(`Invalid delivery "${delivery}". Must be one of: ${VALID_DELIVERIES.join(', ')}`);
-  }
-
-  if (delivery === 'email') {
-    return {
-      valid: false,
-      status: 501,
-      message: 'Email delivery is not yet available. Use "chat" delivery for now.',
-    };
   }
 
   if (errors.length > 0) {
@@ -89,6 +90,68 @@ const generateReport = asyncHandler(async (req, res) => {
       return res.status(error.status).json({ success: false, message: error.message, details: error.details });
     }
     throw error;
+  }
+
+  if (delivery === 'email') {
+    const emailCheck = canSendEmail(req.user);
+    if (!emailCheck.allowed) {
+      return res.status(400).json({ success: false, message: emailCheck.reason });
+    }
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ success: false, message: 'Email delivery is not configured on the server.' });
+    }
+
+    const pdfBuffer = await generateReportPdf({
+      metrics: reportData,
+      narrative: narrateResult.summary,
+      user: req.user,
+    });
+
+    const filename = buildReportFilename(period);
+    const subject = buildReportEmailSubject(period);
+    const html = buildReportEmailBody({ userName: req.user.name, period });
+
+    try {
+      await sendReport({
+        to: req.user.email,
+        subject,
+        html,
+        pdfBuffer,
+        filename,
+      });
+
+      const reportJob = await ReportJob.create({
+        userId: req.user._id,
+        period,
+        scope,
+        delivery: 'email',
+        status: 'sent',
+        sentAt: new Date(),
+      });
+    } catch (sendError) {
+      await ReportJob.create({
+        userId: req.user._id,
+        period,
+        scope,
+        delivery: 'email',
+        status: 'failed',
+        error: sendError.message,
+      });
+
+      return res.status(502).json({
+        success: false,
+        message: 'Failed to send report email. Please try again later.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        status: 'queued',
+        message: `Detailed report sent to ${req.user.email}`,
+        reportId: reportJob._id,
+      },
+    });
   }
 
   res.status(200).json({

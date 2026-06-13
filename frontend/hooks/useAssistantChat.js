@@ -8,7 +8,7 @@ export default function useAssistantChat() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const sessionIdRef = useRef(crypto.randomUUID?.() || Date.now().toString(36));
-  const { error: showError } = useToast();
+  const { error: showError, success: showSuccess } = useToast();
 
   const addMessage = useCallback((msg) => {
     setMessages((prev) => [...prev, msg]);
@@ -79,13 +79,23 @@ export default function useAssistantChat() {
         });
         const data = res.data || res;
 
-        addMessage({
-          role: 'assistant',
-          content: data.summary || data.message || 'Report generated.',
-          highlights: data.highlights || [],
-          sources: data.sources || [],
-          disclaimer: data.disclaimer || null,
-        });
+        if (delivery === 'email' && data.status === 'queued') {
+          showSuccess(data.message || 'Report sent to your email.');
+          addMessage({
+            role: 'assistant',
+            content: data.message || 'Report sent to your email.',
+            sources: [],
+            disclaimer: null,
+          });
+        } else {
+          addMessage({
+            role: 'assistant',
+            content: data.summary || data.message || 'Report generated.',
+            highlights: data.highlights || [],
+            sources: data.sources || [],
+            disclaimer: data.disclaimer || null,
+          });
+        }
       } catch (err) {
         const msg =
           err.status === 429
@@ -106,7 +116,7 @@ export default function useAssistantChat() {
         setIsLoading(false);
       }
     },
-    [isLoading, addMessage, showError],
+    [isLoading, addMessage, showError, showSuccess],
   );
 
   const clearMessages = useCallback(() => {

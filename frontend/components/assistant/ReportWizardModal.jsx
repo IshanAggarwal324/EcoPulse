@@ -15,7 +15,7 @@ const SCOPES = [
 
 const DELIVERIES = [
   { value: 'chat', label: 'Summary in Chat', icon: FileText, desc: 'Quick read right here', disabled: false },
-  { value: 'email', label: 'Email PDF', icon: Mail, desc: 'Detailed report to your email', disabled: true },
+  { value: 'email', label: 'Email PDF', icon: Mail, desc: 'Detailed report to your email', disabled: false },
 ];
 
 const StepIndicator = ({ step, total }) => (
@@ -116,7 +116,7 @@ const ReportWizardModal = ({ open, onClose, onConfirm }) => {
         <OptionCard
           key={d.value}
           selected={delivery === d.value}
-          onClick={() => !d.disabled && setDelivery(d.value)}
+          onClick={() => setDelivery(d.value)}
           label={d.label}
           sub={d.desc}
           icon={d.icon}
