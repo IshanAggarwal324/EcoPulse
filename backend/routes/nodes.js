@@ -11,10 +11,10 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.route('/')
   .post(protect, authorize('admin'), createNode)
-  .get(getNodes);
+  .get(protect, getNodes);
 
 router.route('/:id')
-  .get(getNodeById)
+  .get(protect, getNodeById)
   .put(protect, authorize('admin'), updateNode)
   .delete(protect, authorize('admin'), deleteNode);
 

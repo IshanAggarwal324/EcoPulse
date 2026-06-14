@@ -3,11 +3,17 @@ const EnergyNode = require('../models/EnergyNode');
 const asyncHandler = require('../utils/asyncHandler');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
+
+const buildInternalHeaders = () => ({
+  'Content-Type': 'application/json',
+  ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
+});
 
 async function callAiForecast(body) {
   const response = await fetch(`${AI_SERVICE_URL}/forecast/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildInternalHeaders(),
     body: JSON.stringify(body),
   });
   return response;
@@ -16,7 +22,7 @@ async function callAiForecast(body) {
 async function callAiBatchForecast(body) {
   const response = await fetch(`${AI_SERVICE_URL}/forecast/batch`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: buildInternalHeaders(),
     body: JSON.stringify(body),
   });
   return response;

@@ -8,6 +8,6 @@ const { protect, authorize } = require('../middleware/auth');
 
 router.route('/')
   .post(protect, authorize('admin'), createReading)
-  .get(getReadings);
+  .get(protect, getReadings);
 
 module.exports = router;

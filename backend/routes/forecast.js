@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { getForecast } = require('../controllers/forecastController');
+const { protect } = require('../middleware/auth');
 
-router.get('/', getForecast);
+router.get('/', protect, getForecast);
 
 module.exports = router;

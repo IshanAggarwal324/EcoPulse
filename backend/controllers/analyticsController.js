@@ -4,8 +4,33 @@ const socketBroadcastService = require('../services/socketBroadcastService');
 const healthService = require('../services/healthService');
 const asyncHandler = require('../utils/asyncHandler');
 
+const isPrivileged = (user) => user?.role === 'admin' || user?.role === 'moderator';
+
+const resolveWalletScope = (req) => {
+  const requestedWallet = req.query.wallet ? String(req.query.wallet).toLowerCase() : null;
+
+  if (isPrivileged(req.user)) {
+    return requestedWallet;
+  }
+
+  const userWallet = req.user?.walletAddress ? String(req.user.walletAddress).toLowerCase() : null;
+  if (!userWallet) {
+    const err = new Error('Wallet address is required for this account');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (requestedWallet && requestedWallet !== userWallet) {
+    const err = new Error('You can only access analytics for your own wallet');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  return userWallet;
+};
+
 const getSummary = asyncHandler(async (req, res) => {
-  const walletAddress = req.query.wallet || null;
+  const walletAddress = resolveWalletScope(req);
   const sinceHours = req.query.sinceHours ? parseInt(req.query.sinceHours, 10) : null;
 
   const summary = await analyticsService.getSummary({ walletAddress, sinceHours });
@@ -49,7 +74,7 @@ const getTradeAnalytics = asyncHandler(async (req, res) => {
 });
 
 const getCarbonAnalytics = asyncHandler(async (req, res) => {
-  const walletAddress = req.query.wallet || null;
+  const walletAddress = resolveWalletScope(req);
   const carbon = await analyticsService.getCarbonStats(walletAddress);
 
   res.status(200).json({
@@ -59,7 +84,7 @@ const getCarbonAnalytics = asyncHandler(async (req, res) => {
 });
 
 const getCarbonBalanceAnalytics = asyncHandler(async (req, res) => {
-  const walletAddress = req.query.wallet || null;
+  const walletAddress = resolveWalletScope(req);
   const days = req.query.days ? parseInt(req.query.days, 10) : 30;
 
   const analytics = await analyticsService.getCarbonBalanceAnalytics(walletAddress, days);

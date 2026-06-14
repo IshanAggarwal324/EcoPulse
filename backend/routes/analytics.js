@@ -12,12 +12,12 @@ const {
 } = require('../controllers/analyticsController');
 const { protect, authorize } = require('../middleware/auth');
 
-router.get('/summary', getSummary);
-router.get('/energy', getEnergyAnalytics);
-router.get('/nodes', getNodeAnalytics);
-router.get('/trades', getTradeAnalytics);
-router.get('/carbon', getCarbonAnalytics);
-router.get('/carbon/balance', getCarbonBalanceAnalytics);
+router.get('/summary', protect, getSummary);
+router.get('/energy', protect, getEnergyAnalytics);
+router.get('/nodes', protect, getNodeAnalytics);
+router.get('/trades', protect, getTradeAnalytics);
+router.get('/carbon', protect, getCarbonAnalytics);
+router.get('/carbon/balance', protect, getCarbonBalanceAnalytics);
 router.get('/status', protect, authorize('admin', 'moderator'), getPlatformStatus);
 router.post('/sync', protect, authorize('admin'), syncBlockchain);
 
