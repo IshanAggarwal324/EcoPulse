@@ -6,6 +6,7 @@ import {
   cancelListing,
   approveTokensIfNeeded,
   mintDevTokens,
+  DEV_MINT_ENABLED,
 } from '../utils/blockchain';
 import { marketplaceApi, tradesApi, analyticsApi } from '../utils/api';
 import { useSocketEvent, useSocketReconnect } from '../context/SocketContext';
@@ -502,24 +503,26 @@ const Trading = () => {
             </button>
           </form>
 
-          <div className="mt-8 pt-4 border-t border-slate-700/50">
-            <p className="text-xs text-slate-500 mb-2">Dev tools (Hardhat local only)</p>
-            <button
-              type="button"
-              onClick={() =>
-                mintDevTokens(100)
-                  .then(() => {
-                    toast.success('Minted 100 CC!');
-                    refreshBalance();
-                  })
-                  .catch((e) => toast.error(e.message))
-              }
-              disabled={!account || !isCorrectNetwork}
-              className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 text-sm py-2 rounded-lg"
-            >
-              Mint 100 CC to self
-            </button>
-          </div>
+          {DEV_MINT_ENABLED && (
+            <div className="mt-8 pt-4 border-t border-slate-700/50">
+              <p className="text-xs text-slate-500 mb-2">Dev tools (Hardhat local only)</p>
+              <button
+                type="button"
+                onClick={() =>
+                  mintDevTokens(100)
+                    .then(() => {
+                      toast.success('Minted 100 CC!');
+                      refreshBalance();
+                    })
+                    .catch((e) => toast.error(e.message))
+                }
+                disabled={!account || !isCorrectNetwork}
+                className="w-full bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 text-sm py-2 rounded-lg"
+              >
+                Mint 100 CC to self
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="lg:col-span-2 content-card min-w-0">

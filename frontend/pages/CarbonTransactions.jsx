@@ -31,6 +31,7 @@ import {
   mintDevTokens,
   subscribeCarbonCreditTransfers,
   transferCarbonCredits,
+  DEV_MINT_ENABLED,
 } from '../utils/blockchain';
 import { analyticsApi, tradesApi } from '../utils/api';
 
@@ -379,24 +380,26 @@ const CarbonTransactions = () => {
               Sync blockchain ledger
             </button>
 
-            <div>
-              <p className="text-[10px] text-slate-600 mb-2 uppercase tracking-wider">Dev tools</p>
-              <button
-                type="button"
-                onClick={() =>
-                  mintDevTokens(100)
-                    .then(() => {
-                      toast.success('Minted 100 CC');
-                      refreshAll();
-                    })
-                    .catch((e) => toast.error(e.message))
-                }
-                disabled={!account || !isCorrectNetwork}
-                className="w-full bg-slate-700/40 hover:bg-slate-600/40 disabled:opacity-50 text-slate-400 text-sm py-2 rounded-xl border border-slate-600/20 transition-colors"
-              >
-                Mint 100 CC to self
-              </button>
-            </div>
+            {DEV_MINT_ENABLED && (
+              <div>
+                <p className="text-[10px] text-slate-600 mb-2 uppercase tracking-wider">Dev tools</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    mintDevTokens(100)
+                      .then(() => {
+                        toast.success('Minted 100 CC');
+                        refreshAll();
+                      })
+                      .catch((e) => toast.error(e.message))
+                  }
+                  disabled={!account || !isCorrectNetwork}
+                  className="w-full bg-slate-700/40 hover:bg-slate-600/40 disabled:opacity-50 text-slate-400 text-sm py-2 rounded-xl border border-slate-600/20 transition-colors"
+                >
+                  Mint 100 CC to self
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

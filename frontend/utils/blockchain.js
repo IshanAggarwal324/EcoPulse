@@ -1,6 +1,15 @@
 import { ethers } from "ethers";
 
-export const EXPECTED_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || "31337");
+const isProd = import.meta.env.PROD;
+const envChainId = import.meta.env.VITE_CHAIN_ID;
+const envRpcUrl = import.meta.env.VITE_RPC_URL;
+
+if (isProd && !envChainId) {
+  throw new Error("VITE_CHAIN_ID must be configured in production");
+}
+
+export const EXPECTED_CHAIN_ID = Number(envChainId || "31337");
+export const DEV_MINT_ENABLED = import.meta.env.DEV && EXPECTED_CHAIN_ID === 31337;
 
 export const getProvider = () => {
   if (window.ethereum) {
@@ -33,13 +42,18 @@ export const ensureCorrectNetwork = async () => {
     });
   } catch (switchError) {
     if (switchError.code === 4902) {
+      const rpcUrl = envRpcUrl || "";
+      if (isProd && !rpcUrl) {
+        throw new Error("VITE_RPC_URL must be configured in production");
+      }
+
       await window.ethereum.request({
         method: "wallet_addEthereumChain",
         params: [{
           chainId: chainIdHex,
-          chainName: "Hardhat Local",
+          chainName: import.meta.env.VITE_CHAIN_NAME || "EVM Network",
           nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          rpcUrls: [import.meta.env.VITE_RPC_URL || "http://127.0.0.1:8545"],
+          rpcUrls: [rpcUrl || "http://127.0.0.1:8545"],
         }],
       });
     } else {
@@ -153,8 +167,17 @@ const executeSignedTx = async (txFn) => {
 
 export const listEnergy = async (amount, price) =>
   executeSignedTx(async (signer) => {
+    const amountInput = String(amount).trim();
+    if (!/^\d+$/.test(amountInput)) {
+      throw new Error("Energy amount must be a whole number of units");
+    }
+    const amountUnits = BigInt(amountInput);
+    if (amountUnits < 1n) {
+      throw new Error("Energy amount must be at least 1 unit");
+    }
+
     const contract = new ethers.Contract(getEtAddress(), etAbi, signer);
-    const tx = await contract.listEnergy(amount, ethers.parseEther(price.toString()));
+    const tx = await contract.listEnergy(amountUnits, ethers.parseEther(price.toString()));
     return tx.wait();
   });
 
@@ -203,6 +226,9 @@ export const fetchAllListings = async () => {
 
 export const mintDevTokens = async (amount) =>
   executeSignedTx(async (signer) => {
+    if (!DEV_MINT_ENABLED) {
+      throw new Error("Dev mint is disabled outside local development");
+    }
     const contract = new ethers.Contract(getCcAddress(), ccAbi, signer);
     const tx = await contract.mint(
       await signer.getAddress(),

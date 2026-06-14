@@ -1,5 +1,20 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
-export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
+const isProd = import.meta.env.PROD;
+
+const normalizeUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+
+const envApiBase = normalizeUrl(import.meta.env.VITE_API_URL);
+if (isProd && !envApiBase) {
+  throw new Error('VITE_API_URL must be configured in production');
+}
+
+export const API_BASE = envApiBase || 'http://localhost:5001/api/v1';
+
+const envSocketUrl = normalizeUrl(import.meta.env.VITE_SOCKET_URL);
+if (isProd && !envSocketUrl) {
+  throw new Error('VITE_SOCKET_URL must be configured in production');
+}
+
+export const SOCKET_URL = envSocketUrl || 'http://localhost:5001';
 
 export class ApiError extends Error {
   constructor(message, status, details, code = null) {

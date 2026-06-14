@@ -60,13 +60,12 @@ const toUserResponse = (user) => ({
 });
 
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password, walletAddress } = req.body;
+  const { name, email, password } = req.body;
 
   const errors = collectErrors([
     validateName(name),
     validateEmail(email),
     validatePassword(password),
-    walletAddress ? validateWalletAddress(walletAddress) : null,
   ]);
 
   if (errors) {
@@ -90,7 +89,7 @@ const register = asyncHandler(async (req, res) => {
     name: name.trim(),
     email: email.toLowerCase().trim(),
     password: hashedPassword,
-    walletAddress: walletAddress?.trim() || null,
+    walletAddress: null,
   });
 
   const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);

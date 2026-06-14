@@ -1,10 +1,11 @@
 import React, {
   createContext, useState, useContext, useEffect, useCallback, useRef, useMemo,
 } from 'react';
+import { API_BASE } from '../utils/api';
 
 const AuthContext = createContext(null);
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
+const API_URL = API_BASE;
 const parseAuthResponse = (data) => (data.data || data);
 
 export const AuthProvider = ({ children }) => {
@@ -38,8 +39,8 @@ export const AuthProvider = ({ children }) => {
           return null;
         }
 
-        const { user: userData } = parseAuthResponse(data);
-        setAccessToken('cookie');
+        const { user: userData, accessToken: newAccessToken } = parseAuthResponse(data);
+        setAccessToken(newAccessToken || null);
         if (userData) setUser(userData);
 
         return true;
@@ -70,7 +71,7 @@ export const AuthProvider = ({ children }) => {
     if (!response.ok) return false;
 
     setUser(data.data.user);
-    setAccessToken('cookie');
+    setAccessToken(data.data?.accessToken || null);
     return true;
   }, [refreshSession]);
 
@@ -106,8 +107,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { user: userData } = parseAuthResponse(data);
-      setAccessToken('cookie');
+      const { user: userData, accessToken: newAccessToken } = parseAuthResponse(data);
+      setAccessToken(newAccessToken || null);
       setUser(userData);
 
       return { success: true };
@@ -132,11 +133,18 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { user: newUser } = parseAuthResponse(data);
-      setAccessToken('cookie');
-      setUser(newUser);
+      const { user: newUser, accessToken: newAccessToken } = parseAuthResponse(data);
+      if (newUser && newAccessToken) {
+        setAccessToken(newAccessToken);
+        setUser(newUser);
+        return { success: true };
+      }
 
-      return { success: true };
+      return {
+        success: true,
+        requiresLogin: true,
+        message: data.message || 'Registration submitted. Please sign in.',
+      };
     } catch (error) {
       return { success: false, message: error.message || 'Network error' };
     }
@@ -203,7 +211,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message, errors: data.errors };
       }
 
-      setAccessToken('cookie');
+      setAccessToken(data.data?.accessToken || null);
 
       return { success: true, message: data.message };
     } catch (error) {

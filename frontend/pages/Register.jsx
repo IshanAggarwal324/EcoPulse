@@ -13,7 +13,6 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    walletAddress: '',
   });
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
@@ -46,14 +45,18 @@ const Register = () => {
       ...registerData,
       name: registerData.name.trim(),
       email: registerData.email.trim(),
-      walletAddress: registerData.walletAddress.trim() || undefined,
     };
 
     const result = await register(payload);
 
     if (result.success) {
-      toast.success('Account created successfully!');
-      navigate('/', { replace: true });
+      if (result.requiresLogin) {
+        toast.info(result.message || 'Registration complete. Please sign in.');
+        navigate('/login', { replace: true });
+      } else {
+        toast.success('Account created successfully!');
+        navigate('/', { replace: true });
+      }
     } else {
       setFormError(result.message);
       toast.error(result.message);
@@ -119,16 +122,6 @@ const Register = () => {
               error={fieldErrors.email}
               required
               autoComplete="email"
-            />
-
-            <FormField
-              label="Wallet address"
-              id="walletAddress"
-              value={formData.walletAddress}
-              onChange={handleChange}
-              error={fieldErrors.walletAddress}
-              placeholder="0x... (optional)"
-              hint="Link your MetaMask wallet for carbon credit tracking"
             />
 
             <FormField

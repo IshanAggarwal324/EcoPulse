@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Zap, Sun, Wind, Home, AlertCircle } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import { useWalletState } from '../context/WalletContext';
-import { analyticsApi, nodesApi, ApiError } from '../utils/api';
+import { analyticsApi, nodesApi, forecastApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useSocketReconnect } from '../context/SocketContext';
 import { useDashboardRealtime } from '../hooks/useDashboardRealtime';
@@ -46,10 +46,7 @@ const Dashboard = () => {
       if (readings) setLiveReadings(readings);
       setNodes(nodesRes.data || []);
 
-      const forecastRes = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1'}/forecast`
-      );
-      const forecastData = await forecastRes.json();
+      const forecastData = await forecastApi.get();
       if (forecastData.predictions?.length) {
         setForecastStatus(forecastData.meta?.useDummyData ? 'Ready (demo)' : 'Ready');
       } else {
