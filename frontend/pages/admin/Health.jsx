@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   XCircle,
   Timer,
+  Gauge,
 } from 'lucide-react';
 import SectionTitle from '../../components/ui/SectionTitle';
 import PageLoader from '../../components/ui/PageLoader';
@@ -65,6 +66,7 @@ const COMPONENTS = [
   { key: 'genaiService', label: 'GenAI Service', icon: Sparkles },
   { key: 'blockchain', label: 'Blockchain', icon: Boxes },
   { key: 'backend', label: 'Backend', icon: Server },
+  { key: 'simulator', label: 'Simulator', icon: Gauge },
 ];
 
 const tone = (status) => STATUS_TONE[status] || STATUS_TONE.down;
@@ -87,6 +89,14 @@ const componentSub = (key, probe) => {
   }
   if (key === 'backend') {
     return d.uptimeLabel ? `Uptime ${d.uptimeLabel}` : 'Running';
+  }
+  if (key === 'simulator') {
+    if (!d.embedded) return 'CLI mode (not embedded)';
+    if (!d.enabled) return 'Disabled by config';
+    if (d.running) {
+      return `${d.nodes ?? 0} nodes · ${d.ticks ?? 0} ticks`;
+    }
+    return 'Not running';
   }
   return '—';
 };

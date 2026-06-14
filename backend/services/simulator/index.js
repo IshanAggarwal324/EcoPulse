@@ -1,6 +1,7 @@
 const { SimulatorRunner, MOCK_NODES, parseConfig } = require('./runner');
-const { computeTargets, getCapacity } = require('./profiles');
+const { computeTargets, getCapacity, resolveBaseCapacity, hashSeed, previewFactors, SOURCE_TYPES } = require('./profiles');
 const { NodeSimulatorState } = require('./nodeState');
+const configStore = require('./configStore');
 
 module.exports = {
   SimulatorRunner,
@@ -8,5 +9,10 @@ module.exports = {
   parseConfig,
   computeTargets,
   getCapacity,
+  resolveBaseCapacity,
+  hashSeed,
+  previewFactors,
+  SOURCE_TYPES,
   NodeSimulatorState,
+  configStore,
 };

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const VALID_SEVERITIES = ['info', 'warn', 'critical'];
-const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth'];
+const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator'];
 
 const auditLogSchema = new mongoose.Schema(
   {

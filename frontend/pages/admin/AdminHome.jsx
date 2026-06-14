@@ -13,6 +13,7 @@ import {
   XCircle,
   Loader2,
   Lock,
+  Gauge,
 } from 'lucide-react';
 import SectionTitle from '../../components/ui/SectionTitle';
 import RoleBadge from '../../components/admin/RoleBadge';
@@ -55,6 +56,13 @@ const MODULE_CARDS = [
     description: 'Blockchain indexer health and force sync',
     icon: RefreshCw,
     phase: 'Phase 4',
+  },
+  {
+    to: '/admin/simulator',
+    label: 'Simulator',
+    description: 'Grid profiles, schedules, and failure modes',
+    icon: Gauge,
+    phase: 'Phase 6',
   },
   {
     to: '/admin/audit-logs',

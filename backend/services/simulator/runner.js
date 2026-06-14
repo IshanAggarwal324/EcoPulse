@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const EnergyNode = require('../../models/EnergyNode');
 const { NodeSimulatorState } = require('./nodeState');
 const { createRestTransport, createSocketTransport } = require('./transports');
+const configStore = require('./configStore');
 
 /** Fallback profiles when DB has no nodes (socket-only dev). */
 const MOCK_NODES = [
@@ -39,7 +40,11 @@ class SimulatorRunner {
     this.states = new Map();
     this.timer = null;
     this.transport = null;
+    // Allow an external caller (e.g. simulatorManager) to inject a transport
+    // that bypasses the network (in-process ingestion).
+    this.injectedTransport = config.injectedTransport || null;
     this.running = false;
+    this.tickCount = 0;
   }
 
   async loadNodes() {
@@ -56,6 +61,10 @@ class SimulatorRunner {
   }
 
   async initTransport() {
+    if (this.injectedTransport) {
+      this.transport = this.injectedTransport;
+      return;
+    }
     if (this.config.transport === 'rest') {
       this.transport = createRestTransport(this.config.apiUrl);
       return;
@@ -65,6 +74,8 @@ class SimulatorRunner {
   }
 
   async start() {
+    await configStore.load();
+
     const nodes = await this.loadNodes();
     this.states = new Map(
       nodes.map((node) => [String(node._id || node.nodeId), new NodeSimulatorState(node)]),
@@ -73,11 +84,32 @@ class SimulatorRunner {
     await this.initTransport();
 
     console.log(`[Simulator] Transport: ${this.transport.name}`);
-    console.log(`[Simulator] Nodes: ${nodes.length} | interval ~${this.config.intervalMs}ms ±${this.config.jitterMs}ms`);
+    console.log(`[Simulator] Nodes: ${nodes.length} | interval ~${configStore.getIntervalMs()}ms ±${configStore.getJitterMs()}ms`);
+    console.log(`[Simulator] Enabled: ${configStore.isEnabled() ? 'yes' : 'no (paused)'}`);
     console.log('[Simulator] Press Ctrl+C to stop.\n');
 
     this.running = true;
     this.scheduleTick();
+  }
+
+  // Soft reload: re-read config + node roster while preserving each node's
+  // smoothed state. New nodes are added, removed nodes are dropped.
+  async reload() {
+    await configStore.load();
+    const nodes = await this.loadNodes();
+    const next = new Map();
+    for (const node of nodes) {
+      const key = String(node._id || node.nodeId);
+      const existing = this.states.get(key);
+      if (existing) {
+        existing.node = node;
+        next.set(key, existing);
+      } else {
+        next.set(key, new NodeSimulatorState(node));
+      }
+    }
+    this.states = next;
+    return { nodes: next.size };
   }
 
   pickStatesForTick() {
@@ -92,23 +124,45 @@ class SimulatorRunner {
 
   async tick() {
     const batch = this.pickStatesForTick();
+    this.tickCount += 1;
+    const emitted = [];
     for (const state of batch) {
       const reading = state.nextReading();
       try {
         await this.transport.send(reading);
+        emitted.push(reading);
         console.log(formatLog(state.node, reading));
       } catch (err) {
         console.error(`[Simulator] Failed for ${state.key}:`, err.message);
       }
     }
+    return emitted;
   }
 
   scheduleTick() {
     if (!this.running) return;
+    const intervalMs = configStore.getIntervalMs();
+    const jitterMs = configStore.getJitterMs();
     this.timer = setTimeout(async () => {
-      await this.tick();
+      // Respect the live enabled flag: pause ticking when disabled, but keep
+      // the timer alive so re-enabling resumes immediately.
+      let emitted = [];
+      if (configStore.isEnabled()) {
+        try {
+          emitted = await this.tick();
+        } catch (err) {
+          console.error('[Simulator] tick error:', err.message);
+        }
+      }
+      if (typeof this.onTick === 'function') {
+        try {
+          this.onTick(emitted);
+        } catch {
+          /* no-op */
+        }
+      }
       this.scheduleTick();
-    }, jitteredDelay(this.config.intervalMs, this.config.jitterMs));
+    }, jitteredDelay(intervalMs, jitterMs));
   }
 
   stop() {

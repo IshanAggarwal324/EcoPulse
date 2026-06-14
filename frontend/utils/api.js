@@ -233,4 +233,13 @@ export const adminApi = {
 
   // System health (Phase 5)
   getSystemHealth: () => fetchApi('/admin/health'),
+
+  // Simulator (Phase 6)
+  getSimulatorConfig: () => fetchApi('/admin/simulator/config'),
+  updateSimulatorConfig: (body) =>
+    fetchApi('/admin/simulator/config', { method: 'PUT', body: JSON.stringify(body) }),
+  restartSimulator: () => fetchApi('/admin/simulator/restart', { method: 'POST' }),
+  resetSimulatorConfig: () => fetchApi('/admin/simulator/reset', { method: 'POST' }),
+  getSimulatorReadings: (limit = 20) => fetchApi(`/admin/simulator/readings?limit=${limit}`),
+  getSimulatorPreview: (sourceType) => fetchApi(`/admin/simulator/preview?sourceType=${sourceType}`),
 };

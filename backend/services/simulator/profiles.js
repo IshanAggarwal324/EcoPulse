@@ -60,8 +60,18 @@ const hashSeed = (str) => {
   return h / 10000;
 };
 
-const getCapacity = (sourceType, nodeType) => {
-  const base = CAPACITY_KW[sourceType] || CAPACITY_KW.other;
+const resolveBaseCapacity = (sourceType, overrides) => {
+  if (overrides && overrides[sourceType]) {
+    return {
+      generate: overrides[sourceType].capacityGenerateKw,
+      consume: overrides[sourceType].capacityConsumeKw,
+    };
+  }
+  return CAPACITY_KW[sourceType] || CAPACITY_KW.other;
+};
+
+const getCapacity = (sourceType, nodeType, overrides) => {
+  const base = resolveBaseCapacity(sourceType, overrides);
   if (nodeType === 'consumer') {
     return { generate: base.generate * 0.15, consume: base.consume };
   }
@@ -75,15 +85,17 @@ const getCapacity = (sourceType, nodeType) => {
  * Target kW before smoothing (not yet noised).
  * @param {object} node - { nodeType, sourceType, status, _id|nodeId }
  * @param {Date} at
+ * @param {object} [options]
+ * @param {object} [options.capacityOverrides] - DB-backed capacity overrides keyed by sourceType
  */
-const computeTargets = (node, at = new Date()) => {
+const computeTargets = (node, at = new Date(), options = {}) => {
   const hour = at.getHours();
   const minute = at.getMinutes();
   const dayOfWeek = at.getDay();
   const sourceType = node.sourceType || 'other';
   const nodeType = node.nodeType || 'producer';
   const seed = hashSeed(node._id || node.nodeId || node.name || 'node');
-  const capacity = getCapacity(sourceType, nodeType);
+  const capacity = getCapacity(sourceType, nodeType, options.capacityOverrides);
 
   if (node.status === 'inactive') {
     return { energyGenerated: 0, energyConsumed: 0 };
@@ -133,9 +145,41 @@ const computeTargets = (node, at = new Date()) => {
   };
 };
 
+/**
+ * Hourly normalised factor (0..~1) for a source type — used to render an
+ * accurate schedule preview in the admin UI without duplicating curve math.
+ */
+const previewFactors = (sourceType) => {
+  const out = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    let factor = 0;
+    switch (sourceType) {
+      case 'solar':
+        factor = solarIrradiance(hour) * cloudCoverNoise(0, hour);
+        break;
+      case 'wind':
+        factor = windAvailability(hour, 0, 0);
+        break;
+      case 'home':
+        factor = homeLoadFactor(hour);
+        break;
+      case 'industry':
+        factor = industryLoadFactor(hour, 1);
+        break;
+      default:
+        factor = (solarIrradiance(hour) + windAvailability(hour, 0, 0)) / 2;
+    }
+    out.push({ hour, factor: Math.round(Math.max(0, factor) * 1000) / 1000 });
+  }
+  return out;
+};
+
 module.exports = {
   CAPACITY_KW,
+  SOURCE_TYPES: ['solar', 'wind', 'home', 'industry', 'other'],
   computeTargets,
   getCapacity,
+  resolveBaseCapacity,
   hashSeed,
+  previewFactors,
 };

@@ -8,6 +8,7 @@ const errorHandler = require('./middleware/errorHandler');
 const v1Routes = require('./routes/v1');
 const blockchainSyncService = require('./services/blockchainSyncService');
 const socketBroadcastService = require('./services/socketBroadcastService');
+const simulatorManager = require('./services/simulatorManager');
 const { initSocket } = require('./socket');
 
 connectDB();
@@ -64,4 +65,6 @@ server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   startBackgroundSync();
   blockchainSyncService.listenToBlockchainEvents();
+  // Start the embedded grid simulator when SIMULATOR_EMBEDDED=true.
+  simulatorManager.startIfEnabled();
 });

@@ -291,6 +291,79 @@ const probeBackend = () => {
   };
 };
 
+// Simulator is informational only — it is never a critical component. When the
+// runner is not embedded we report 'up' (intentionally off). When embedded and
+// enabled but not running, that is worth flagging as degraded.
+const probeSimulator = () => {
+  let status;
+  try {
+    // Lazy require to avoid coupling module-load order.
+    // eslint-disable-next-line global-require
+    const simulatorManager = require('./simulatorManager');
+    status = simulatorManager.getStatus();
+  } catch {
+    return {
+      status: 'up',
+      latencyMs: 0,
+      details: { embedded: false, note: 'Simulator manager unavailable' },
+      error: null,
+      checkedAt: nowIso(),
+    };
+  }
+
+  if (!status.embedded) {
+    return {
+      status: 'up',
+      latencyMs: 0,
+      details: { embedded: false, note: 'Runner not embedded (CLI mode)' },
+      error: null,
+      checkedAt: nowIso(),
+    };
+  }
+
+  if (!status.enabled) {
+    return {
+      status: 'up',
+      latencyMs: 0,
+      details: {
+        embedded: true,
+        enabled: false,
+        running: status.running,
+        note: 'Disabled by config',
+      },
+      error: null,
+      checkedAt: nowIso(),
+    };
+  }
+
+  if (!status.running) {
+    return {
+      status: 'degraded',
+      latencyMs: 0,
+      details: { embedded: true, enabled: true, running: false },
+      error: 'Embedded simulator enabled but not running',
+      checkedAt: nowIso(),
+    };
+  }
+
+  return {
+    status: 'up',
+    latencyMs: 0,
+    details: {
+      embedded: true,
+      enabled: true,
+      running: true,
+      nodes: status.nodes,
+      ticks: status.ticks,
+      readingsEmitted: status.readingsEmitted,
+      intervalMs: status.intervalMs,
+      startedAt: status.startedAt,
+    },
+    error: null,
+    checkedAt: nowIso(),
+  };
+};
+
 // MongoDB and the backend process are critical: if either is down the whole
 // platform is down. Other components (AI, GenAI, blockchain) being unavailable
 // only degrades the experience.
@@ -330,8 +403,9 @@ const getHealth = async () => {
   ]);
 
   const backend = probeBackend();
+  const simulator = probeSimulator();
 
-  const components = { mongodb, aiService, genaiService, blockchain, backend };
+  const components = { mongodb, aiService, genaiService, blockchain, backend, simulator };
 
   return {
     overall: deriveOverall(components),
@@ -346,6 +420,7 @@ module.exports = {
   probeMongo,
   probeBlockchain,
   probeBackend,
+  probeSimulator,
   probeHttpService,
   deriveOverall,
   formatUptime,

@@ -8,6 +8,7 @@ import {
   RefreshCw,
   ScrollText,
   Activity,
+  Gauge,
 } from 'lucide-react';
 
 export const ADMIN_ROLES = ['admin', 'moderator'];
@@ -19,6 +20,7 @@ export const ADMIN_NAV_LINKS = [
   { to: '/admin/trades', label: 'Trades', icon: <ArrowRightLeft size={20} /> },
   { to: '/admin/report-jobs', label: 'Report Jobs', icon: <FileText size={20} /> },
   { to: '/admin/sync', label: 'Sync Status', icon: <RefreshCw size={20} /> },
+  { to: '/admin/simulator', label: 'Simulator', icon: <Gauge size={20} /> },
   { to: '/admin/audit-logs', label: 'Audit Logs', icon: <ScrollText size={20} /> },
   { to: '/admin/health', label: 'System Health', icon: <Activity size={20} /> },
 ];

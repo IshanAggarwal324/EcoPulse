@@ -10,6 +10,7 @@ const adminSyncController = require('../controllers/admin/adminSyncController');
 const adminReportJobController = require('../controllers/admin/adminReportJobController');
 const adminAuditController = require('../controllers/admin/adminAuditController');
 const adminHealthController = require('../controllers/admin/adminHealthController');
+const adminSimulatorController = require('../controllers/admin/adminSimulatorController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -41,5 +42,13 @@ router.post('/report-jobs/:id/retry', adminOnly, adminReportJobController.retryR
 router.get('/audit-logs', adminAuditController.listAuditLogs);
 
 router.get('/health', adminHealthController.getHealth);
+
+// Simulator (Phase 6)
+router.get('/simulator/config', adminSimulatorController.getConfig);
+router.put('/simulator/config', adminOnly, adminSimulatorController.updateConfig);
+router.post('/simulator/restart', adminOnly, adminSimulatorController.restart);
+router.post('/simulator/reset', adminOnly, adminSimulatorController.resetConfig);
+router.get('/simulator/readings', adminSimulatorController.getRecentReadings);
+router.get('/simulator/preview', adminSimulatorController.getPreview);
 
 module.exports = router;

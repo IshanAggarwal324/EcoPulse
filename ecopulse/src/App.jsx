@@ -29,6 +29,7 @@ const AdminReportJobs = lazy(() => import('../../frontend/pages/admin/ReportJobs
 const AdminSyncStatus = lazy(() => import('../../frontend/pages/admin/SyncStatus'));
 const AdminAuditLogs = lazy(() => import('../../frontend/pages/admin/AuditLogs'));
 const AdminHealth = lazy(() => import('../../frontend/pages/admin/Health'));
+const AdminSimulator = lazy(() => import('../../frontend/pages/admin/Simulator'));
 
 import AdminLayout from '../../frontend/components/admin/AdminLayout';
 
@@ -54,6 +55,7 @@ function AuthenticatedApp() {
             <Route path="/admin/sync" element={<AdminSyncStatus />} />
             <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
             <Route path="/admin/health" element={<AdminHealth />} />
+            <Route path="/admin/simulator" element={<AdminSimulator />} />
           </Route>
 
           {/* User section */}
