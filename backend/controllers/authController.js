@@ -12,6 +12,40 @@ const {
 } = require('../utils/validators');
 const auditService = require('../services/auditService');
 
+const getAccessCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 15 * 60 * 1000,
+});
+
+const getRefreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/api/v1/auth',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
+
+const setAuthCookies = (res, tokens) => {
+  res.cookie('accessToken', tokens.accessToken, getAccessCookieOptions());
+  res.cookie('refreshToken', tokens.refreshToken, getRefreshCookieOptions());
+};
+
+const clearAuthCookies = (res) => {
+  res.clearCookie('accessToken', getAccessCookieOptions());
+  res.clearCookie('refreshToken', getRefreshCookieOptions());
+};
+
+const getCookieValue = (cookieHeader, key) => {
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';').map((part) => part.trim());
+  const entry = parts.find((part) => part.startsWith(`${key}=`));
+  if (!entry) return null;
+  return decodeURIComponent(entry.slice(key.length + 1));
+};
+
 const toUserResponse = (user) => ({
   _id: user._id,
   name: user.name,
@@ -61,6 +95,7 @@ const register = asyncHandler(async (req, res) => {
   });
 
   const tokens = generateTokenPair(user._id);
+  setAuthCookies(res, tokens);
 
   res.status(201).json({
     success: true,
@@ -130,6 +165,7 @@ const login = asyncHandler(async (req, res) => {
   user.lastLoginAt = new Date();
 
   const tokens = generateTokenPair(user._id);
+  setAuthCookies(res, tokens);
 
   res.status(200).json({
     success: true,
@@ -139,7 +175,7 @@ const login = asyncHandler(async (req, res) => {
 });
 
 const refresh = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const refreshToken = req.body?.refreshToken || getCookieValue(req.headers.cookie, 'refreshToken');
 
   if (!refreshToken) {
     return res.status(400).json({ success: false, message: 'Refresh token is required' });
@@ -162,6 +198,7 @@ const refresh = asyncHandler(async (req, res) => {
     }
 
     const tokens = generateTokenPair(user._id);
+    setAuthCookies(res, tokens);
 
     res.status(200).json({
       success: true,
@@ -261,6 +298,7 @@ const updatePassword = asyncHandler(async (req, res) => {
   await user.save();
 
   const tokens = generateTokenPair(user._id);
+  setAuthCookies(res, tokens);
 
   res.status(200).json({
     success: true,
@@ -269,10 +307,19 @@ const updatePassword = asyncHandler(async (req, res) => {
   });
 });
 
+const logout = asyncHandler(async (req, res) => {
+  clearAuthCookies(res);
+  res.status(200).json({
+    success: true,
+    message: 'Logged out successfully',
+  });
+});
+
 module.exports = {
   register,
   login,
   refresh,
+  logout,
   getMe,
   updateProfile,
   updatePassword,

@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.dependencies import get_model_store
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if os.getenv("NODE_ENV") == "production" and not settings.internal_api_key:
+        raise RuntimeError("INTERNAL_SERVICE_API_KEY must be configured in production")
 
     app = FastAPI(
         title=settings.app_name,
@@ -33,11 +37,21 @@ def create_app() -> FastAPI:
     app.middleware("http")(request_logging_middleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def internal_auth_middleware(request: Request, call_next):
+        if request.url.path.startswith("/health"):
+            return await call_next(request)
+        if settings.internal_api_key:
+            provided = request.headers.get("x-internal-api-key")
+            if provided != settings.internal_api_key:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized internal request"})
+        return await call_next(request)
 
     register_exception_handlers(app)
 

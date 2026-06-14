@@ -11,6 +11,7 @@ const parseIntEnv = (key, fallback) => {
 export const getSocketClientOptions = () => ({
   autoConnect: true,
   transports: ['websocket', 'polling'],
+  withCredentials: true,
   reconnection: true,
   reconnectionAttempts: parseIntEnv('VITE_SOCKET_RECONNECT_ATTEMPTS', 20),
   reconnectionDelay: parseIntEnv('VITE_SOCKET_RECONNECT_DELAY_MS', 1000),

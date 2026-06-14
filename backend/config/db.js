@@ -3,6 +3,9 @@ const mongoose = require('mongoose');
 const connectDB = async () => {
   try {
     if (!process.env.MONGO_URI || process.env.MONGO_URI.includes('<YOUR_MONGODB_ATLAS_CONNECTION_STRING>')) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('MONGO_URI must be configured in production');
+      }
       console.warn('MongoDB connection skipped: MONGO_URI is not set in .env');
       return;
     }

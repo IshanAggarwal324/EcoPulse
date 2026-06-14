@@ -1,4 +1,5 @@
 const GENAI_SERVICE_URL = process.env.GENAI_SERVICE_URL || 'http://localhost:8001';
+const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 
 class GenaiServiceError extends Error {
   constructor(message, status, details) {
@@ -13,7 +14,10 @@ async function postToGenaiService(path, body) {
   const url = `${GENAI_SERVICE_URL}${path}`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
+    },
     body: JSON.stringify(body),
   });
   return response;

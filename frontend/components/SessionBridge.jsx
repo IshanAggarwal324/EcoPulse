@@ -9,7 +9,7 @@ const SessionBridge = () => {
 
   useEffect(() => {
     configureApiAuth({
-      getAccessToken: () => localStorage.getItem('accessToken'),
+      getAccessToken: () => null,
       refreshSession,
       onSessionExpired: () => {
         toast.error('Your session expired. Please sign in again.');

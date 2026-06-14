@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 
+def _parse_origins(value: str) -> list[str]:
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EcoPulse GenAI Service"
@@ -10,7 +14,10 @@ class Settings:
     debug: bool = False
 
     port: int = 8001
+    host: str = "127.0.0.1"
     log_level: str = "INFO"
+    cors_origins: tuple[str, ...] = ()
+    internal_api_key: str = ""
 
     gemini_api_key: str = ""
     genai_model: str = "gemini-2.0-flash"
@@ -35,7 +42,10 @@ def get_settings() -> Settings:
     return Settings(
         debug=os.getenv("DEBUG", "false").lower() in ("1", "true", "yes"),
         port=int(os.getenv("GENAI_PORT", "8001")),
+        host=os.getenv("GENAI_HOST", "127.0.0.1"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        cors_origins=tuple(_parse_origins(os.getenv("GENAI_CORS_ORIGINS", ""))),
+        internal_api_key=os.getenv("INTERNAL_SERVICE_API_KEY", ""),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         genai_model=os.getenv("GENAI_MODEL", "gemini-2.0-flash"),
         genai_enabled=os.getenv("GENAI_ENABLED", "true").lower()

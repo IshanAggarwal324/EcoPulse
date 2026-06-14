@@ -60,6 +60,7 @@ export async function fetchApi(path, options = {}) {
         headers: buildHeaders(options.token || token),
         body: options.body,
         signal: controller.signal,
+        credentials: 'include',
       });
     } catch (error) {
       const isTimeout = error?.name === 'AbortError';
@@ -90,7 +91,7 @@ export async function fetchApi(path, options = {}) {
     ) {
       const refreshed = await authHandlers.refreshSession();
       if (refreshed) {
-        return execute(refreshed, true);
+        return execute(authHandlers.getAccessToken?.() || null, true);
       }
       authHandlers.onSessionExpired();
     }

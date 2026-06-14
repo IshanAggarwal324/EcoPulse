@@ -2,16 +2,22 @@ const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
 
-// Load Environment Variables or use defaults for local Hardhat node
+// Load environment variables. Never fall back to known dev private keys.
 const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
-const privateKey = process.env.PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // Default hardhat account 0
+const privateKey = process.env.PRIVATE_KEY || "";
 const carbonCreditAddress = process.env.CARBON_CREDIT_ADDRESS;
 const energyTradingAddress = process.env.ENERGY_TRADING_ADDRESS;
 
-// Provide a provider and a wallet
+// Provide a provider; signer wallet is created lazily only for write operations.
 const provider = new ethers.JsonRpcProvider(rpcUrl);
-const baseWallet = new ethers.Wallet(privateKey, provider);
-const wallet = new ethers.NonceManager(baseWallet);
+
+const getSignerWallet = () => {
+  if (!privateKey) {
+    throw new Error("PRIVATE_KEY not configured. Write blockchain operations are disabled.");
+  }
+  const baseWallet = new ethers.Wallet(privateKey, provider);
+  return new ethers.NonceManager(baseWallet);
+};
 
 const CARBON_CREDIT_ABI_FALLBACK = require('../constants/carbonCreditAbi');
 const ENERGY_TRADING_ABI_FALLBACK = require('../constants/energyTradingAbi');
@@ -40,12 +46,12 @@ const energyTradingAbi = loadArtifactAbi(
 class BlockchainService {
   static getCarbonCreditContract() {
     if (!carbonCreditAddress) throw new Error("CARBON_CREDIT_ADDRESS not configured in .env");
-    return new ethers.Contract(carbonCreditAddress, carbonCreditAbi, wallet);
+    return new ethers.Contract(carbonCreditAddress, carbonCreditAbi, getSignerWallet());
   }
 
   static getEnergyTradingContract() {
     if (!energyTradingAddress) throw new Error("ENERGY_TRADING_ADDRESS not configured in .env");
-    return new ethers.Contract(energyTradingAddress, energyTradingAbi, wallet);
+    return new ethers.Contract(energyTradingAddress, energyTradingAbi, getSignerWallet());
   }
 
   static getEnergyTradingContractReadOnly() {

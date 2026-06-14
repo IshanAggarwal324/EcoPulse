@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Loader2, ShieldAlert } from 'lucide-react';
 
 const ProtectedRoute = ({ children, roles }) => {
-  const { user, loading, isAuthenticated, accessToken } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -16,7 +16,7 @@ const ProtectedRoute = ({ children, roles }) => {
     );
   }
 
-  if (!isAuthenticated || !accessToken || !user) {
+  if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

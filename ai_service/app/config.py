@@ -4,6 +4,10 @@ from functools import lru_cache
 from typing import Optional
 
 
+def _parse_origins(value: str) -> list[str]:
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EcoPulse AI Service"
@@ -21,6 +25,10 @@ class Settings:
     history_days: int = 60
 
     mongo_uri: str = "mongodb://localhost:27017"
+    port: int = 8000
+    host: str = "127.0.0.1"
+    cors_origins: tuple[str, ...] = ()
+    internal_api_key: str = ""
     log_level: str = "INFO"
     log_file: str = "app.log"
 
@@ -49,6 +57,10 @@ def get_settings() -> Settings:
         mongo_uri=os.getenv(
             "MONGODB_URI", os.getenv("MONGO_URI", "mongodb://localhost:27017")
         ),
+        port=int(os.getenv("PORT", "8000")),
+        host=os.getenv("AI_HOST", "127.0.0.1"),
+        cors_origins=tuple(_parse_origins(os.getenv("AI_CORS_ORIGINS", ""))),
+        internal_api_key=os.getenv("INTERNAL_SERVICE_API_KEY", ""),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         log_file=os.getenv("LOG_FILE", "app.log"),
         look_back_days=int(os.getenv("LOOK_BACK_DAYS", "30")),

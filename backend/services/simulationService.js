@@ -1,8 +1,6 @@
 const readingService = require('./readingService');
 
-const isSimulationAllowed = () =>
-  process.env.ALLOW_SOCKET_SIMULATION === 'true'
-  || process.env.NODE_ENV !== 'production';
+const isSimulationAllowed = () => process.env.ALLOW_SOCKET_SIMULATION === 'true';
 
 const ingestSimulatedReading = async (data) => {
   if (!isSimulationAllowed()) {

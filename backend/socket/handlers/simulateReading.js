@@ -3,6 +3,7 @@ const { SOCKET_EVENTS } = require('../events');
 
 const register = (socket) => {
   if (!simulationService.isSimulationAllowed()) return;
+  if (!socket.user || socket.user.role !== 'admin') return;
 
   socket.on(SOCKET_EVENTS.CLIENT.SIMULATE_READING, (data) => {
     simulationService.ingestSimulatedReading(data).catch((err) => {

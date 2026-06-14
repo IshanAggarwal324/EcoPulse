@@ -13,6 +13,7 @@ const getSocketServerOptions = () => ({
   cors: {
     origin: parseCorsOrigin(),
     methods: ['GET', 'POST'],
+    credentials: true,
   },
   pingInterval: parseInt(process.env.SOCKET_PING_INTERVAL_MS || '25000', 10),
   pingTimeout: parseInt(process.env.SOCKET_PING_TIMEOUT_MS || '20000', 10),

@@ -5,57 +5,20 @@ import React, {
 const AuthContext = createContext(null);
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api/v1';
-const ACCESS_KEY = 'accessToken';
-const REFRESH_KEY = 'refreshToken';
-
-const parseAuthResponse = (data) => {
-  const payload = data.data || data;
-  const accessToken = payload.accessToken || payload.token;
-  const refreshToken = payload.refreshToken;
-  const user = payload.user;
-  return { accessToken, refreshToken, user };
-};
-
-const migrateLegacyToken = () => {
-  const legacy = localStorage.getItem('token');
-  if (legacy && !localStorage.getItem(ACCESS_KEY)) {
-    localStorage.setItem(ACCESS_KEY, legacy);
-    localStorage.removeItem('token');
-  }
-};
-
-migrateLegacyToken();
+const parseAuthResponse = (data) => (data.data || data);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(localStorage.getItem(ACCESS_KEY) || null);
-  const [refreshToken, setRefreshToken] = useState(localStorage.getItem(REFRESH_KEY) || null);
+  const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const refreshPromiseRef = useRef(null);
 
-  const persistTokens = useCallback((access, refresh) => {
-    if (access) {
-      localStorage.setItem(ACCESS_KEY, access);
-      setAccessToken(access);
-    }
-    if (refresh) {
-      localStorage.setItem(REFRESH_KEY, refresh);
-      setRefreshToken(refresh);
-    }
-  }, []);
-
   const clearSession = useCallback(() => {
-    localStorage.removeItem(ACCESS_KEY);
-    localStorage.removeItem(REFRESH_KEY);
     setAccessToken(null);
-    setRefreshToken(null);
     setUser(null);
   }, []);
 
   const refreshSession = useCallback(async () => {
-    const storedRefresh = localStorage.getItem(REFRESH_KEY);
-    if (!storedRefresh) return null;
-
     if (refreshPromiseRef.current) {
       return refreshPromiseRef.current;
     }
@@ -65,7 +28,7 @@ export const AuthProvider = ({ children }) => {
         const response = await fetch(`${API_URL}/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: storedRefresh }),
+          credentials: 'include',
         });
 
         const data = await response.json();
@@ -75,13 +38,11 @@ export const AuthProvider = ({ children }) => {
           return null;
         }
 
-        const { accessToken: newAccess, refreshToken: newRefresh, user: userData } =
-          parseAuthResponse(data);
-
-        persistTokens(newAccess, newRefresh || storedRefresh);
+        const { user: userData } = parseAuthResponse(data);
+        setAccessToken('cookie');
         if (userData) setUser(userData);
 
-        return newAccess;
+        return true;
       } catch {
         clearSession();
         return null;
@@ -91,36 +52,32 @@ export const AuthProvider = ({ children }) => {
     })();
 
     return refreshPromiseRef.current;
-  }, [clearSession, persistTokens]);
+  }, [clearSession]);
 
-  const fetchCurrentUser = useCallback(async (token) => {
+  const fetchCurrentUser = useCallback(async () => {
     const response = await fetch(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
 
     const data = await response.json();
 
     if (response.status === 401 && data.code === 'TOKEN_EXPIRED') {
       const newToken = await refreshSession();
-      if (newToken) return fetchCurrentUser(newToken);
+      if (newToken) return fetchCurrentUser();
       return false;
     }
 
     if (!response.ok) return false;
 
     setUser(data.data.user);
+    setAccessToken('cookie');
     return true;
   }, [refreshSession]);
 
   useEffect(() => {
     const init = async () => {
-      if (!accessToken) {
-        setLoading(false);
-        return;
-      }
-
       try {
-        const ok = await fetchCurrentUser(accessToken);
+        const ok = await fetchCurrentUser();
         if (!ok) clearSession();
       } catch {
         clearSession();
@@ -131,7 +88,7 @@ export const AuthProvider = ({ children }) => {
 
     init();
     // Run once on mount only; login/register set user directly.
-  }, []);
+  }, [clearSession, fetchCurrentUser]);
 
   const login = async (email, password) => {
     try {
@@ -139,6 +96,7 @@ export const AuthProvider = ({ children }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -148,8 +106,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { accessToken: access, refreshToken: refresh, user: userData } = parseAuthResponse(data);
-      persistTokens(access, refresh);
+      const { user: userData } = parseAuthResponse(data);
+      setAccessToken('cookie');
       setUser(userData);
 
       return { success: true };
@@ -164,6 +122,7 @@ export const AuthProvider = ({ children }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData),
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -173,8 +132,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { accessToken: access, refreshToken: refresh, user: newUser } = parseAuthResponse(data);
-      persistTokens(access, refresh);
+      const { user: newUser } = parseAuthResponse(data);
+      setAccessToken('cookie');
       setUser(newUser);
 
       return { success: true };
@@ -185,14 +144,13 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (updates) => {
     try {
-      const token = localStorage.getItem(ACCESS_KEY);
       const response = await fetch(`${API_URL}/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(updates),
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -204,9 +162,9 @@ export const AuthProvider = ({ children }) => {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${newToken}`,
             },
             body: JSON.stringify(updates),
+            credentials: 'include',
           });
           const retryData = await retry.json();
           if (!retry.ok) {
@@ -230,14 +188,13 @@ export const AuthProvider = ({ children }) => {
 
   const updatePassword = async ({ currentPassword, newPassword }) => {
     try {
-      const token = localStorage.getItem(ACCESS_KEY);
       const response = await fetch(`${API_URL}/auth/password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ currentPassword, newPassword }),
+        credentials: 'include',
       });
 
       const data = await response.json();
@@ -246,8 +203,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message, errors: data.errors };
       }
 
-      const { accessToken: access, refreshToken: refresh } = parseAuthResponse(data);
-      if (access) persistTokens(access, refresh);
+      setAccessToken('cookie');
 
       return { success: true, message: data.message };
     } catch (error) {
@@ -255,7 +211,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => clearSession();
+  const logout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Best-effort server logout.
+    } finally {
+      clearSession();
+    }
+  };
 
   const isAuthenticated = !!user && !!accessToken;
 

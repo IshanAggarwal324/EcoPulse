@@ -1,12 +1,48 @@
 const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const { getSocketServerOptions } = require('../config/socket');
 const registerHandlers = require('./registerHandlers');
 const socketBroadcastService = require('../services/socketBroadcastService');
 
 let io = null;
 
+const getCookieValue = (cookieHeader, key) => {
+  if (!cookieHeader) return null;
+  const entry = cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${key}=`));
+  if (!entry) return null;
+  return decodeURIComponent(entry.slice(key.length + 1));
+};
+
 const initSocket = (httpServer, app) => {
   io = new Server(httpServer, getSocketServerOptions());
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token
+        || getCookieValue(socket.handshake.headers.cookie, 'accessToken');
+      if (!token) {
+        return next(new Error('Authentication required'));
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.type && decoded.type !== 'access') {
+        return next(new Error('Invalid token type'));
+      }
+
+      const user = await User.findById(decoded.id).select('-password');
+      if (!user || user.deletedAt || user.isBanned) {
+        return next(new Error('Not authorized'));
+      }
+
+      socket.user = user;
+      return next();
+    } catch {
+      return next(new Error('Authentication failed'));
+    }
+  });
   app.set('io', io);
   socketBroadcastService.setIo(io);
   registerHandlers(io);

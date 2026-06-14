@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    if os.getenv("NODE_ENV") == "production" and not settings.internal_api_key:
+        raise RuntimeError("INTERNAL_SERVICE_API_KEY must be configured in production")
 
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -28,11 +31,21 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def internal_auth_middleware(request: Request, call_next):
+        if request.url.path.startswith("/health"):
+            return await call_next(request)
+        if settings.internal_api_key:
+            provided = request.headers.get("x-internal-api-key")
+            if provided != settings.internal_api_key:
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized internal request"})
+        return await call_next(request)
 
     @app.exception_handler(RuntimeError)
     async def _gemini_error_handler(request: Request, exc: RuntimeError):
