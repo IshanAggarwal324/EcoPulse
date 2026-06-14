@@ -1,5 +1,4 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { generateTokenPair, verifyRefreshToken } = require('../utils/tokens');
@@ -11,6 +10,7 @@ const {
   collectErrors,
 } = require('../utils/validators');
 const auditService = require('../services/auditService');
+const DUMMY_BCRYPT_HASH = '$2a$10$8wM17rRLf4vH4vPSc6Qh9.jv4CuUu63eVUsM8c7kwh28ykVfoCENW';
 
 const getAccessCookieOptions = () => ({
   httpOnly: true,
@@ -75,13 +75,12 @@ const register = asyncHandler(async (req, res) => {
 
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
-    if (existingUser.deletedAt) {
-      return res.status(403).json({ success: false, message: 'This account has been deactivated', code: 'ACCOUNT_DEACTIVATED' });
-    }
-    if (existingUser.isBanned) {
-      return res.status(403).json({ success: false, message: 'This account has been banned', code: 'ACCOUNT_BANNED' });
-    }
-    return res.status(409).json({ success: false, message: 'A user with this email already exists' });
+    // Keep response shape and timing similar to reduce account enumeration risk.
+    await bcrypt.compare(password || '', DUMMY_BCRYPT_HASH);
+    return res.status(200).json({
+      success: true,
+      message: 'If registration is allowed for this email, you can sign in after completing registration.',
+    });
   }
 
   const salt = await bcrypt.genSalt(10);
@@ -94,7 +93,7 @@ const register = asyncHandler(async (req, res) => {
     walletAddress: walletAddress?.trim() || null,
   });
 
-  const tokens = generateTokenPair(user._id);
+  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
   setAuthCookies(res, tokens);
 
   res.status(201).json({
@@ -112,7 +111,8 @@ const login = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Validation failed', errors });
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+password +loginAttempts +lockUntil');
+  const user = await User.findOne({ email: email.toLowerCase() })
+    .select('+password +loginAttempts +lockUntil +refreshTokenVersion');
   if (!user) {
     await auditService.log({
       actor: null,
@@ -164,7 +164,7 @@ const login = asyncHandler(async (req, res) => {
   await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
   user.lastLoginAt = new Date();
 
-  const tokens = generateTokenPair(user._id);
+  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
   setAuthCookies(res, tokens);
 
   res.status(200).json({
@@ -183,7 +183,7 @@ const refresh = asyncHandler(async (req, res) => {
 
   try {
     const decoded = verifyRefreshToken(refreshToken);
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select('+refreshTokenVersion');
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid refresh token' });
@@ -197,12 +197,34 @@ const refresh = asyncHandler(async (req, res) => {
       return res.status(403).json({ success: false, message: 'This account has been banned', code: 'ACCOUNT_BANNED' });
     }
 
-    const tokens = generateTokenPair(user._id);
+    if ((decoded.version ?? 0) !== (user.refreshTokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token has been revoked',
+        code: 'REFRESH_TOKEN_REVOKED',
+      });
+    }
+
+    const rotatedUser = await User.findOneAndUpdate(
+      { _id: user._id, refreshTokenVersion: user.refreshTokenVersion || 0 },
+      { $inc: { refreshTokenVersion: 1 } },
+      { new: true },
+    ).select('+refreshTokenVersion');
+
+    if (!rotatedUser) {
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token has already been used',
+        code: 'REFRESH_TOKEN_REUSED',
+      });
+    }
+
+    const tokens = generateTokenPair(rotatedUser._id, rotatedUser.refreshTokenVersion || 0);
     setAuthCookies(res, tokens);
 
     res.status(200).json({
       success: true,
-      data: { user: toUserResponse(user), ...tokens },
+      data: { user: toUserResponse(rotatedUser), ...tokens },
     });
   } catch (error) {
     return res.status(401).json({
@@ -286,7 +308,7 @@ const updatePassword = asyncHandler(async (req, res) => {
     });
   }
 
-  const user = await User.findById(req.user._id).select('+password');
+  const user = await User.findById(req.user._id).select('+password +refreshTokenVersion');
   const isMatch = await bcrypt.compare(currentPassword, user.password);
 
   if (!isMatch) {
@@ -295,9 +317,10 @@ const updatePassword = asyncHandler(async (req, res) => {
 
   const salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(newPassword, salt);
+  user.refreshTokenVersion = (user.refreshTokenVersion || 0) + 1;
   await user.save();
 
-  const tokens = generateTokenPair(user._id);
+  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
   setAuthCookies(res, tokens);
 
   res.status(200).json({
@@ -308,6 +331,20 @@ const updatePassword = asyncHandler(async (req, res) => {
 });
 
 const logout = asyncHandler(async (req, res) => {
+  const refreshToken = req.body?.refreshToken || getCookieValue(req.headers.cookie, 'refreshToken');
+
+  if (refreshToken) {
+    try {
+      const decoded = verifyRefreshToken(refreshToken);
+      await User.updateOne(
+        { _id: decoded.id, refreshTokenVersion: decoded.version ?? 0 },
+        { $inc: { refreshTokenVersion: 1 } },
+      );
+    } catch {
+      // Always clear cookies even if token is invalid.
+    }
+  }
+
   clearAuthCookies(res);
   res.status(200).json({
     success: true,

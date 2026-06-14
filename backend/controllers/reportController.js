@@ -59,7 +59,20 @@ function buildSourcesFromMetrics(metrics) {
 const getReportPreview = asyncHandler(async (req, res) => {
   const period = req.query.period || '7d';
   const scope = req.query.scope || 'both';
-  const walletAddress = req.query.wallet || req.user?.walletAddress || null;
+  const requestedWallet = req.query.wallet ? String(req.query.wallet).toLowerCase() : null;
+  const userWallet = req.user?.walletAddress ? String(req.user.walletAddress).toLowerCase() : null;
+  const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'moderator';
+
+  if (!isPrivileged && requestedWallet && userWallet && requestedWallet !== userWallet) {
+    return res.status(403).json({
+      success: false,
+      message: 'You can only preview reports for your own wallet',
+    });
+  }
+
+  const walletAddress = isPrivileged
+    ? (requestedWallet || userWallet || null)
+    : (userWallet || null);
 
   const metrics = await reportService.buildReportMetrics({ period, walletAddress, scope });
 

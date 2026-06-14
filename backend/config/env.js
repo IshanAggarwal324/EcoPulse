@@ -13,11 +13,24 @@ const validateEnvironment = () => {
   const issues = [];
   const isProduction = process.env.NODE_ENV === 'production';
 
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-    issues.push('JWT_SECRET must be set and at least 32 characters');
+  const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+
+  if (!accessSecret || accessSecret.length < 32) {
+    issues.push('JWT_ACCESS_SECRET (or JWT_SECRET) must be set and at least 32 characters');
   }
 
   if (isProduction) {
+    if (!process.env.JWT_ACCESS_SECRET) {
+      issues.push('JWT_ACCESS_SECRET must be set in production');
+    }
+    if (!process.env.JWT_REFRESH_SECRET) {
+      issues.push('JWT_REFRESH_SECRET must be set in production');
+    }
+    if (accessSecret && refreshSecret && accessSecret === refreshSecret) {
+      issues.push('JWT access and refresh secrets must be different in production');
+    }
+
     if (!process.env.MONGO_URI) {
       issues.push('MONGO_URI must be set in production');
     }

@@ -78,4 +78,18 @@ function createAdminRateLimiter() {
   });
 }
 
-module.exports = { createChatRateLimiter, createReportRateLimiter, createAdminRateLimiter };
+function createAuthRateLimiter({ windowMs, maxRequests, message }) {
+  return createRateLimiter({
+    windowMs,
+    maxRequests,
+    message,
+  });
+}
+
+module.exports = {
+  createRateLimiter,
+  createChatRateLimiter,
+  createReportRateLimiter,
+  createAdminRateLimiter,
+  createAuthRateLimiter,
+};

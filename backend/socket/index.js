@@ -1,9 +1,9 @@
 const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { getSocketServerOptions } = require('../config/socket');
 const registerHandlers = require('./registerHandlers');
 const socketBroadcastService = require('../services/socketBroadcastService');
+const { verifyAccessToken } = require('../utils/tokens');
 
 let io = null;
 
@@ -27,7 +27,7 @@ const initSocket = (httpServer, app) => {
         return next(new Error('Authentication required'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = verifyAccessToken(token);
       if (decoded.type && decoded.type !== 'access') {
         return next(new Error('Invalid token type'));
       }

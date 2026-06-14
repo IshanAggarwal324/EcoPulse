@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { verifyAccessToken } = require('../utils/tokens');
 
 const getCookieValue = (cookieHeader, key) => {
   if (!cookieHeader) return null;
@@ -20,7 +20,7 @@ const protect = async (req, res, next) => {
 
   if (token) {
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = verifyAccessToken(token);
 
       if (decoded.type && decoded.type !== 'access') {
         return res.status(401).json({
