@@ -17,7 +17,11 @@ _DEFAULT_DISCLAIMER = "Based on simulated demo data."
 
 
 class DocChunksRequest(BaseModel):
-    query: str = Field(min_length=1, description="Search query for document retrieval")
+    query: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Search query for document retrieval",
+    )
     top_k: int = Field(default=3, ge=1, le=10, description="Number of chunks to return")
 
 
@@ -60,9 +64,10 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
     llm: LlmService = http_request.app.state.llm_service
 
     history = trim_history(request.conversation_history or [])
+    safe_message = request.message.strip()[:1200]
 
     system_prompt, user_prompt = build_assistant_chat_prompt(
-        message=request.message,
+        message=safe_message,
         retrieved_data=request.retrieved_data,
         doc_chunks=request.doc_chunks,
     )
@@ -73,7 +78,7 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
         )
         user_prompt = f"Conversation history:\n{history_text}\n\n{user_prompt}"
 
-    fallback_reply = render_chat_reply(request.message, request.retrieved_data)
+    fallback_reply = render_chat_reply(safe_message, request.retrieved_data)
     is_demo = bool(
         request.retrieved_data and request.retrieved_data.get("meta", {}).get("isDemoData", True)
     )
@@ -101,5 +106,5 @@ async def get_doc_chunks(request: DocChunksRequest, http_request: Request):
     rag = getattr(http_request.app.state, "doc_rag_service", None)
     if not rag or not rag.is_available:
         return {"chunks": []}
-    chunks = rag.retrieveDocChunks(request.query, top_k=request.top_k)
+    chunks = rag.retrieveDocChunks(request.query.strip(), top_k=request.top_k)
     return {"chunks": chunks}

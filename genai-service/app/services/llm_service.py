@@ -23,6 +23,7 @@ class LlmService:
         self._settings = settings
         self._model_name = settings.genai_model
         self._max_tokens = settings.genai_max_tokens
+        self._max_input_chars = settings.genai_max_input_chars
         self._model = None
 
         if settings.gemini_api_key:
@@ -48,6 +49,13 @@ class LlmService:
             raise RuntimeError("Gemini client not available")
 
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        if len(full_prompt) > self._max_input_chars:
+            logger.warning(
+                "Prompt truncated from %d to %d chars",
+                len(full_prompt),
+                self._max_input_chars,
+            )
+            full_prompt = full_prompt[: self._max_input_chars]
         response = self._model.generate_content(
             full_prompt,
             generation_config=genai.types.GenerationConfig(
@@ -89,6 +97,13 @@ class LlmService:
             "No markdown fences, no commentary — raw JSON object."
         )
         full_prompt = f"{system_prompt}\n\n{json_instruction}\n\n{user_prompt}"
+        if len(full_prompt) > self._max_input_chars:
+            logger.warning(
+                "JSON prompt truncated from %d to %d chars",
+                len(full_prompt),
+                self._max_input_chars,
+            )
+            full_prompt = full_prompt[: self._max_input_chars]
 
         response = self._model.generate_content(
             full_prompt,

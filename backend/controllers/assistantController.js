@@ -4,6 +4,47 @@ const { retrieveForIntent } = require('../services/retrievalService');
 const asyncHandler = require('../utils/asyncHandler');
 
 const DOC_CHUNK_INTENTS = new Set(['general', 'faq']);
+const MAX_MESSAGE_CHARS = 1200;
+const MAX_HISTORY_TURNS = 12;
+const MAX_HISTORY_CONTENT_CHARS = 800;
+const MAX_DOC_CHUNKS = 4;
+
+const normalizeText = (value, maxChars) =>
+  String(value || '')
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, ' ')
+    .trim()
+    .slice(0, maxChars);
+
+const sanitizeConversationHistory = (history) => {
+  if (!Array.isArray(history)) return [];
+  return history.slice(-MAX_HISTORY_TURNS).map((turn) => ({
+    role: turn?.role === 'assistant' ? 'assistant' : 'user',
+    content: normalizeText(turn?.content, MAX_HISTORY_CONTENT_CHARS),
+  })).filter((turn) => turn.content.length > 0);
+};
+
+const sanitizeDocChunks = (chunks) => {
+  if (!Array.isArray(chunks)) return null;
+  return chunks.slice(0, MAX_DOC_CHUNKS).map((chunk) => ({
+    docId: normalizeText(chunk?.docId, 120),
+    title: normalizeText(chunk?.title, 160),
+    excerpt: normalizeText(chunk?.excerpt, 800),
+  })).filter((chunk) => chunk.excerpt.length > 0);
+};
+
+const sanitizeRetrievedData = (data) => {
+  if (!data || typeof data !== 'object') return null;
+  try {
+    const raw = JSON.stringify(data);
+    if (raw.length <= 8000) return data;
+    return {
+      _truncated: true,
+      payload: raw.slice(0, 8000),
+    };
+  } catch {
+    return null;
+  }
+};
 
 function buildDocSources(chunks) {
   if (!Array.isArray(chunks) || chunks.length === 0) return [];
@@ -27,28 +68,38 @@ function buildDocSources(chunks) {
 
 const postAssistantChat = asyncHandler(async (req, res) => {
   const { message, sessionId, conversationHistory } = req.body;
+  const safeMessage = normalizeText(message, MAX_MESSAGE_CHARS);
+  if (!safeMessage) {
+    return res.status(400).json({
+      success: false,
+      message: 'Message is required',
+    });
+  }
+
   const walletAddress = req.user?.walletAddress || null;
 
-  const { intent, period } = classifyIntent(message);
+  const { intent, period } = classifyIntent(safeMessage);
   const { retrieved_data, sources } = await retrieveForIntent(intent, { walletAddress, period });
 
   let docChunks = null;
   let docSources = [];
   if (DOC_CHUNK_INTENTS.has(intent)) {
-    const chunks = await fetchDocChunks(message);
+    const chunks = await fetchDocChunks(safeMessage);
     if (chunks.length > 0) {
-      docChunks = chunks;
+      docChunks = sanitizeDocChunks(chunks);
       docSources = buildDocSources(chunks);
     }
   }
 
+  const safeHistory = sanitizeConversationHistory(conversationHistory);
+
   let chatResult;
   try {
     chatResult = await postChat({
-      message,
-      retrieved_data,
+      message: safeMessage,
+      retrieved_data: sanitizeRetrievedData(retrieved_data),
       doc_chunks: docChunks,
-      conversation_history: Array.isArray(conversationHistory) ? conversationHistory.slice(-12) : [],
+      conversation_history: safeHistory,
     });
   } catch (error) {
     if (error instanceof GenaiServiceError) {

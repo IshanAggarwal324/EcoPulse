@@ -23,6 +23,7 @@ class Settings:
     genai_model: str = "gemini-2.0-flash"
     genai_enabled: bool = True
     genai_max_tokens: int = 800
+    genai_max_input_chars: int = 12000
 
     embedding_model: str = "text-embedding-004"
     docs_dir: str = ""
@@ -51,6 +52,7 @@ def get_settings() -> Settings:
         genai_enabled=os.getenv("GENAI_ENABLED", "true").lower()
         in ("1", "true", "yes"),
         genai_max_tokens=int(os.getenv("GENAI_MAX_TOKENS", "800")),
+        genai_max_input_chars=int(os.getenv("GENAI_MAX_INPUT_CHARS", "12000")),
         embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-004"),
         docs_dir=os.getenv("DOCS_DIR", ""),
         embedding_cache_path=os.getenv("EMBEDDING_CACHE_PATH", ""),

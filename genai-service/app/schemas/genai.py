@@ -87,12 +87,18 @@ class ReportNarrateResponse(BaseModel):
 class DocChunk(BaseModel):
     doc_id: str = Field(
         alias="docId",
+        min_length=1,
+        max_length=120,
         description="Source document identifier, e.g. 'trading-guide.md'",
     )
     title: str = Field(
+        min_length=1,
+        max_length=160,
         description="Section or document title",
     )
     excerpt: str = Field(
+        min_length=1,
+        max_length=1200,
         description="Relevant text excerpt from the document",
     )
 
@@ -105,6 +111,8 @@ class ConversationTurn(BaseModel):
         pattern=r"^(user|assistant)$",
     )
     content: str = Field(
+        min_length=1,
+        max_length=1200,
         description="Message text for this turn",
     )
 
@@ -112,6 +120,7 @@ class ConversationTurn(BaseModel):
 class AssistantChatRequest(BaseModel):
     message: str = Field(
         min_length=1,
+        max_length=1200,
         description="User's chat message",
     )
     retrieved_data: Optional[dict[str, Any]] = Field(
@@ -122,11 +131,13 @@ class AssistantChatRequest(BaseModel):
     doc_chunks: Optional[list[DocChunk]] = Field(
         default=None,
         alias="doc_chunks",
+        max_length=6,
         description="Optional document RAG excerpts for FAQ-style questions",
     )
     conversation_history: Optional[list[ConversationTurn]] = Field(
         default=None,
         alias="conversation_history",
+        max_length=12,
         description="Prior conversation turns for multi-turn context",
     )
 
