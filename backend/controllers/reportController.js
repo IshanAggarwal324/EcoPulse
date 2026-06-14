@@ -101,7 +101,11 @@ const generateReport = asyncHandler(async (req, res) => {
     narrateResult = await postNarrate(reportData, null);
   } catch (error) {
     if (error instanceof GenaiServiceError) {
-      return res.status(error.status).json({ success: false, message: error.message, details: error.details });
+      return res.status(error.status).json({
+        success: false,
+        message: error.message,
+        ...(error.details ? { details: error.details } : {}),
+      });
     }
     throw error;
   }

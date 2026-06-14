@@ -1,5 +1,10 @@
 const GENAI_SERVICE_URL = process.env.GENAI_SERVICE_URL || 'http://localhost:8001';
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !INTERNAL_SERVICE_API_KEY) {
+  throw new Error('INTERNAL_SERVICE_API_KEY must be set in production');
+}
 
 class GenaiServiceError extends Error {
   constructor(message, status, details) {
@@ -9,6 +14,12 @@ class GenaiServiceError extends Error {
     this.details = details;
   }
 }
+
+const sanitizeDetails = (details) => {
+  if (!details) return undefined;
+  if (isProduction) return undefined;
+  return String(details).slice(0, 500);
+};
 
 async function postToGenaiService(path, body) {
   const url = `${GENAI_SERVICE_URL}${path}`;
@@ -33,7 +44,7 @@ async function sendGenaiRequest(fn, retries = MAX_RETRIES) {
   try {
     response = await fn();
   } catch (error) {
-    throw new GenaiServiceError('GenAI service unavailable', 503, error.message);
+    throw new GenaiServiceError('GenAI service unavailable', 503, sanitizeDetails(error.message));
   }
 
   if (response.status === 429 && retries > 0) {
@@ -46,7 +57,7 @@ async function sendGenaiRequest(fn, retries = MAX_RETRIES) {
     throw new GenaiServiceError(
       'Error communicating with GenAI service',
       response.status,
-      errorText,
+      sanitizeDetails(errorText),
     );
   }
 

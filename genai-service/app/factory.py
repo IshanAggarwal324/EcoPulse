@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    is_production = os.getenv("NODE_ENV") == "production"
     if os.getenv("NODE_ENV") == "production" and not settings.internal_api_key:
         raise RuntimeError("INTERNAL_SERVICE_API_KEY must be configured in production")
 
@@ -27,6 +28,9 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         description="GenAI service for EcoPulse — chat assistant and report narration via Gemini",
         version=settings.app_version,
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
     )
 
     app.add_middleware(

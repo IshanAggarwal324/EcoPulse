@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    is_production = os.getenv("NODE_ENV") == "production"
     if os.getenv("NODE_ENV") == "production" and not settings.internal_api_key:
         raise RuntimeError("INTERNAL_SERVICE_API_KEY must be configured in production")
 
@@ -32,6 +33,9 @@ def create_app() -> FastAPI:
         description="AI Service for predicting energy generation and consumption using LSTM",
         version=settings.app_version,
         lifespan=lifespan,
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
     )
 
     app.middleware("http")(request_logging_middleware)

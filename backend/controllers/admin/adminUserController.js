@@ -6,6 +6,7 @@ const asyncHandler = require('../../utils/asyncHandler');
 const auditService = require('../../services/auditService');
 
 const VALID_ROLES = ['user', 'admin', 'moderator'];
+const escapeRegex = (input) => String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const toAdminUserResponse = (user, extra = {}) => ({
   _id: user._id,
@@ -44,7 +45,7 @@ const listUsers = asyncHandler(async (req, res) => {
   }
 
   if (search) {
-    const term = search.trim();
+    const term = escapeRegex(search.trim()).slice(0, 64);
     filter.$or = [
       { name: { $regex: term, $options: 'i' } },
       { email: { $regex: term, $options: 'i' } },

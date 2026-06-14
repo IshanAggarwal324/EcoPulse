@@ -16,7 +16,7 @@ const setIo = (socketIo) => {
 
 const emit = (event, payload) => {
   if (!io) return;
-  io.emit(event, payload);
+  io.to('authenticated').emit(event, payload);
 };
 
 const emitNewReading = (reading) => {

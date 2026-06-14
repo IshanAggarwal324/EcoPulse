@@ -4,6 +4,17 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !INTERNAL_SERVICE_API_KEY) {
+  throw new Error('INTERNAL_SERVICE_API_KEY must be set in production');
+}
+
+const safeUpstreamErrorDetails = async (response) => {
+  if (isProduction) return undefined;
+  const text = await response.text();
+  return text.slice(0, 500);
+};
 
 const buildInternalHeaders = () => ({
   'Content-Type': 'application/json',
@@ -84,16 +95,16 @@ const getForecast = asyncHandler(async (req, res) => {
       return res.status(503).json({
         success: false,
         message: 'AI service unavailable',
-        details: error.message,
+        ...(!isProduction ? { details: error.message } : {}),
       });
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorDetails = await safeUpstreamErrorDetails(response);
       return res.status(response.status).json({
         success: false,
         message: 'Error communicating with AI service',
-        details: errorText,
+        ...(errorDetails ? { details: errorDetails } : {}),
       });
     }
 
@@ -140,16 +151,16 @@ const getForecast = asyncHandler(async (req, res) => {
       return res.status(503).json({
         success: false,
         message: 'AI service unavailable',
-        details: error.message,
+        ...(!isProduction ? { details: error.message } : {}),
       });
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorDetails = await safeUpstreamErrorDetails(response);
       return res.status(response.status).json({
         success: false,
         message: 'Error communicating with AI service',
-        details: errorText,
+        ...(errorDetails ? { details: errorDetails } : {}),
       });
     }
 
@@ -182,16 +193,16 @@ const getForecast = asyncHandler(async (req, res) => {
     return res.status(503).json({
       success: false,
       message: 'AI service unavailable',
-      details: error.message,
+      ...(!isProduction ? { details: error.message } : {}),
     });
   }
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorDetails = await safeUpstreamErrorDetails(response);
     return res.status(response.status).json({
       success: false,
       message: 'Error communicating with AI service',
-      details: errorText,
+      ...(errorDetails ? { details: errorDetails } : {}),
     });
   }
 

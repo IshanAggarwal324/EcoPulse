@@ -1,4 +1,15 @@
 const EnergyNode = require('../models/EnergyNode');
+const ALLOWED_NODE_FIELDS = new Set(['name', 'nodeType', 'sourceType', 'status', 'location', 'userId']);
+
+const sanitizeNodePayload = (payload = {}, { allowUserId = true } = {}) => {
+  const safe = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!ALLOWED_NODE_FIELDS.has(key)) continue;
+    if (!allowUserId && key === 'userId') continue;
+    safe[key] = value;
+  }
+  return safe;
+};
 
 // @desc    Create a new node
 // @route   POST /api/v1/nodes
@@ -7,7 +18,8 @@ const createNode = async (req, res) => {
   try {
     // Note: userId should ideally come from req.user (auth middleware).
     // For now we allow it in body or we can hardcode a mock user for testing if omitted.
-    const { name, nodeType, sourceType, location, userId } = req.body;
+    const safeBody = sanitizeNodePayload(req.body, { allowUserId: true });
+    const { name, nodeType, sourceType, location, userId } = safeBody;
 
     if (!name || !nodeType || !sourceType || !userId) {
       return res.status(400).json({
@@ -85,7 +97,8 @@ const getNodeById = async (req, res) => {
 // @access  Public
 const updateNode = async (req, res) => {
   try {
-    const node = await EnergyNode.findByIdAndUpdate(req.params.id, req.body, {
+    const safeUpdates = sanitizeNodePayload(req.body, { allowUserId: false });
+    const node = await EnergyNode.findByIdAndUpdate(req.params.id, safeUpdates, {
       new: true,
       runValidators: true,
     });
