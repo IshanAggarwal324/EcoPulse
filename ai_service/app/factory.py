@@ -27,6 +27,10 @@ def create_app() -> FastAPI:
     is_production = os.getenv("NODE_ENV") == "production"
     if os.getenv("NODE_ENV") == "production" and not settings.internal_api_key:
         raise RuntimeError("INTERNAL_SERVICE_API_KEY must be configured in production")
+    if is_production and not settings.cors_origins:
+        raise RuntimeError("AI_CORS_ORIGINS must be configured in production")
+    if is_production and any(origin == "*" for origin in settings.cors_origins):
+        raise RuntimeError("AI_CORS_ORIGINS cannot contain '*' in production")
 
     app = FastAPI(
         title=settings.app_name,
