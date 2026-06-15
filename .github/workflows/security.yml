@@ -1,0 +1,78 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  secret-scan:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  node-audit:
+    name: Node Dependency Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: [backend, ecopulse, genai-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+      - name: Install dependencies
+        run: npm ci --prefix ${{ matrix.dir }} || npm install --prefix ${{ matrix.dir }}
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate --prefix ${{ matrix.dir }}
+        continue-on-error: true
+
+  python-audit:
+    name: Python Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Audit ai_service dependencies
+        run: |
+          if [ -f ai_service/requirements.txt ]; then
+            pip-audit -r ai_service/requirements.txt
+          fi
+        continue-on-error: true
+
+  env-leak-check:
+    name: Check for committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for .env files tracked in git
+        run: |
+          if git ls-files | grep -E '\.env($|\.)' | grep -v '.example'; then
+            echo "::error::Secret .env files are tracked in git!"
+            exit 1
+          fi
+          echo "No tracked .env files found."
+      - name: Check for hardcoded private keys
+        run: |
+          if git grep -n "PRIVATE_KEY=0x" -- ':!*.example' ':!docs/*' ':!.kilo/*'; then
+            echo "::error::Hardcoded private key found!"
+            exit 1
+          fi
+          echo "No hardcoded private keys found."

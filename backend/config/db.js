@@ -1,19 +1,31 @@
 const mongoose = require('mongoose');
 
 const connectDB = async () => {
+  const uri = process.env.MONGO_URI;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!uri || uri.includes('<YOUR_MONGODB_ATLAS_CONNECTION_STRING>')) {
+    const message = isProduction
+      ? 'MONGO_URI must be configured in production'
+      : 'MONGO_URI is not set. The database is required to start the server.';
+    throw new Error(message);
+  }
+
   try {
-    if (!process.env.MONGO_URI || process.env.MONGO_URI.includes('<YOUR_MONGODB_ATLAS_CONNECTION_STRING>')) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('MONGO_URI must be configured in production');
-      }
-      console.warn('MongoDB connection skipped: MONGO_URI is not set in .env');
-      return;
-    }
-    const conn = await mongoose.connect(process.env.MONGO_URI);
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB runtime error:', err.message);
+    });
+
+    const conn = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      retryWrites: true,
+    });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    return conn;
   } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error.message}`);
-    process.exit(1); // Exit process with failure
+    throw new Error(`Failed to connect to MongoDB: ${error.message}`);
   }
 };
 

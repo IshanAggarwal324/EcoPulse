@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME_MS = 15 * 60 * 1000;
+const EMAIL_VERIFICATION_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 const userSchema = new mongoose.Schema(
   {
@@ -26,7 +28,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters'],
+      minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
     walletAddress: {
@@ -84,6 +86,21 @@ const userSchema = new mongoose.Schema(
       default: 0,
       select: false,
     },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      select: false,
+    },
+    emailVerificationToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    emailVerificationExpires: {
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -108,6 +125,22 @@ userSchema.methods.incLoginAttempts = function () {
 userSchema.methods.resetLoginAttempts = function () {
   return this.updateOne({ $set: { loginAttempts: 0 }, $unset: { lockUntil: 1 } });
 };
+
+userSchema.statics.generateEmailVerificationToken = function () {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+  return {
+    rawToken,
+    hashed,
+    expires: new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_MS),
+  };
+};
+
+userSchema.statics.hashEmailVerificationToken = function (rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
+};
+
+userSchema.statics.EMAIL_VERIFICATION_EXPIRY_MS = EMAIL_VERIFICATION_EXPIRY_MS;
 
 userSchema.index({ email: 1 });
 userSchema.index({ isBanned: 1 });

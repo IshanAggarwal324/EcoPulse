@@ -23,4 +23,14 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { listAuditLogs };
+const verifyAuditIntegrity = asyncHandler(async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '1000', 10), 10000);
+  const result = await auditService.verifyChain(limit);
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
+module.exports = { listAuditLogs, verifyAuditIntegrity };

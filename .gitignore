@@ -1,7 +1,44 @@
+# ── Environment & secrets ──
 .env
-node_modules
-.*json
-.*jsonl
-.kiloignore
-ignition/deployments
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── Dependencies ──
+node_modules/
+
+# ── Build artifacts ──
+dist/
+build/
+.cache/
+coverage/
+
+# ── Logs ──
+*.log
+logs/
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ── Hardhat / blockchain ──
+ignition/deployments/
+cache/
+artifacts/
+typechain-types/
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
 .kilo
+.kiloignore

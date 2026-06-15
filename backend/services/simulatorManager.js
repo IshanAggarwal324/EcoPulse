@@ -8,7 +8,8 @@ let startedAt = null;
 const recentReadings = [];
 let readingsEmitted = 0;
 
-const isEmbeddedEnabled = () => process.env.SIMULATOR_EMBEDDED === 'true';
+const isEmbeddedEnabled = () =>
+  process.env.SIMULATOR_EMBEDDED === 'true' && process.env.NODE_ENV !== 'production';
 
 const pushRecent = (reading) => {
   recentReadings.push(reading);

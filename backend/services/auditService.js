@@ -25,6 +25,11 @@ const log = async ({
       severity,
     };
 
+    const prevHash = await AuditLog.getLastHash();
+    entry.prevHash = prevHash;
+    entry.createdAt = new Date();
+    entry.entryHash = AuditLog.computeHash(entry, prevHash);
+
     await AuditLog.create(entry);
   } catch (error) {
     console.error('[Audit] Failed to write audit log:', error.message);
@@ -89,4 +94,4 @@ const query = async ({ filters = {}, page = 1, limit = 20 } = {}) => {
   };
 };
 
-module.exports = { log, query, resolveActorFromWallet };
+module.exports = { log, query, resolveActorFromWallet, verifyChain: (...args) => AuditLog.verifyChain(...args) };

@@ -8,9 +8,12 @@ const {
   getMe,
   updateProfile,
   updatePassword,
+  verifyEmail,
+  resendVerification,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const { createAuthRateLimiter } = require('../middleware/rateLimit');
+const { captchaVerify } = require('../middleware/captchaVerify');
 
 const registerLimiter = createAuthRateLimiter({
   windowMs: 15 * 60 * 1000,
@@ -30,10 +33,18 @@ const refreshLimiter = createAuthRateLimiter({
   message: 'Too many token refresh attempts. Please try again later.',
 });
 
-router.post('/register', registerLimiter, register);
+const resendVerificationLimiter = createAuthRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 3,
+  message: 'Too many verification email requests. Please try again later.',
+});
+
+router.post('/register', registerLimiter, captchaVerify, register);
 router.post('/login', loginLimiter, login);
 router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', logout);
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerificationLimiter, resendVerification);
 
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);

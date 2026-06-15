@@ -54,6 +54,14 @@ const validateEnvironment = () => {
     if (!process.env.INTERNAL_SERVICE_API_KEY) {
       issues.push('INTERNAL_SERVICE_API_KEY must be set in production');
     }
+
+    if (!process.env.CAPTCHA_SECRET && !process.env.RECAPTCHA_SECRET && !process.env.HCAPTCHA_SECRET && !process.env.TURNSTILE_SECRET) {
+      console.warn('WARNING: No CAPTCHA provider configured in production — registration is vulnerable to bots');
+    }
+
+    if (process.env.REGISTRATION_OPEN === undefined) {
+      console.warn('TIP: Set REGISTRATION_OPEN=false to close registration if not accepting new users');
+    }
   }
 
   if (issues.length > 0) {

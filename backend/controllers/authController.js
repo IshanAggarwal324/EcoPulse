@@ -53,6 +53,7 @@ const toUserResponse = (user) => ({
   walletAddress: user.walletAddress,
   role: user.role,
   isBanned: user.isBanned,
+  isEmailVerified: user.isEmailVerified ?? false,
   preferences: user.preferences,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
@@ -61,6 +62,14 @@ const toUserResponse = (user) => ({
 
 const register = asyncHandler(async (req, res) => {
   const { name, email, password } = req.body;
+
+  if (process.env.REGISTRATION_OPEN === 'false') {
+    return res.status(403).json({
+      success: false,
+      message: 'Registration is currently closed. Please contact an administrator.',
+      code: 'REGISTRATION_CLOSED',
+    });
+  }
 
   const errors = collectErrors([
     validateName(name),
@@ -85,19 +94,40 @@ const register = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
+  const { rawToken, hashed, expires } = User.generateEmailVerificationToken();
+
   const user = await User.create({
     name: name.trim(),
     email: email.toLowerCase().trim(),
     password: hashedPassword,
     walletAddress: null,
+    isEmailVerified: false,
+    emailVerificationToken: hashed,
+    emailVerificationExpires: expires,
   });
+
+  // Attempt to send verification email; do not block registration if email is unconfigured.
+  try {
+    const { isConfigured: emailConfigured, sendEmail, buildVerificationEmailBody, buildVerificationUrl } =
+      require('../services/emailService');
+    if (emailConfigured()) {
+      const verificationUrl = buildVerificationUrl(rawToken);
+      await sendEmail({
+        to: user.email,
+        subject: 'Verify Your EcoPulse Account',
+        html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+      });
+    }
+  } catch (emailErr) {
+    console.warn('Verification email failed to send:', emailErr.message);
+  }
 
   const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
   setAuthCookies(res, tokens);
 
   res.status(201).json({
     success: true,
-    message: 'User registered successfully',
+    message: 'User registered successfully. Please verify your email address.',
     data: { user: toUserResponse(user), ...tokens },
   });
 });
@@ -105,7 +135,7 @@ const register = asyncHandler(async (req, res) => {
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const errors = collectErrors([validateEmail(email), validatePassword(password)]);
+  const errors = collectErrors([validateEmail(email), validatePassword(password, { requireComplexity: false })]);
   if (errors) {
     return res.status(400).json({ success: false, message: 'Validation failed', errors });
   }
@@ -262,17 +292,38 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
 
   if (preferences !== undefined) {
-    updates.preferences = {
-      ...req.user.preferences?.toObject?.() || req.user.preferences || {},
-      ...preferences,
-    };
-    if (updates.preferences.energyUnit && !['kWh', 'MWh'].includes(updates.preferences.energyUnit)) {
+    const ALLOWED_PREFS = ['emailNotifications', 'gridAlerts', 'energyUnit'];
+    const currentPrefs = req.user.preferences?.toObject?.() || req.user.preferences || {};
+    const sanitizedPrefs = {};
+    for (const key of ALLOWED_PREFS) {
+      if (key in preferences) {
+        sanitizedPrefs[key] = preferences[key];
+      } else {
+        sanitizedPrefs[key] = currentPrefs[key];
+      }
+    }
+    if (sanitizedPrefs.energyUnit && !['kWh', 'MWh'].includes(sanitizedPrefs.energyUnit)) {
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
         errors: ['energyUnit must be kWh or MWh'],
       });
     }
+    if ('emailNotifications' in sanitizedPrefs && typeof sanitizedPrefs.emailNotifications !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: ['emailNotifications must be a boolean'],
+      });
+    }
+    if ('gridAlerts' in sanitizedPrefs && typeof sanitizedPrefs.gridAlerts !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: ['gridAlerts must be a boolean'],
+      });
+    }
+    updates.preferences = sanitizedPrefs;
   }
 
   const user = await User.findByIdAndUpdate(req.user._id, updates, {
@@ -291,8 +342,8 @@ const updatePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   const errors = collectErrors([
-    validatePassword(currentPassword),
-    validatePassword(newPassword, { minLength: 8 }),
+    validatePassword(currentPassword, { requireComplexity: false }),
+    validatePassword(newPassword),
   ]);
 
   if (errors) {
@@ -351,6 +402,89 @@ const logout = asyncHandler(async (req, res) => {
   });
 });
 
+const verifyEmail = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  if (!token || typeof token !== 'string') {
+    return res.status(400).json({ success: false, message: 'Verification token is required' });
+  }
+
+  const hashedToken = User.hashEmailVerificationToken(token);
+
+  const user = await User.findOne({
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: { $gt: new Date() },
+  }).select('+emailVerificationToken +emailVerificationExpires');
+
+  if (!user) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid or expired verification token',
+      code: 'VERIFICATION_TOKEN_INVALID',
+    });
+  }
+
+  user.isEmailVerified = true;
+  user.emailVerificationToken = null;
+  user.emailVerificationExpires = null;
+  await user.save();
+
+  await auditService.log({
+    actor: user,
+    action: 'EMAIL_VERIFIED',
+    resourceType: 'user',
+    resourceId: user._id,
+    req,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Email verified successfully',
+    data: { user: toUserResponse(user) },
+  });
+});
+
+const resendVerification = asyncHandler(async (req, res) => {
+  const email = (req.body?.email || req.user?.email || '').toLowerCase().trim();
+
+  if (!email) {
+    return res.status(400).json({ success: false, message: 'Email is required' });
+  }
+
+  const user = await User.findOne({ email }).select('+isEmailVerified +emailVerificationToken');
+
+  if (!user) {
+    // Avoid enumeration — respond generically.
+    return res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+  }
+
+  if (user.isEmailVerified) {
+    return res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+  }
+
+  const { rawToken, hashed, expires } = User.generateEmailVerificationToken();
+  user.emailVerificationToken = hashed;
+  user.emailVerificationExpires = expires;
+  await user.save();
+
+  try {
+    const { isConfigured: emailConfigured, sendEmail, buildVerificationEmailBody, buildVerificationUrl } =
+      require('../services/emailService');
+    if (emailConfigured()) {
+      const verificationUrl = buildVerificationUrl(rawToken);
+      await sendEmail({
+        to: user.email,
+        subject: 'Verify Your EcoPulse Account',
+        html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+      });
+    }
+  } catch (emailErr) {
+    console.warn('Resend verification email failed:', emailErr.message);
+  }
+
+  res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+});
+
 module.exports = {
   register,
   login,
@@ -359,4 +493,6 @@ module.exports = {
   getMe,
   updateProfile,
   updatePassword,
+  verifyEmail,
+  resendVerification,
 };

@@ -49,6 +49,14 @@ function getProvider() {
 
 const { PERIOD_MAP } = require('../utils/periodHelpers');
 
+const escapeHtml = (input) =>
+  String(input)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+
 const PERIOD_SUBJECT_MAP = {
   '7d': 'Last 7 days',
   '14d': 'Last 14 days',
@@ -61,11 +69,12 @@ function buildReportEmailSubject(period) {
 }
 
 function buildReportEmailBody({ userName, period }) {
-  const label = PERIOD_SUBJECT_MAP[period] || PERIOD_MAP[period]?.label || period;
+  const label = escapeHtml(PERIOD_SUBJECT_MAP[period] || PERIOD_MAP[period]?.label || period);
+  const safeName = userName ? escapeHtml(userName) : '';
   return `
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #2e7d32;">EcoPulse Energy Report</h2>
-      <p>Hello${userName ? ' ' + userName : ''},</p>
+      <p>Hello${safeName ? ' ' + safeName : ''},</p>
       <p>Please find your detailed energy report for <strong>${label}</strong> attached to this email as a PDF.</p>
       <p>The report covers your personal energy data, grid-wide statistics, and trading activity.</p>
       <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
@@ -99,6 +108,37 @@ async function sendReport({ to, subject, html, pdfBuffer, filename }) {
   return result;
 }
 
+async function sendEmail({ to, subject, html }) {
+  if (!transporter) {
+    throw new Error('Email transport not configured');
+  }
+  return transporter.sendMail({ from: fromAddress, to, subject, html });
+}
+
+function buildVerificationEmailBody({ userName, verificationUrl }) {
+  const safeName = userName ? escapeHtml(userName) : 'there';
+  const safeUrl = escapeHtml(verificationUrl);
+  return `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #2e7d32;">Verify Your EcoPulse Account</h2>
+      <p>Hello ${safeName},</p>
+      <p>Please verify your email address by clicking the button below:</p>
+      <p style="margin: 24px 0;">
+        <a href="${safeUrl}" style="background: #2e7d32; color: #fff; padding: 12px 28px; text-decoration: none; border-radius: 6px; display: inline-block;">Verify Email</a>
+      </p>
+      <p style="font-size: 13px; color: #666;">Or copy this link into your browser:<br /><a href="${safeUrl}">${safeUrl}</a></p>
+      <p style="font-size: 13px; color: #666;">This link expires in 24 hours. If you did not create an account, you can safely ignore this email.</p>
+      <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+      <p style="font-size: 12px; color: #888;">This email was sent by EcoPulse.</p>
+    </div>
+  `.trim();
+}
+
+function buildVerificationUrl(token) {
+  const base = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'https://app.ecopulse.local';
+  return `${base.replace(/\/+$/, '')}/verify-email?token=${token}`;
+}
+
 function canSendEmail(user) {
   if (!user || !user.email) {
     return { allowed: false, reason: 'No email address on file.' };
@@ -109,4 +149,4 @@ function canSendEmail(user) {
   return { allowed: true };
 }
 
-module.exports = { transporter, fromAddress, isConfigured, getProvider, sendReport, buildReportEmailSubject, buildReportEmailBody, canSendEmail };
+module.exports = { transporter, fromAddress, isConfigured, getProvider, sendReport, sendEmail, buildReportEmailSubject, buildReportEmailBody, buildVerificationEmailBody, buildVerificationUrl, canSendEmail };

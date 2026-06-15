@@ -17,8 +17,8 @@ router.use(createAdminRateLimiter());
 
 const adminOnly = authorize('admin');
 
-router.get('/users', adminUserController.listUsers);
-router.get('/users/:id', adminUserController.getUser);
+router.get('/users', adminOnly, adminUserController.listUsers);
+router.get('/users/:id', adminOnly, adminUserController.getUser);
 router.patch('/users/:id/role', adminOnly, adminUserController.setRole);
 router.patch('/users/:id/ban', adminOnly, adminUserController.banUser);
 router.patch('/users/:id/unban', adminOnly, adminUserController.unbanUser);
@@ -35,11 +35,12 @@ router.get('/trades/:txHash', adminTradeController.getTrade);
 router.get('/sync/status', adminSyncController.getSyncStatus);
 router.post('/sync/force', adminOnly, adminSyncController.forceSync);
 
-router.get('/report-jobs', adminReportJobController.listReportJobs);
-router.get('/report-jobs/:id', adminReportJobController.getReportJob);
+router.get('/report-jobs', adminOnly, adminReportJobController.listReportJobs);
+router.get('/report-jobs/:id', adminOnly, adminReportJobController.getReportJob);
 router.post('/report-jobs/:id/retry', adminOnly, adminReportJobController.retryReportJob);
 
-router.get('/audit-logs', adminAuditController.listAuditLogs);
+router.get('/audit-logs', adminOnly, adminAuditController.listAuditLogs);
+router.get('/audit-logs/verify', adminOnly, adminAuditController.verifyAuditIntegrity);
 
 router.get('/health', adminHealthController.getHealth);
 

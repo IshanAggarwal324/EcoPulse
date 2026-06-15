@@ -37,6 +37,12 @@ const mapKnownError = (err) => {
 
   const statusCode = err?.statusCode || (typeof err?.status === 'number' ? err.status : 500);
   const code = err?.code && typeof err.code === 'string' ? err.code : 'INTERNAL_ERROR';
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction && statusCode >= 500) {
+    return new ApiError('Internal server error', 500, 'INTERNAL_ERROR', null);
+  }
+
   return new ApiError(err?.message || 'Internal server error', statusCode, code, err?.details || null);
 };
 
@@ -44,9 +50,15 @@ const errorHandler = (err, req, res, next) => {
   const normalized = mapKnownError(err);
   const statusCode = normalized.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
   const requestId = req.headers['x-request-id'] || null;
+  const isProduction = process.env.NODE_ENV === 'production';
 
   const logPrefix = requestId ? `[Error][${requestId}]` : '[Error]';
-  console.error(`${logPrefix} ${normalized.message}`);
+
+  if (statusCode >= 500) {
+    console.error(`${logPrefix} ${normalized.message}`, isProduction ? err.stack : '');
+  } else {
+    console.error(`${logPrefix} ${normalized.message}`);
+  }
 
   res.status(statusCode).json({
     success: false,

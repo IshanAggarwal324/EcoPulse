@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const VALID_SEVERITIES = ['info', 'warn', 'critical'];
 const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator'];
@@ -48,6 +49,16 @@ const auditLogSchema = new mongoose.Schema(
       enum: VALID_SEVERITIES,
       default: 'info',
     },
+    prevHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    entryHash: {
+      type: String,
+      default: null,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -64,5 +75,53 @@ const ttlDays = parseInt(process.env.AUDIT_LOG_TTL_DAYS || '90', 10);
 if (Number.isFinite(ttlDays) && ttlDays > 0) {
   auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: ttlDays * 86400 });
 }
+
+auditLogSchema.statics.computeHash = function (entry, prevHash) {
+  const payload = JSON.stringify({
+    actorId: entry.actorId?.toString() || null,
+    actorEmail: entry.actorEmail || null,
+    actorRole: entry.actorRole || null,
+    action: entry.action,
+    resourceType: entry.resourceType,
+    resourceId: entry.resourceId || null,
+    severity: entry.severity,
+    ip: entry.ip || null,
+    ts: entry.createdAt ? entry.createdAt.toISOString() : new Date().toISOString(),
+    prev: prevHash || '',
+  });
+  return crypto.createHash('sha256').update(payload).digest('hex');
+};
+
+auditLogSchema.statics.getLastHash = async function () {
+  const last = await this.findOne({}, { entryHash: 1 })
+    .sort({ createdAt: -1, _id: -1 })
+    .select('+entryHash')
+    .lean();
+  return last?.entryHash || null;
+};
+
+auditLogSchema.statics.verifyChain = async function (limit = 1000) {
+  const entries = await this.find({})
+    .sort({ createdAt: 1, _id: 1 })
+    .limit(limit)
+    .select('+prevHash +entryHash')
+    .lean();
+
+  const broken = [];
+  let expectedPrev = null;
+
+  for (const entry of entries) {
+    const computed = this.computeHash(entry, entry.prevHash);
+    if (entry.entryHash !== computed) {
+      broken.push({ id: entry._id, action: entry.action, reason: 'hash_mismatch' });
+    }
+    if (entry.prevHash !== expectedPrev) {
+      broken.push({ id: entry._id, action: entry.action, reason: 'chain_broken' });
+    }
+    expectedPrev = entry.entryHash;
+  }
+
+  return { totalChecked: entries.length, brokenCount: broken.length, broken };
+};
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

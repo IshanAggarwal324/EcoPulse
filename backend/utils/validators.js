@@ -7,9 +7,16 @@ const validateEmail = (email) => {
   return null;
 };
 
-const validatePassword = (password, { minLength = 6 } = {}) => {
+const validatePassword = (password, { minLength = 8, requireComplexity = true } = {}) => {
   if (!password) return 'Password is required';
+  if (typeof password !== 'string') return 'Password must be a string';
   if (password.length < minLength) return `Password must be at least ${minLength} characters`;
+  if (password.length > 128) return 'Password cannot exceed 128 characters';
+  if (requireComplexity) {
+    if (!/[a-z]/.test(password)) return 'Password must contain at least one lowercase letter';
+    if (!/[A-Z]/.test(password)) return 'Password must contain at least one uppercase letter';
+    if (!/[0-9]/.test(password)) return 'Password must contain at least one number';
+  }
   return null;
 };
 

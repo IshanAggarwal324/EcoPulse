@@ -12,7 +12,7 @@ describe("Energy System", function () {
     [owner, seller, buyer] = await ethers.getSigners();
 
     const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
-    carbonCredit = await CarbonCredit.deploy();
+    carbonCredit = await CarbonCredit.deploy(ethers.parseEther("1000000000"));
     await carbonCredit.waitForDeployment();
 
     const EnergyTrading = await ethers.getContractFactory("EnergyTrading");
@@ -24,6 +24,30 @@ describe("Energy System", function () {
     it("Should mint tokens correctly", async function () {
       await carbonCredit.mint(buyer.address, ethers.parseEther("100"));
       expect(await carbonCredit.balanceOf(buyer.address)).to.equal(ethers.parseEther("100"));
+    });
+
+    it("Should enforce the supply cap", async function () {
+      await expect(
+        carbonCredit.mint(buyer.address, ethers.parseEther("1000000001"))
+      ).to.be.revertedWithCustomError(carbonCredit, "SupplyCapExceeded");
+    });
+
+    it("Should reject zero-amount mint", async function () {
+      await expect(
+        carbonCredit.mint(buyer.address, 0)
+      ).to.be.revertedWithCustomError(carbonCredit, "InvalidMaxSupply");
+    });
+
+    it("Should track totalMinted and remainingSupply", async function () {
+      await carbonCredit.mint(buyer.address, ethers.parseEther("100"));
+      expect(await carbonCredit.totalMinted()).to.equal(ethers.parseEther("100"));
+      expect(await carbonCredit.remainingSupply()).to.equal(ethers.parseEther("999999900"));
+    });
+
+    it("Should emit Minted event", async function () {
+      await expect(carbonCredit.mint(buyer.address, ethers.parseEther("50")))
+        .to.emit(carbonCredit, "Minted")
+        .withArgs(buyer.address, ethers.parseEther("50"), ethers.parseEther("50"));
     });
   });
 

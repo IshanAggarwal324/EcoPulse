@@ -46,6 +46,13 @@ async function shouldUseDummyData(forceDummy, nodeId = null) {
   return readingCount < 30;
 }
 
+function buildDummyWarning(useDummyData) {
+  if (!useDummyData) return undefined;
+  return isProduction
+    ? 'FORECAST DATA IS SIMULATED — no real model or sufficient readings available. Do not use for decisions.'
+    : 'Forecast based on simulated/dummy data.';
+}
+
 function parseNodeIdsParam(nodeIdsParam) {
   if (!nodeIdsParam) return [];
   return nodeIdsParam
@@ -70,6 +77,12 @@ const getForecast = asyncHandler(async (req, res) => {
 
   // Multi-node batch forecast
   if (nodeIds.length > 0) {
+    if (nodeIds.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: 'A maximum of 50 node IDs is allowed per batch forecast request',
+      });
+    }
     const nodes = await EnergyNode.find({ _id: { $in: nodeIds } }).select('_id name');
     const nodeMap = new Map(nodes.map((n) => [n._id.toString(), n.name]));
 
@@ -119,6 +132,7 @@ const getForecast = asyncHandler(async (req, res) => {
     return res.status(200).json({
       forecasts,
       model_status: data.model_status,
+      warning: buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
         daysToPredict,
@@ -170,6 +184,7 @@ const getForecast = asyncHandler(async (req, res) => {
       ...data,
       nodeId,
       nodeName: node.name,
+      warning: buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
         daysToPredict,
@@ -210,6 +225,7 @@ const getForecast = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     ...data,
+    warning: buildDummyWarning(useDummyData),
     meta: {
       useDummyData,
       daysToPredict,

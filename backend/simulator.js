@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+if (process.env.NODE_ENV === 'production') {
+  console.error('[Simulator] FATAL: Simulator scripts must not run in production. Aborting.');
+  process.exit(1);
+}
+
 const connectDB = require('./config/db');
 const { SimulatorRunner } = require('./services/simulator');
 
