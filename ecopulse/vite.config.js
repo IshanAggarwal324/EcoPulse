@@ -34,4 +34,9 @@ export default defineConfig({
       transformMixedEsModules: true,
     },
   },
+  esbuild: {
+    supported: {
+      destructuring: true,
+    },
+  },
 })
