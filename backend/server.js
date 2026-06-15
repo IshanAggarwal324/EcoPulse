@@ -57,6 +57,7 @@ const startServer = async () => {
   app.use(requestLogger);
 
   app.get('/api/health', (req, res) => {
+    // Intentionally minimal public probe for load balancers — no internal state exposed.
     res.status(200).json({
       status: 'OK',
       timestamp: new Date().toISOString(),

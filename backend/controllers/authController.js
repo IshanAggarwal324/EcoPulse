@@ -54,6 +54,7 @@ const toUserResponse = (user) => ({
   role: user.role,
   isBanned: user.isBanned,
   isEmailVerified: user.isEmailVerified ?? false,
+  mustChangePassword: user.mustChangePassword ?? false,
   preferences: user.preferences,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
@@ -141,7 +142,7 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findOne({ email: email.toLowerCase() })
-    .select('+password +loginAttempts +lockUntil +refreshTokenVersion');
+    .select('+password +loginAttempts +lockUntil +refreshTokenVersion +mustChangePassword');
   if (!user) {
     await auditService.log({
       actor: null,
@@ -192,6 +193,16 @@ const login = asyncHandler(async (req, res) => {
   await user.resetLoginAttempts();
   await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
   user.lastLoginAt = new Date();
+
+  // Lazy weak-password detection: the stored bcrypt hash hides password strength,
+  // but we have the plaintext at login. If the user's password fails the current
+  // complexity policy, flag them for a forced change. Non-disruptive: they are
+  // already authenticated and can change their own password via PUT /auth/password.
+  const passwordNowWeak = Boolean(validatePassword(password));
+  if (passwordNowWeak !== user.mustChangePassword) {
+    user.mustChangePassword = passwordNowWeak;
+    await User.updateOne({ _id: user._id }, { $set: { mustChangePassword: passwordNowWeak } });
+  }
 
   const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
   setAuthCookies(res, tokens);
@@ -368,6 +379,7 @@ const updatePassword = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(newPassword, salt);
   user.refreshTokenVersion = (user.refreshTokenVersion || 0) + 1;
+  user.mustChangePassword = false;
   await user.save();
 
   const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
@@ -376,7 +388,7 @@ const updatePassword = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Password updated successfully',
-    data: { ...tokens },
+    data: { mustChangePassword: false, ...tokens },
   });
 });
 

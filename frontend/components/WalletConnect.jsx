@@ -59,6 +59,10 @@ const WalletConnect = memo(function WalletConnect() {
 
       {!account ? (
         <div className="space-y-2">
+          <p className="text-slate-500 text-xs">
+            Wallet address is stored in this browser tab only and expires after 4 hours.
+            Avoid connecting on shared or public computers.
+          </p>
           {hadPreviousSession && !reconnecting && (
             <p className="text-slate-500 text-xs">
               Previous session detected. Reconnect to continue trading.
@@ -75,6 +79,9 @@ const WalletConnect = memo(function WalletConnect() {
         </div>
       ) : (
         <div className="space-y-3">
+          <p className="text-slate-500 text-xs">
+            Session active in this tab. Disconnect when finished, especially on shared devices.
+          </p>
           <p className="text-slate-300 text-sm">
             <strong className="text-white">Address:</strong>{' '}
             {account.slice(0, 6)}...{account.slice(-4)}

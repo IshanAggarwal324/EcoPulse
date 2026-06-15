@@ -1,5 +1,6 @@
 import React, { useState, useEffect, memo } from 'react';
 import Sidebar from './Sidebar';
+import EmailVerificationBanner from './EmailVerificationBanner';
 import { Menu } from 'lucide-react';
 
 const AppLayout = memo(function AppLayout({ children }) {
@@ -60,7 +61,10 @@ const AppLayout = memo(function AppLayout({ children }) {
           className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 md:p-6 lg:p-8 custom-scrollbar"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
         >
-          <div className="max-w-7xl mx-auto w-full">{children}</div>
+          <div className="max-w-7xl mx-auto w-full">
+            <EmailVerificationBanner />
+            {children}
+          </div>
         </main>
       </div>
     </div>

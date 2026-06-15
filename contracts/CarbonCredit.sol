@@ -31,7 +31,8 @@ contract CarbonCredit is ERC20, Ownable {
         }
     }
 
-    /// @notice Mint tokens to an address, respecting the supply cap
+    /// @notice Mint tokens to an address, respecting the supply cap.
+    /// @dev onlyOwner — secure the owner key with hardware wallet or multisig (see contracts/SECURITY.md).
     /// @param to Recipient address
     /// @param amount Amount to mint (in base units, including decimals)
     function mint(address to, uint256 amount) public onlyOwner {

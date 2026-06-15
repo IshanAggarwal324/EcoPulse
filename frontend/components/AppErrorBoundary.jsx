@@ -1,6 +1,8 @@
 import React from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
+const isDev = import.meta.env.DEV;
+
 export default class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -26,7 +28,9 @@ export default class AppErrorBoundary extends React.Component {
           <AlertCircle className="h-12 w-12 text-rose-400" />
           <h1 className="text-xl font-bold text-white">Something went wrong</h1>
           <p className="text-slate-400 text-sm text-center max-w-md">
-            {this.state.error?.message || 'An unexpected error stopped the app.'}
+            {isDev
+              ? (this.state.error?.message || 'An unexpected error stopped the app.')
+              : 'An unexpected error stopped the app. Please reload the page or try again later.'}
           </p>
           <button
             type="button"

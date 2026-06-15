@@ -1,0 +1,8 @@
+# Hardhat / contract dev tooling — not needed at runtime
+artifacts/
+cache/
+ignition/deployments/
+test/
+contracts/
+hardhat.config.js
+node_modules/

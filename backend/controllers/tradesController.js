@@ -53,8 +53,8 @@ const getHistory = asyncHandler(async (req, res) => {
 });
 
 const getByTxHash = asyncHandler(async (req, res) => {
-  const trades = await tradeHistoryService.getTradeByTxHash(req.params.txHash);
   const wallet = resolveWalletScope(req);
+  const trades = await tradeHistoryService.getTradeByTxHash(req.params.txHash);
   const scopedTrades = wallet
     ? trades.filter((trade) => trade.seller === wallet || trade.buyer === wallet)
     : trades;

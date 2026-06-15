@@ -4,10 +4,12 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title EnergyTrading
 /// @notice Peer-to-peer marketplace for energy listings settled in CarbonCredit tokens
-contract EnergyTrading is ReentrancyGuard {
+contract EnergyTrading is ReentrancyGuard, Pausable, Ownable {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable carbonCreditToken;
@@ -54,15 +56,25 @@ contract EnergyTrading is ReentrancyGuard {
     error CannotBuyOwnListing();
     error ListingNotFound();
 
-    constructor(address carbonCreditTokenAddress) {
+    constructor(address carbonCreditTokenAddress) Ownable(msg.sender) {
         if (carbonCreditTokenAddress == address(0)) {
             revert InvalidTokenAddress();
         }
         carbonCreditToken = IERC20(carbonCreditTokenAddress);
     }
 
+    /// @notice Pause all listing and purchase operations (owner only)
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Resume marketplace operations (owner only)
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
     /// @notice Create a new energy listing priced in CarbonCredits
-    function listEnergy(uint256 energyAmount, uint256 price) external {
+    function listEnergy(uint256 energyAmount, uint256 price) external whenNotPaused {
         if (energyAmount == 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
 
@@ -80,7 +92,7 @@ contract EnergyTrading is ReentrancyGuard {
     }
 
     /// @notice Cancel an active listing before it is purchased
-    function cancelListing(uint256 listingId) external {
+    function cancelListing(uint256 listingId) external whenNotPaused {
         EnergyListing storage listing = listings[listingId];
         if (listing.seller == address(0)) revert ListingNotFound();
         if (listing.status != ListingStatus.Active) revert ListingNotActive();
@@ -91,7 +103,7 @@ contract EnergyTrading is ReentrancyGuard {
     }
 
     /// @notice Purchase an active listing; transfers CarbonCredits from buyer to seller
-    function purchaseEnergy(uint256 listingId) external nonReentrant {
+    function purchaseEnergy(uint256 listingId) external nonReentrant whenNotPaused {
         EnergyListing storage listing = listings[listingId];
         if (listing.seller == address(0)) revert ListingNotFound();
         if (listing.status != ListingStatus.Active) revert ListingNotActive();

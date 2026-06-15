@@ -4,13 +4,17 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const { requireDevScript, requireBootstrapSecret } = require('./utils/requireDevScript');
 
-const email = process.argv[2] || process.env.BOOTSTRAP_ADMIN_EMAIL;
+requireDevScript('promote-admin');
+requireBootstrapSecret();
+
+const email = process.argv.slice(2).find((arg) => !arg.startsWith('--')) || process.env.BOOTSTRAP_ADMIN_EMAIL;
 
 async function main() {
   if (!email) {
-    console.error('Usage: node scripts/promote-admin.js <email>');
-    console.error('   or: set BOOTSTRAP_ADMIN_EMAIL in .env and run without arguments');
+    console.error('Usage: node scripts/promote-admin.js <email> --secret=<BOOTSTRAP_ADMIN_SECRET>');
+    console.error('   or: set BOOTSTRAP_ADMIN_EMAIL in .env and BOOTSTRAP_ADMIN_SECRET_INPUT=<secret>');
     process.exit(1);
   }
 

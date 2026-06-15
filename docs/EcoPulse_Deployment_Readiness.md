@@ -166,8 +166,8 @@ These items **must be understood** before treating the app as production-ready.
 
 | Issue | Detail |
 |-------|--------|
-| Local Hardhat only | Chain ID 31337; no testnet/mainnet in `hardhat.config.js` |
-| Default dev private key | Hardhat account #0 used if `PRIVATE_KEY` unset (`blockchainService.js`) |
+| Local Hardhat only | Chain ID 31337; configure Sepolia in `hardhat.config.js` for testnet |
+| Dev private keys | Never use Hardhat default keys in production; `PRIVATE_KEY` is required when blockchain sync is enabled |
 | Dev mint button | Trading page exposes `mintDevTokens` for local testing |
 | No contract audit | Required before mainnet per `P2P_Trading_Production_Readiness.md` |
 | Full-block scan sync | `blockchainSyncService.js` queries from block 0 each sync (not scalable) |

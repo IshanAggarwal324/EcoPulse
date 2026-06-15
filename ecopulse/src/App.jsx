@@ -12,6 +12,7 @@ import ProtectedRoute from '../../frontend/components/ProtectedRoute';
 import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
+import VerifyEmail from '../../frontend/pages/VerifyEmail';
 import AssistantChat from '../../frontend/components/assistant/AssistantChat';
 
 const Dashboard = lazy(() => import('../../frontend/pages/Dashboard'));
@@ -93,6 +94,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
             <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route
               path="/*"
               element={

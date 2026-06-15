@@ -136,7 +136,11 @@ const Settings = () => {
         <ErrorBanner message={profileError} />
         <form onSubmit={handleProfileSubmit} className="space-y-5" noValidate>
           <FormField label="Email" id="email" value={user.email} disabled onChange={() => {}} />
-          <p className="text-xs text-slate-500 -mt-3">Email cannot be changed</p>
+          <p className="text-xs text-slate-500 -mt-3">
+            {user.isEmailVerified
+              ? 'Email verified'
+              : 'Email not verified — check your inbox or use the banner to resend'}
+          </p>
 
           <FormField
             label="Display name"

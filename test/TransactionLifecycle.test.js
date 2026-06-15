@@ -19,7 +19,7 @@ describe("Complete blockchain transaction lifecycle", function () {
     [owner, seller, buyer] = await ethers.getSigners();
 
     const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
-    carbonCredit = await CarbonCredit.deploy();
+    carbonCredit = await CarbonCredit.deploy(ethers.parseEther("1000000000"));
     await carbonCredit.waitForDeployment();
 
     const EnergyTrading = await ethers.getContractFactory("EnergyTrading");

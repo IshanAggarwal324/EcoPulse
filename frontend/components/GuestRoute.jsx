@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { getSafeRedirectPath } from '../utils/safeRedirect';
 
 const GuestRoute = ({ children }) => {
   const { user, loading, isAuthenticated } = useAuth();
@@ -16,7 +17,7 @@ const GuestRoute = ({ children }) => {
   }
 
   if (isAuthenticated && user) {
-    const redirectTo = location.state?.from?.pathname || '/';
+    const redirectTo = getSafeRedirectPath(location.state?.from?.pathname, '/');
     return <Navigate to={redirectTo} replace />;
   }
 

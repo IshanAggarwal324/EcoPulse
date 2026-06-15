@@ -35,11 +35,11 @@ const createReading = async ({ nodeId, energyGenerated, energyConsumed }) => {
   return reading;
 };
 
-const listReadings = async ({ nodeId, limit = 100 } = {}) => {
+const listReadings = async ({ nodeId, limit = 100, maxLimit = 500 } = {}) => {
   const query = {};
   if (nodeId) query.nodeId = nodeId;
 
-  const cappedLimit = Math.min(parseInt(limit, 10) || 100, 500);
+  const cappedLimit = Math.min(parseInt(limit, 10) || 100, maxLimit);
 
   return EnergyReading.find(query)
     .sort({ timestamp: -1 })

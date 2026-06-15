@@ -1,0 +1,8 @@
+# Exclude dev/ops tooling from production images
+scripts/
+simulate_nodes.js
+simulator.js
+testBlockchain.js
+**/.env
+**/.env.*
+!**/.env.example

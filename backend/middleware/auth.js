@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { verifyAccessToken } = require('../utils/tokens');
+const { isEmailVerificationRequired } = require('../config/env');
 
 const getCookieValue = (cookieHeader, key) => {
   if (!cookieHeader) return null;
@@ -30,7 +31,7 @@ const protect = async (req, res, next) => {
         });
       }
 
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findById(decoded.id).select('-password +isEmailVerified +mustChangePassword');
 
       if (!req.user) {
         return res.status(401).json({
@@ -90,4 +91,37 @@ const authorize = (...roles) => (req, res, next) => {
   next();
 };
 
-module.exports = { protect, authorize };
+const requireEmailVerified = (req, res, next) => {
+  if (!isEmailVerificationRequired()) {
+    return next();
+  }
+
+  if (req.user?.role === 'admin' || req.user?.role === 'moderator') {
+    return next();
+  }
+
+  if (!req.user?.isEmailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email address before using this feature.',
+      code: 'EMAIL_NOT_VERIFIED',
+    });
+  }
+
+  return next();
+};
+
+const requirePasswordCurrent = (req, res, next) => {
+  if (req.user?.mustChangePassword) {
+    return res.status(403).json({
+      success: false,
+      message:
+        'Your password no longer meets current security requirements. Please update it to continue.',
+      code: 'PASSWORD_RESET_REQUIRED',
+    });
+  }
+
+  return next();
+};
+
+module.exports = { protect, authorize, requireEmailVerified, requirePasswordCurrent };

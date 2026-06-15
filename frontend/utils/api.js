@@ -131,6 +131,17 @@ export const authApi = {
   getMe: () => fetchApi('/auth/me'),
   updateProfile: (body) => fetchApi('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
   updatePassword: (body) => fetchApi('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
+  verifyEmail: (token) =>
+    fetchApi('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+      skipAuth: true,
+    }),
+  resendVerification: (email) =>
+    fetchApi('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify(email ? { email } : {}),
+    }),
 };
 
 export const analyticsApi = {

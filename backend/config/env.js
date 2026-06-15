@@ -1,4 +1,16 @@
-const DEFAULT_HARDHAT_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+const crypto = require('crypto');
+
+/** SHA-256 of the well-known Hardhat account #0 private key (never store the key itself). */
+const HARDHAT_DEFAULT_KEY_SHA256 = crypto
+  .createHash('sha256')
+  .update('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80')
+  .digest('hex');
+
+const isKnownDevPrivateKey = (privateKey) => {
+  if (!privateKey) return false;
+  const hash = crypto.createHash('sha256').update(privateKey).digest('hex');
+  return hash === HARDHAT_DEFAULT_KEY_SHA256;
+};
 
 const parseList = (value) =>
   String(value || '')
@@ -8,6 +20,12 @@ const parseList = (value) =>
 
 const hasBlockchainConfig = () =>
   Boolean(process.env.RPC_URL || process.env.CARBON_CREDIT_ADDRESS || process.env.ENERGY_TRADING_ADDRESS);
+
+const isEmailVerificationRequired = () => {
+  if (process.env.REQUIRE_EMAIL_VERIFICATION === 'false') return false;
+  if (process.env.REQUIRE_EMAIL_VERIFICATION === 'true') return true;
+  return process.env.NODE_ENV === 'production';
+};
 
 const validateEnvironment = () => {
   const issues = [];
@@ -46,7 +64,7 @@ const validateEnvironment = () => {
       if (!process.env.ENERGY_TRADING_ADDRESS) issues.push('ENERGY_TRADING_ADDRESS must be set when blockchain sync is enabled');
       if (!process.env.PRIVATE_KEY) {
         issues.push('PRIVATE_KEY must be set when blockchain sync is enabled');
-      } else if (process.env.PRIVATE_KEY === DEFAULT_HARDHAT_PRIVATE_KEY) {
+      } else if (isKnownDevPrivateKey(process.env.PRIVATE_KEY)) {
         issues.push('PRIVATE_KEY cannot use the Hardhat default account in production');
       }
     }
@@ -62,6 +80,13 @@ const validateEnvironment = () => {
     if (process.env.REGISTRATION_OPEN === undefined) {
       console.warn('TIP: Set REGISTRATION_OPEN=false to close registration if not accepting new users');
     }
+
+    if (isEmailVerificationRequired()) {
+      const { isConfigured } = require('../services/emailService');
+      if (!isConfigured()) {
+        console.warn('WARNING: Email verification is required but SMTP is not configured — users cannot verify accounts');
+      }
+    }
   }
 
   if (issues.length > 0) {
@@ -72,5 +97,6 @@ const validateEnvironment = () => {
 
 module.exports = {
   validateEnvironment,
-  DEFAULT_HARDHAT_PRIVATE_KEY,
+  isKnownDevPrivateKey,
+  isEmailVerificationRequired,
 };

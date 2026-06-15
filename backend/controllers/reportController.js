@@ -63,16 +63,26 @@ const getReportPreview = asyncHandler(async (req, res) => {
   const userWallet = req.user?.walletAddress ? String(req.user.walletAddress).toLowerCase() : null;
   const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'moderator';
 
-  if (!isPrivileged && requestedWallet && userWallet && requestedWallet !== userWallet) {
-    return res.status(403).json({
-      success: false,
-      message: 'You can only preview reports for your own wallet',
-    });
+  if (!isPrivileged) {
+    if (requestedWallet && (!userWallet || requestedWallet !== userWallet)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only preview reports for your own wallet',
+      });
+    }
+
+    if ((scope === 'personal' || scope === 'both') && !userWallet) {
+      return res.status(400).json({
+        success: false,
+        message: 'Link a wallet address to your profile before previewing personal reports',
+        code: 'WALLET_REQUIRED',
+      });
+    }
   }
 
   const walletAddress = isPrivileged
     ? (requestedWallet || userWallet || null)
-    : (userWallet || null);
+    : userWallet;
 
   const metrics = await reportService.buildReportMetrics({ period, walletAddress, scope });
 

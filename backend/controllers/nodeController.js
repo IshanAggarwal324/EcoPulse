@@ -1,5 +1,8 @@
 const EnergyNode = require('../models/EnergyNode');
+
 const ALLOWED_NODE_FIELDS = new Set(['name', 'nodeType', 'sourceType', 'status', 'location', 'userId']);
+
+const isPrivileged = (user) => user?.role === 'admin' || user?.role === 'moderator';
 
 const sanitizeNodePayload = (payload = {}, { allowUserId = true } = {}) => {
   const safe = {};
@@ -11,13 +14,20 @@ const sanitizeNodePayload = (payload = {}, { allowUserId = true } = {}) => {
   return safe;
 };
 
-// @desc    Create a new node
-// @route   POST /api/v1/nodes
-// @access  Public (for now, eventually Private)
+const toNodeResponse = (node, req) => {
+  const doc = node?.toObject ? node.toObject() : node;
+  if (!doc) return doc;
+
+  if (isPrivileged(req.user)) {
+    return doc;
+  }
+
+  const { userId, ...publicFields } = doc;
+  return publicFields;
+};
+
 const createNode = async (req, res) => {
   try {
-    // Note: userId should ideally come from req.user (auth middleware).
-    // For now we allow it in body or we can hardcode a mock user for testing if omitted.
     const safeBody = sanitizeNodePayload(req.body, { allowUserId: true });
     const { name, nodeType, sourceType, location, userId } = safeBody;
 
@@ -38,7 +48,7 @@ const createNode = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: node,
+      data: toNodeResponse(node, req),
     });
   } catch (error) {
     console.error('Create node error:', error.message);
@@ -49,16 +59,13 @@ const createNode = async (req, res) => {
   }
 };
 
-// @desc    Get all nodes
-// @route   GET /api/v1/nodes
-// @access  Public
 const getNodes = async (req, res) => {
   try {
     const nodes = await EnergyNode.find();
     res.status(200).json({
       success: true,
       count: nodes.length,
-      data: nodes,
+      data: nodes.map((node) => toNodeResponse(node, req)),
     });
   } catch (error) {
     res.status(500).json({
@@ -68,9 +75,6 @@ const getNodes = async (req, res) => {
   }
 };
 
-// @desc    Get node by ID
-// @route   GET /api/v1/nodes/:id
-// @access  Public
 const getNodeById = async (req, res) => {
   try {
     const node = await EnergyNode.findById(req.params.id);
@@ -82,7 +86,7 @@ const getNodeById = async (req, res) => {
     }
     res.status(200).json({
       success: true,
-      data: node,
+      data: toNodeResponse(node, req),
     });
   } catch (error) {
     res.status(500).json({
@@ -92,9 +96,6 @@ const getNodeById = async (req, res) => {
   }
 };
 
-// @desc    Update node
-// @route   PUT /api/v1/nodes/:id
-// @access  Public
 const updateNode = async (req, res) => {
   try {
     const safeUpdates = sanitizeNodePayload(req.body, { allowUserId: false });
@@ -110,7 +111,7 @@ const updateNode = async (req, res) => {
     }
     res.status(200).json({
       success: true,
-      data: node,
+      data: toNodeResponse(node, req),
     });
   } catch (error) {
     res.status(500).json({
@@ -120,9 +121,6 @@ const updateNode = async (req, res) => {
   }
 };
 
-// @desc    Delete node
-// @route   DELETE /api/v1/nodes/:id
-// @access  Public
 const deleteNode = async (req, res) => {
   try {
     const node = await EnergyNode.findById(req.params.id);

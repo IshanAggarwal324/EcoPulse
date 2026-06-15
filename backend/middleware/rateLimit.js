@@ -132,10 +132,37 @@ function createAuthRateLimiter({ windowMs, maxRequests, message }) {
   });
 }
 
+function createForecastRateLimiter() {
+  return createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: parseInt(process.env.FORECAST_RATE_LIMIT_MAX || '30', 10),
+    message: 'Forecast rate limit exceeded. Please try again later.',
+  });
+}
+
+function createProfileRateLimiter() {
+  return createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 20,
+    message: 'Too many profile update attempts. Please try again later.',
+  });
+}
+
+function createPreviewRateLimiter() {
+  return createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 30,
+    message: 'Too many report preview requests. Please try again later.',
+  });
+}
+
 module.exports = {
   createRateLimiter,
   createChatRateLimiter,
   createReportRateLimiter,
   createAdminRateLimiter,
   createAuthRateLimiter,
+  createForecastRateLimiter,
+  createProfileRateLimiter,
+  createPreviewRateLimiter,
 };

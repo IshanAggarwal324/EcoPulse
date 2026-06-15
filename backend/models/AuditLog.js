@@ -76,6 +76,35 @@ if (Number.isFinite(ttlDays) && ttlDays > 0) {
   auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: ttlDays * 86400 });
 }
 
+// Enforce append-only semantics at the application layer. Audit logs must never
+// be updated or deleted by application code — tamper-evidence relies on the hash
+// chain remaining intact. The MongoDB TTL index (above) still expires old
+// entries because that runs server-side, bypassing Mongoose middleware.
+// Authorized maintenance (e.g. the backfill script) passes
+// `{ bypassImmutability: true }` to opt out, or uses the raw driver collection.
+const IMMUTABLE_MUTATION_HOOKS = [
+  'findOneAndUpdate',
+  'findOneAndDelete',
+  'findOneAndReplace',
+  'replaceOne',
+  'updateOne',
+  'updateMany',
+  'deleteOne',
+  'deleteMany',
+];
+
+IMMUTABLE_MUTATION_HOOKS.forEach((hook) => {
+  auditLogSchema.pre(hook, { document: false, query: true }, async function () {
+    if (this.getOptions && this.getOptions().bypassImmutability) {
+      return;
+    }
+    throw new Error(
+      `AuditLog is append-only: "${hook}" is not permitted. ` +
+        'Use create() for new entries, or set { bypassImmutability: true } for authorized maintenance.'
+    );
+  });
+});
+
 auditLogSchema.statics.computeHash = function (entry, prevHash) {
   const payload = JSON.stringify({
     actorId: entry.actorId?.toString() || null,
