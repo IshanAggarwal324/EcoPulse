@@ -68,8 +68,16 @@ jobs:
           echo "No tracked .env files found."
       - name: Check for hardcoded private keys
         run: |
-          if git grep -n "PRIVATE_KEY=0x" -- ':!*.example' ':!docs/*' ':!.kilo/*'; then
+          # Match assignment of a 64-char hex private key (not docs/examples/CI config).
+          if git grep -nE 'PRIVATE_KEY=0x[0-9a-fA-F]{64}' \
+            -- ':!*.example' ':!docs/*' ':!.kilo/*' ':!.github/*' ':!node_modules'; then
             echo "::error::Hardcoded private key found!"
+            exit 1
+          fi
+          # Block the well-known Hardhat dev key if it appears anywhere in source.
+          if git grep -n '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' \
+            -- ':!*.example' ':!docs/*' ':!.kilo/*' ':!.github/*' ':!node_modules'; then
+            echo "::error::Known Hardhat default private key found in source!"
             exit 1
           fi
           echo "No hardcoded private keys found."

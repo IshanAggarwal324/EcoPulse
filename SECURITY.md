@@ -91,6 +91,33 @@ Production dependency policies:
 - **Node:** `ws@8.21.0` forced via npm `overrides` (ethers nested dependency); `nodemailer@9.x` for SMTP injection fixes; `esbuild@0.28.1` override in frontend for Vite dev/build tooling.
 - **Python:** `ai_service` requirements contain only forecast/ML deps; Gemini SDK lives in `genai-service/requirements.txt` only.
 
+## If a private key was ever committed (historical leak)
+
+Even after removing keys from the current tree, **git history may still contain them**. Treat any key that was ever in the repo as **compromised**.
+
+1. **Rotate immediately** (production / testnet / any wallet that used the leaked key):
+   - Generate a new wallet; update `PRIVATE_KEY` in deployment secrets (Render, Vercel env, etc.).
+   - If the Hardhat default key was used on a testnet, assume that account is public — do not hold funds on it.
+   - Rotate `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `BOOTSTRAP_ADMIN_SECRET` if they were ever committed.
+
+2. **Current repo protections:**
+   - CI blocks `PRIVATE_KEY=0x<64-hex>` and the known Hardhat dev key in source (excluding `.example`, `docs/`, `.github/`).
+   - `backend/config/env.js` compares keys via SHA-256 only — the raw Hardhat key is not stored in code.
+   - gitleaks runs on every push/PR.
+
+3. **Optional — purge from git history** (only if you must remove secrets from old commits; coordinate with all collaborators):
+   ```bash
+   # Example using git-filter-repo (install separately)
+   git filter-repo --invert-paths --path-glob '*.env' --force
+   # Or use BFG Repo-Cleaner / GitHub secret scanning remediation docs
+   ```
+   After rewriting history: force-push requires team agreement; everyone must re-clone.
+
+4. **Verify locally** (both should return no matches in tracked source):
+   ```bash
+   git grep -nE 'PRIVATE_KEY=0x[0-9a-fA-F]{64}' -- ':!*.example' ':!docs/*' ':!.github/*'
+   ```
+
 ## Reporting vulnerabilities
 
 Please report security issues privately to the repository maintainers rather than opening public issues.

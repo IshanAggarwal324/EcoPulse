@@ -1,10 +1,7 @@
 const crypto = require('crypto');
 
-/** SHA-256 of the well-known Hardhat account #0 private key (never store the key itself). */
-const HARDHAT_DEFAULT_KEY_SHA256 = crypto
-  .createHash('sha256')
-  .update('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80')
-  .digest('hex');
+/** SHA-256 of the well-known Hardhat account #0 key (compare only — never store the key in repo). */
+const HARDHAT_DEFAULT_KEY_SHA256 = '60a09e4357868c1e9b801052726d061c370429f723db84523ed58ac354f6eb8a';
 
 const isKnownDevPrivateKey = (privateKey) => {
   if (!privateKey) return false;
