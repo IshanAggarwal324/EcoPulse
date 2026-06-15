@@ -1,0 +1,11 @@
+title = "EcoPulse gitleaks config"
+
+# Keep default secret-detection rules; only suppress known false positives.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA-256 fingerprint used to reject the public Hardhat dev key at runtime (not a secret)"
+paths = [
+  '''backend/config/env\.js''',
+]

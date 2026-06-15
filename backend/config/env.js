@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 /** SHA-256 of the well-known Hardhat account #0 key (compare only — never store the key in repo). */
+// gitleaks:allow
 const HARDHAT_DEFAULT_KEY_SHA256 = '60a09e4357868c1e9b801052726d061c370429f723db84523ed58ac354f6eb8a';
 
 const isKnownDevPrivateKey = (privateKey) => {
