@@ -81,7 +81,15 @@ CI runs on push/PR and weekly. Locally:
 ```bash
 npm audit --audit-level=moderate --prefix backend
 npm audit --audit-level=moderate --prefix ecopulse
+npm audit --audit-level=moderate --prefix genai-service
+python -m pip_audit -r ai_service/requirements.txt
+python -m pip_audit -r genai-service/requirements.txt
 ```
+
+Production dependency policies:
+
+- **Node:** `ws@8.21.0` forced via npm `overrides` (ethers nested dependency); `nodemailer@9.x` for SMTP injection fixes; `esbuild@0.28.1` override in frontend for Vite dev/build tooling.
+- **Python:** `ai_service` requirements contain only forecast/ML deps; Gemini SDK lives in `genai-service/requirements.txt` only.
 
 ## Reporting vulnerabilities
 

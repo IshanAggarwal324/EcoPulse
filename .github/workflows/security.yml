@@ -51,9 +51,8 @@ jobs:
         run: pip install pip-audit
       - name: Audit ai_service dependencies
         run: |
-          if [ -f ai_service/requirements.txt ]; then
-            pip-audit -r ai_service/requirements.txt
-          fi
+          pip-audit -r ai_service/requirements.txt
+          pip-audit -r genai-service/requirements.txt
 
   env-leak-check:
     name: Check for committed secrets
