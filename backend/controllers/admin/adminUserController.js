@@ -4,9 +4,9 @@ const EnergyNode = require('../../models/EnergyNode');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
 const auditService = require('../../services/auditService');
+const { escapeRegex } = require('../../utils/validators');
 
 const VALID_ROLES = ['user', 'admin', 'moderator'];
-const escapeRegex = (input) => String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const toAdminUserResponse = (user, extra = {}) => ({
   _id: user._id,

@@ -92,6 +92,7 @@ const Login = () => {
               error={fieldErrors.password}
               required
               autoComplete="current-password"
+              maxLength={128}
             />
 
             <button

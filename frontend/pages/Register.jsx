@@ -133,7 +133,8 @@ const Register = () => {
               error={fieldErrors.password}
               required
               autoComplete="new-password"
-              hint="At least 6 characters"
+              maxLength={128}
+              hint="8–128 characters, with an uppercase letter and number"
             />
 
             <FormField
@@ -145,6 +146,7 @@ const Register = () => {
               error={fieldErrors.confirmPassword}
               required
               autoComplete="new-password"
+              maxLength={128}
             />
 
             <button

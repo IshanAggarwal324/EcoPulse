@@ -10,12 +10,10 @@ const parseAuthResponse = (data) => (data.data || data);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const refreshPromiseRef = useRef(null);
 
   const clearSession = useCallback(() => {
-    setAccessToken(null);
     setUser(null);
   }, []);
 
@@ -39,8 +37,9 @@ export const AuthProvider = ({ children }) => {
           return null;
         }
 
-        const { user: userData, accessToken: newAccessToken } = parseAuthResponse(data);
-        setAccessToken(newAccessToken || null);
+        // Auth is cookie-based; the new access token is set as an httpOnly
+        // cookie by the server, so we only need the user payload here.
+        const { user: userData } = parseAuthResponse(data);
         if (userData) setUser(userData);
 
         return true;
@@ -71,7 +70,6 @@ export const AuthProvider = ({ children }) => {
     if (!response.ok) return false;
 
     setUser(data.data.user);
-    setAccessToken(data.data?.accessToken || null);
     return true;
   }, [refreshSession]);
 
@@ -107,8 +105,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { user: userData, accessToken: newAccessToken } = parseAuthResponse(data);
-      setAccessToken(newAccessToken || null);
+      const { user: userData } = parseAuthResponse(data);
       setUser(userData);
 
       return { success: true };
@@ -133,9 +130,8 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: msg, errors: data.errors };
       }
 
-      const { user: newUser, accessToken: newAccessToken } = parseAuthResponse(data);
-      if (newUser && newAccessToken) {
-        setAccessToken(newAccessToken);
+      const { user: newUser } = parseAuthResponse(data);
+      if (newUser) {
         setUser(newUser);
         return { success: true };
       }
@@ -211,8 +207,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message, errors: data.errors };
       }
 
-      setAccessToken(data.data?.accessToken || null);
-
       return { success: true, message: data.message };
     } catch (error) {
       return { success: false, message: error.message };
@@ -232,12 +226,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const isAuthenticated = !!user && !!accessToken;
+  const isAuthenticated = !!user;
 
   const value = useMemo(
     () => ({
       user,
-      accessToken,
       loading,
       isAuthenticated,
       login,
@@ -249,7 +242,6 @@ export const AuthProvider = ({ children }) => {
     }),
     [
       user,
-      accessToken,
       loading,
       isAuthenticated,
       login,

@@ -4,6 +4,7 @@ const {
   asString,
   asEnum,
   asObjectId,
+  escapeRegex,
 } = require('../utils/validators');
 const { buildTradeQuery, TRADE_EVENT_TYPES } = require('../services/tradeHistoryService');
 
@@ -54,4 +55,14 @@ test('buildTradeQuery combines wallet + safe eventType safely', () => {
   assert.ok(query.$and);
   const eventTypeCondition = query.$and.find((c) => 'eventType' in c);
   assert.deepStrictEqual(eventTypeCondition, { eventType: 'purchased' });
+});
+
+test('escapeRegex escapes regex metacharacters so a RegExp built from it is literal', () => {
+  const malicious = '0x.*+$?{}()[]\\abc';
+  const escaped = escapeRegex(malicious);
+  // The constructed regex should match the literal malicious string, not a pattern.
+  const re = new RegExp(`^${escaped}$`);
+  assert.ok(re.test(malicious));
+  // A classic dot wildcard must NOT match after escaping.
+  assert.ok(!new RegExp(`^${escapeRegex('a.b')}$`).test('axb'));
 });

@@ -133,7 +133,7 @@ const register = asyncHandler(async (req, res) => {
   res.status(201).json({
     success: true,
     message: 'User registered successfully. Please verify your email address.',
-    data: { user: toUserResponse(user), ...tokens },
+    data: { user: toUserResponse(user) },
   });
 });
 
@@ -218,7 +218,7 @@ const login = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Logged in successfully',
-    data: { user: toUserResponse(user), ...tokens },
+    data: { user: toUserResponse(user) },
   });
 });
 
@@ -276,7 +276,7 @@ const refresh = asyncHandler(async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: { user: toUserResponse(rotatedUser), ...tokens },
+      data: { user: toUserResponse(rotatedUser) },
     });
   } catch (error) {
     return res.status(401).json({
@@ -405,7 +405,7 @@ const updatePassword = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Password updated successfully',
-    data: { mustChangePassword: false, ...tokens },
+    data: { mustChangePassword: false },
   });
 });
 

@@ -242,6 +242,7 @@ const Settings = () => {
             error={passwordErrors.currentPassword}
             required
             autoComplete="current-password"
+            maxLength={128}
           />
 
           <FormField
@@ -254,6 +255,7 @@ const Settings = () => {
             required
             autoComplete="new-password"
             hint="Min 8 characters, uppercase letter and number"
+            maxLength={128}
           />
 
           <FormField
@@ -267,6 +269,7 @@ const Settings = () => {
             error={passwordErrors.confirmPassword}
             required
             autoComplete="new-password"
+            maxLength={128}
           />
 
           <button

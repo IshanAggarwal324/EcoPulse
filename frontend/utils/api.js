@@ -57,13 +57,12 @@ export async function fetchApi(path, options = {}) {
   const url = `${API_BASE}${path}`;
   const skipAuth = options.skipAuth === true;
 
-  const buildHeaders = (token) => ({
+  const buildHeaders = () => ({
     'Content-Type': 'application/json',
     ...(options.headers || {}),
-    ...(token && !skipAuth ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const execute = async (token, isRetry = false) => {
+  const execute = async (isRetry = false) => {
     const controller = new AbortController();
     const timeoutMs = Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -72,7 +71,7 @@ export async function fetchApi(path, options = {}) {
     try {
       response = await fetch(url, {
         ...options,
-        headers: buildHeaders(options.token || token),
+        headers: buildHeaders(),
         body: options.body,
         signal: controller.signal,
         credentials: 'include',
@@ -106,7 +105,9 @@ export async function fetchApi(path, options = {}) {
     ) {
       const refreshed = await authHandlers.refreshSession();
       if (refreshed) {
-        return execute(authHandlers.getAccessToken?.() || null, true);
+        // The refresh set a fresh httpOnly cookie, which the browser will now
+        // send automatically on retry — no bearer token needed.
+        return execute(true);
       }
       authHandlers.onSessionExpired();
     }
@@ -123,8 +124,7 @@ export async function fetchApi(path, options = {}) {
     return data;
   };
 
-  const token = skipAuth ? null : authHandlers.getAccessToken();
-  return execute(token);
+  return execute();
 }
 
 export const authApi = {

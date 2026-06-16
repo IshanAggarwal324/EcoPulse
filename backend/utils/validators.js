@@ -15,6 +15,8 @@ const asObjectId = (value) => {
   return mongoose.Types.ObjectId.isValid(value) ? value : null;
 };
 
+const escapeRegex = (input) => String(input).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const validateEmail = (email) => {
   if (!email || typeof email !== 'string') return 'Email is required';
   if (!EMAIL_REGEX.test(email.trim())) return 'Please provide a valid email address';
@@ -66,4 +68,5 @@ module.exports = {
   asString,
   asEnum,
   asObjectId,
+  escapeRegex,
 };

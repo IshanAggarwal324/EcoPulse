@@ -9,9 +9,10 @@ export const validateEmail = (email) => {
   return '';
 };
 
-export const validatePassword = (password, minLength = 6) => {
+export const validatePassword = (password, minLength = 8) => {
   if (!password) return 'Password is required';
   if (password.length < minLength) return `Password must be at least ${minLength} characters`;
+  if (password.length > 128) return 'Password cannot exceed 128 characters';
   return '';
 };
 

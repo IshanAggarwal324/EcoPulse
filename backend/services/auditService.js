@@ -1,6 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 const { parsePagination, paginateResults } = require('../utils/paginate');
+const { escapeRegex, WALLET_REGEX } = require('../utils/validators');
 
 const log = async ({
   actor,
@@ -38,9 +39,15 @@ const log = async ({
 
 const resolveActorFromWallet = async (walletAddress) => {
   if (!walletAddress) return null;
+  // Reject anything that isn't a structurally-valid 20-byte address before
+  // building a regex, to avoid catastrophic backtracking on adversarial input.
+  const trimmed = String(walletAddress).trim();
+  if (!WALLET_REGEX.test(trimmed)) return null;
   try {
     const user = await User.findOne({
-      walletAddress: { $regex: new RegExp(`^${walletAddress}$`, 'i') },
+      walletAddress: {
+        $regex: new RegExp(`^${escapeRegex(trimmed.slice(0, 42))}$`, 'i'),
+      },
     }).lean();
     return user;
   } catch {
