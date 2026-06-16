@@ -2,15 +2,17 @@ const Trade = require('../../models/Trade');
 const tradeHistoryService = require('../../services/tradeHistoryService');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
+const { asEnum } = require('../../utils/validators');
 
 const listTrades = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePagination(req.query, { maxLimit: 100 });
-  const { eventType, seller, buyer, wallet, since, until } = req.query;
+  const { seller, buyer, wallet, since, until } = req.query;
 
   const conditions = [];
 
-  if (eventType) {
-    conditions.push({ eventType });
+  const safeEventType = asEnum(req.query.eventType, tradeHistoryService.TRADE_EVENT_TYPES);
+  if (safeEventType) {
+    conditions.push({ eventType: safeEventType });
   }
 
   if (seller) {

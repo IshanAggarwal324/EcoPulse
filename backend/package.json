@@ -10,6 +10,7 @@
     "simulate:socket": "node simulate_nodes.js",
     "simulate:rest": "node simulator.js",
     "test": "node scripts/test-mvp.js",
+    "test:security": "node --test tests/",
     "test:mvp": "node scripts/test-mvp.js"
   },
   "keywords": [],

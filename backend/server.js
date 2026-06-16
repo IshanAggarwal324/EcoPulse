@@ -21,6 +21,11 @@ const startServer = async () => {
   const PORT = process.env.PORT || 5000;
   const isProduction = process.env.NODE_ENV === 'production';
 
+  // Use Node's simple querystring parser instead of qs so that
+  // ?field[$ne]=value is NOT parsed into an object ({ field: { $ne: 'value' } }).
+  // This blocks NoSQL operator-injection via the query string globally.
+  app.set('query parser', 'simple');
+
   // Trust the first proxy hop so req.ip and X-Forwarded-* are honored behind
   // load balancers (Render, Vercel, nginx). 1 hop is appropriate for a single
   // reverse proxy layer; increase if multiple proxies are chained.

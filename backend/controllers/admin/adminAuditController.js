@@ -1,13 +1,24 @@
 const auditService = require('../../services/auditService');
 const asyncHandler = require('../../utils/asyncHandler');
+const { asObjectId } = require('../../utils/validators');
 
 const listAuditLogs = asyncHandler(async (req, res) => {
   const { page, limit } = req.query;
-  const { action, actorId, resourceType, resourceId, severity, since, until } = req.query;
+  const { action, resourceType, resourceId, severity, since, until } = req.query;
 
   const filters = {};
   if (action) filters.action = action.includes(',') ? action.split(',') : action;
-  if (actorId) filters.actorId = actorId;
+
+  if (req.query.actorId) {
+    const safeActorId = asObjectId(req.query.actorId);
+    if (!safeActorId) {
+      return res.status(400).json({
+        success: false,
+        message: 'actorId must be a valid identifier',
+      });
+    }
+    filters.actorId = safeActorId;
+  }
   if (resourceType) filters.resourceType = resourceType;
   if (resourceId) filters.resourceId = resourceId;
   if (severity) filters.severity = severity;

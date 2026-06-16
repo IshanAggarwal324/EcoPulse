@@ -17,8 +17,8 @@ if (process.env.NODE_ENV === 'production' && ACCESS_SECRET === REFRESH_SECRET) {
   throw new Error('JWT access and refresh secrets must be different in production');
 }
 
-const generateAccessToken = (id) =>
-  jwt.sign({ id, type: 'access' }, ACCESS_SECRET, {
+const generateAccessToken = (id, version = 0) =>
+  jwt.sign({ id, type: 'access', version }, ACCESS_SECRET, {
     expiresIn: ACCESS_EXPIRE,
   });
 
@@ -27,8 +27,8 @@ const generateRefreshToken = (id, version = 0) =>
     expiresIn: REFRESH_EXPIRE,
   });
 
-const generateTokenPair = (id, refreshVersion = 0) => ({
-  accessToken: generateAccessToken(id),
+const generateTokenPair = (id, refreshVersion = 0, accessVersion = 0) => ({
+  accessToken: generateAccessToken(id, accessVersion),
   refreshToken: generateRefreshToken(id, refreshVersion),
 });
 

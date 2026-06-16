@@ -86,6 +86,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
       select: false,
     },
+    accessTokenVersion: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
     isEmailVerified: {
       type: Boolean,
       default: false,

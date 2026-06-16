@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   Coins,
@@ -34,6 +35,7 @@ import {
   DEV_MINT_ENABLED,
 } from '../utils/blockchain';
 import { analyticsApi, tradesApi } from '../utils/api';
+import { validateWalletAddress, isAddressChecksumAmbiguous } from '../utils/validation';
 
 const formatAddress = (address) => {
   if (!address) return '—';
@@ -61,6 +63,8 @@ const CarbonTransactions = () => {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [formError, setFormError] = useState('');
+  const [recipientPasted, setRecipientPasted] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState(null);
 
   const {
     account,
@@ -192,14 +196,30 @@ const CarbonTransactions = () => {
       return;
     }
 
+    const trimmedRecipient = recipient.trim();
+    const addressError = validateWalletAddress(trimmedRecipient, true);
+    if (addressError) {
+      setFormError(addressError);
+      return;
+    }
+
+    // Don't call the blockchain yet — open a confirmation modal so the user
+    // can verify the full recipient address (clipboard/address-poisoning defense).
+    setPendingTransfer({ recipient: trimmedRecipient, amount: transferAmount });
+  };
+
+  const confirmTransfer = async () => {
+    const { recipient: target, amount: transferAmount } = pendingTransfer;
+    setPendingTransfer(null);
     setTransferLoading(true);
     toast.info('Confirm transfer in MetaMask...');
 
     try {
-      const receipt = await transferCarbonCredits(recipient.trim(), transferAmount);
+      const receipt = await transferCarbonCredits(target, transferAmount);
       toast.success('Carbon credits transferred');
       setRecipient('');
       setAmount('');
+      setRecipientPasted(false);
       await refreshAll(true);
       if (receipt?.hash) {
         toast.info(`Tx: ${receipt.hash.slice(0, 10)}...`);
@@ -330,10 +350,20 @@ const CarbonTransactions = () => {
               label="Recipient address"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
+              onPaste={() => setRecipientPasted(true)}
               placeholder="0x..."
               required
               disabled={!account || !isCorrectNetwork || transferLoading}
             />
+            {recipient.trim() &&
+              (recipientPasted || isAddressChecksumAmbiguous(recipient)) && (
+                <p className="-mt-2 mb-1 text-xs flex items-start gap-1.5 text-amber-300">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  {recipientPasted
+                    ? 'This address was pasted — verify every character. Clipboard malware can silently swap addresses.'
+                    : 'This address has no mixed-case checksum and cannot be visually verified. Confirm it is correct.'}
+                </p>
+              )}
             <FormField
               id="amount"
               label="Amount (CC)"
@@ -575,6 +605,62 @@ const CarbonTransactions = () => {
               <ExternalLink size={14} />
               View marketplace
             </Link>
+          </div>
+        </div>
+      )}
+
+      {pendingTransfer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="content-card max-w-md w-full animate-fade-in-up">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="p-1.5 bg-amber-500/10 rounded-lg">
+                <AlertTriangle className="text-amber-400" size={18} />
+              </div>
+              <h3 className="text-lg font-bold text-white">Confirm transfer</h3>
+            </div>
+
+            {(recipientPasted || isAddressChecksumAmbiguous(pendingTransfer.recipient)) && (
+              <div className="flex items-start gap-2 p-3 mb-4 rounded-lg text-xs bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {recipientPasted
+                    ? 'You pasted this address. Clipboard malware can silently swap addresses — confirm every character below before sending.'
+                    : 'This address has no mixed-case checksum and cannot be visually verified. Make sure it is exactly right.'}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Sending</p>
+                <p className="text-emerald-400 font-semibold font-mono text-lg">
+                  {pendingTransfer.amount.toFixed(2)} CC
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">To recipient</p>
+                <p className="text-white font-mono break-all text-sm">
+                  {pendingTransfer.recipient}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingTransfer(null)}
+                className="touch-target flex-1 py-3 rounded-xl border border-slate-600/40 text-slate-300 hover:bg-slate-700/30 font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmTransfer}
+                className="touch-target flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold transition-all duration-200 shadow-lg shadow-emerald-500/15"
+              >
+                Confirm transfer
+              </button>
+            </div>
           </div>
         </div>
       )}

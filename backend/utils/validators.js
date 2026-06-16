@@ -1,6 +1,20 @@
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
+const mongoose = require('mongoose');
+
+const asString = (value) => (typeof value === 'string' ? value : null);
+
+const asEnum = (value, allowedValues) => {
+  if (typeof value !== 'string') return null;
+  return Array.isArray(allowedValues) && allowedValues.includes(value) ? value : null;
+};
+
+const asObjectId = (value) => {
+  if (typeof value !== 'string') return null;
+  return mongoose.Types.ObjectId.isValid(value) ? value : null;
+};
+
 const validateEmail = (email) => {
   if (!email || typeof email !== 'string') return 'Email is required';
   if (!EMAIL_REGEX.test(email.trim())) return 'Please provide a valid email address';
@@ -49,4 +63,7 @@ module.exports = {
   collectErrors,
   EMAIL_REGEX,
   WALLET_REGEX,
+  asString,
+  asEnum,
+  asObjectId,
 };

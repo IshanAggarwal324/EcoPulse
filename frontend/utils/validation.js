@@ -1,3 +1,5 @@
+import { getAddress } from 'ethers';
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
@@ -36,10 +38,27 @@ export const validateConfirmPassword = (password, confirmPassword) => {
 
 export const validateWalletAddress = (address, required = false) => {
   if (!address?.trim()) return required ? 'Wallet address is required' : '';
-  if (!WALLET_REGEX.test(address.trim())) {
+  const trimmed = address.trim();
+  // Fast structural pre-check before the heavier EIP-55 checksum verification.
+  if (!WALLET_REGEX.test(trimmed)) {
     return 'Enter a valid Ethereum address (0x + 40 hex characters)';
   }
+  try {
+    // getAddress throws if the address is malformed or fails the EIP-55 checksum.
+    getAddress(trimmed);
+  } catch {
+    return 'Enter a valid checksummed Ethereum address';
+  }
   return '';
+};
+
+// True when the address has no mixed case (checksum cannot be visually verified).
+// All-lower or all-upper hex after the 0x prefix means EIP-55 casing is absent.
+export const isAddressChecksumAmbiguous = (address) => {
+  const trimmed = (address || '').trim();
+  if (!WALLET_REGEX.test(trimmed)) return false;
+  const body = trimmed.slice(2);
+  return body === body.toLowerCase() || body === body.toUpperCase();
 };
 
 export const validateLoginForm = ({ email, password }) => {

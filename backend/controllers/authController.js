@@ -123,7 +123,11 @@ const register = asyncHandler(async (req, res) => {
     console.warn('Verification email failed to send:', emailErr.message);
   }
 
-  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
+  const tokens = generateTokenPair(
+    user._id,
+    user.refreshTokenVersion || 0,
+    user.accessTokenVersion || 0,
+  );
   setAuthCookies(res, tokens);
 
   res.status(201).json({
@@ -142,7 +146,7 @@ const login = asyncHandler(async (req, res) => {
   }
 
   const user = await User.findOne({ email: email.toLowerCase() })
-    .select('+password +loginAttempts +lockUntil +refreshTokenVersion +mustChangePassword');
+    .select('+password +loginAttempts +lockUntil +refreshTokenVersion +accessTokenVersion +mustChangePassword');
   if (!user) {
     await auditService.log({
       actor: null,
@@ -204,7 +208,11 @@ const login = asyncHandler(async (req, res) => {
     await User.updateOne({ _id: user._id }, { $set: { mustChangePassword: passwordNowWeak } });
   }
 
-  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
+  const tokens = generateTokenPair(
+    user._id,
+    user.refreshTokenVersion || 0,
+    user.accessTokenVersion || 0,
+  );
   setAuthCookies(res, tokens);
 
   res.status(200).json({
@@ -223,7 +231,7 @@ const refresh = asyncHandler(async (req, res) => {
 
   try {
     const decoded = verifyRefreshToken(refreshToken);
-    const user = await User.findById(decoded.id).select('+refreshTokenVersion');
+    const user = await User.findById(decoded.id).select('+refreshTokenVersion +accessTokenVersion');
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid refresh token' });
@@ -249,7 +257,7 @@ const refresh = asyncHandler(async (req, res) => {
       { _id: user._id, refreshTokenVersion: user.refreshTokenVersion || 0 },
       { $inc: { refreshTokenVersion: 1 } },
       { new: true },
-    ).select('+refreshTokenVersion');
+    ).select('+refreshTokenVersion +accessTokenVersion');
 
     if (!rotatedUser) {
       return res.status(401).json({
@@ -259,7 +267,11 @@ const refresh = asyncHandler(async (req, res) => {
       });
     }
 
-    const tokens = generateTokenPair(rotatedUser._id, rotatedUser.refreshTokenVersion || 0);
+    const tokens = generateTokenPair(
+      rotatedUser._id,
+      rotatedUser.refreshTokenVersion || 0,
+      rotatedUser.accessTokenVersion || 0,
+    );
     setAuthCookies(res, tokens);
 
     res.status(200).json({
@@ -369,7 +381,7 @@ const updatePassword = asyncHandler(async (req, res) => {
     });
   }
 
-  const user = await User.findById(req.user._id).select('+password +refreshTokenVersion');
+  const user = await User.findById(req.user._id).select('+password +refreshTokenVersion +accessTokenVersion');
   const isMatch = await bcrypt.compare(currentPassword, user.password);
 
   if (!isMatch) {
@@ -379,10 +391,15 @@ const updatePassword = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(newPassword, salt);
   user.refreshTokenVersion = (user.refreshTokenVersion || 0) + 1;
+  user.accessTokenVersion = (user.accessTokenVersion || 0) + 1;
   user.mustChangePassword = false;
   await user.save();
 
-  const tokens = generateTokenPair(user._id, user.refreshTokenVersion || 0);
+  const tokens = generateTokenPair(
+    user._id,
+    user.refreshTokenVersion || 0,
+    user.accessTokenVersion || 0,
+  );
   setAuthCookies(res, tokens);
 
   res.status(200).json({
@@ -400,10 +417,21 @@ const logout = asyncHandler(async (req, res) => {
       const decoded = verifyRefreshToken(refreshToken);
       await User.updateOne(
         { _id: decoded.id, refreshTokenVersion: decoded.version ?? 0 },
-        { $inc: { refreshTokenVersion: 1 } },
+        { $inc: { refreshTokenVersion: 1, accessTokenVersion: 1 } },
       );
     } catch {
       // Always clear cookies even if token is invalid.
+    }
+  } else if (req.user?._id) {
+    // No refresh token (e.g. only an access cookie present) — still revoke
+    // the current access token by bumping its version.
+    try {
+      await User.updateOne(
+        { _id: req.user._id },
+        { $inc: { accessTokenVersion: 1 } },
+      );
+    } catch {
+      // Non-fatal: cookies are still cleared below.
     }
   }
 

@@ -142,6 +142,10 @@ const Trades = () => {
         }
       />
 
+      <p className="text-xs text-amber-300/80 -mt-2 mb-4">
+        Always verify a wallet address before sending funds — clipboard malware can silently swap copied addresses.
+      </p>
+
       <div className="content-card mb-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">

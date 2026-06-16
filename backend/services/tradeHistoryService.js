@@ -1,4 +1,7 @@
 const Trade = require('../models/Trade');
+const { asEnum } = require('../utils/validators');
+
+const TRADE_EVENT_TYPES = ['listed', 'purchased', 'cancelled'];
 
 const normalizeWallet = (wallet) => (wallet ? String(wallet).toLowerCase() : null);
 
@@ -26,7 +29,10 @@ const buildTradeQuery = ({
   }
 
   if (eventType) {
-    conditions.push({ eventType });
+    const safeEventType = asEnum(eventType, TRADE_EVENT_TYPES);
+    if (safeEventType) {
+      conditions.push({ eventType: safeEventType });
+    }
   }
 
   if (listingId !== null && listingId !== undefined && listingId !== '') {
@@ -155,4 +161,5 @@ module.exports = {
   getTradeHistory,
   getTradeSummary,
   getTradeByTxHash,
+  TRADE_EVENT_TYPES,
 };

@@ -31,12 +31,22 @@ const protect = async (req, res, next) => {
         });
       }
 
-      req.user = await User.findById(decoded.id).select('-password +isEmailVerified +mustChangePassword');
+      req.user = await User.findById(decoded.id).select(
+        '-password +isEmailVerified +mustChangePassword +accessTokenVersion',
+      );
 
       if (!req.user) {
         return res.status(401).json({
           success: false,
           message: 'Not authorized, user not found',
+        });
+      }
+
+      if ((decoded.version ?? 0) !== (req.user.accessTokenVersion ?? 0)) {
+        return res.status(401).json({
+          success: false,
+          message: 'Access token has been revoked',
+          code: 'TOKEN_REVOKED',
         });
       }
 

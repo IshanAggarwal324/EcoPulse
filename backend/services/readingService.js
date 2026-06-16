@@ -15,6 +15,12 @@ const validateReadingInput = ({ nodeId, energyGenerated, energyConsumed }) => {
     throw err;
   }
 
+  if (typeof nodeId !== 'string' || !mongoose.Types.ObjectId.isValid(nodeId)) {
+    const err = new Error('nodeId must be a valid identifier');
+    err.statusCode = 400;
+    throw err;
+  }
+
   return {
     nodeId,
     energyGenerated: Math.max(0, toNumber(energyGenerated)),
@@ -37,7 +43,11 @@ const createReading = async ({ nodeId, energyGenerated, energyConsumed }) => {
 
 const listReadings = async ({ nodeId, limit = 100, maxLimit = 500 } = {}) => {
   const query = {};
-  if (nodeId) query.nodeId = nodeId;
+  if (nodeId) {
+    query.nodeId = mongoose.Types.ObjectId.isValid(nodeId)
+      ? new mongoose.Types.ObjectId(nodeId)
+      : nodeId;
+  }
 
   const cappedLimit = Math.min(parseInt(limit, 10) || 100, maxLimit);
 

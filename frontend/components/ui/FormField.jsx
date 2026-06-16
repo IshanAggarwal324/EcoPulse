@@ -7,6 +7,7 @@ const FormField = ({
   type = 'text',
   value,
   onChange,
+  onPaste,
   error,
   hint,
   required = false,
@@ -31,6 +32,7 @@ const FormField = ({
           type={type}
           value={value}
           onChange={onChange}
+          onPaste={onPaste}
           required={required}
           disabled={disabled}
           autoComplete={autoComplete}

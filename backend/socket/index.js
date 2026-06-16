@@ -32,9 +32,13 @@ const initSocket = (httpServer, app) => {
         return next(new Error('Invalid token type'));
       }
 
-      const user = await User.findById(decoded.id).select('-password');
+      const user = await User.findById(decoded.id).select('-password +accessTokenVersion');
       if (!user || user.deletedAt || user.isBanned) {
         return next(new Error('Not authorized'));
+      }
+
+      if ((decoded.version ?? 0) !== (user.accessTokenVersion ?? 0)) {
+        return next(new Error('Token revoked'));
       }
 
       socket.user = user;
