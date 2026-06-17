@@ -10,6 +10,7 @@ const {
   updatePassword,
   verifyEmail,
   resendVerification,
+  getCaptchaConfig,
 } = require('../controllers/authController');
 const { protect, requireEmailVerified } = require('../middleware/auth');
 const { createAuthRateLimiter, createProfileRateLimiter } = require('../middleware/rateLimit');
@@ -48,6 +49,7 @@ const verifyEmailLimiter = createAuthRateLimiter({
 const profileLimiter = createProfileRateLimiter();
 
 router.post('/register', registerLimiter, captchaVerify, register);
+router.get('/captcha-config', getCaptchaConfig);
 router.post('/login', loginLimiter, login);
 router.post('/refresh', refreshLimiter, refresh);
 router.post('/logout', logout);

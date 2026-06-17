@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { UserPlus } from 'lucide-react';
 import FormField from '../components/ui/FormField';
+import CaptchaField from '../components/ui/CaptchaField';
 import { validateRegisterForm, hasErrors } from '../utils/validation';
 import { useToast } from '../context/ToastContext';
+import { authApi } from '../utils/api';
+import {
+  executeRecaptchaV3,
+  getCaptchaProvider,
+  getCaptchaSiteKey,
+  getRecaptchaVersion,
+  isCaptchaConfiguredLocally,
+} from '../utils/captcha';
 import logo from '../../ecopulse/src/assets/logo.png';
 
 const Register = () => {
@@ -16,11 +25,42 @@ const Register = () => {
   });
   const [fieldErrors, setFieldErrors] = useState({});
   const [formError, setFormError] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const captchaRef = useRef(null);
   const { register } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+
+  const localCaptchaProvider = getCaptchaProvider();
+  const localCaptchaSiteKey = getCaptchaSiteKey(localCaptchaProvider);
+  const isRecaptchaV3 = localCaptchaProvider === 'recaptcha' && getRecaptchaVersion() === 'v3';
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCaptchaConfig = async () => {
+      try {
+        const data = await authApi.getCaptchaConfig();
+        if (!cancelled) {
+          setCaptchaRequired(Boolean(data?.captcha?.required));
+        }
+      } catch {
+        if (!cancelled) {
+          setCaptchaRequired(false);
+        }
+      }
+    };
+
+    loadCaptchaConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -30,13 +70,49 @@ const Register = () => {
     }
   };
 
+  const resetCaptcha = () => {
+    setCaptchaToken('');
+    setCaptchaError('');
+    captchaRef.current?.reset?.();
+    setCaptchaResetKey((key) => key + 1);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    setCaptchaError('');
 
     const errors = validateRegisterForm(formData);
     setFieldErrors(errors);
     if (hasErrors(errors)) return;
+
+    if (captchaRequired && !isCaptchaConfiguredLocally()) {
+      const message =
+        'Registration CAPTCHA is enabled on the server but the frontend site key is missing. Set VITE_CAPTCHA_PROVIDER and the matching VITE_*_SITE_KEY in Vercel.';
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+
+    let token = captchaToken;
+
+    if (captchaRequired && isRecaptchaV3) {
+      try {
+        token = await executeRecaptchaV3(localCaptchaSiteKey);
+      } catch {
+        const message = 'CAPTCHA verification failed. Please try again.';
+        setCaptchaError(message);
+        toast.error(message);
+        return;
+      }
+    }
+
+    if (captchaRequired && !token) {
+      const message = 'Please complete the CAPTCHA verification.';
+      setCaptchaError(message);
+      toast.error(message);
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -45,6 +121,7 @@ const Register = () => {
       ...registerData,
       name: registerData.name.trim(),
       email: registerData.email.trim(),
+      ...(token ? { captchaToken: token } : {}),
     };
 
     const result = await register(payload);
@@ -68,6 +145,14 @@ const Register = () => {
           else if (msg.toLowerCase().includes('name')) serverErrors.name = msg;
         });
         setFieldErrors((prev) => ({ ...prev, ...serverErrors }));
+      }
+      if (
+        result.code === 'CAPTCHA_REQUIRED'
+        || result.code === 'CAPTCHA_FAILED'
+        || result.code === 'CAPTCHA_ERROR'
+        || /captcha/i.test(result.message || '')
+      ) {
+        resetCaptcha();
       }
       setIsSubmitting(false);
     }
@@ -148,6 +233,21 @@ const Register = () => {
               autoComplete="new-password"
               maxLength={128}
             />
+
+            {captchaRequired && isCaptchaConfiguredLocally() && (
+              <div className="space-y-2">
+                <CaptchaField
+                  ref={captchaRef}
+                  resetKey={captchaResetKey}
+                  disabled={isSubmitting}
+                  onTokenChange={setCaptchaToken}
+                  onError={setCaptchaError}
+                />
+                {captchaError && (
+                  <p className="text-sm text-rose-400">{captchaError}</p>
+                )}
+              </div>
+            )}
 
             <button
               type="submit"

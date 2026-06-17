@@ -1,7 +1,6 @@
 const https = require('https');
 
-const isConfigured = () =>
-  Boolean(process.env.CAPTCHA_SECRET || process.env.RECAPTCHA_SECRET);
+const isConfigured = () => Boolean(getProvider());
 
 const PROVIDER_CONFIG = {
   recaptcha: {
@@ -77,6 +76,14 @@ function verifyToken(provider, token, remoteIp) {
   });
 }
 
+function getPublicCaptchaConfig() {
+  const provider = getProvider();
+  return {
+    required: Boolean(provider),
+    provider: provider || null,
+  };
+}
+
 function captchaVerify(req, res, next) {
   const provider = getProvider();
 
@@ -130,4 +137,4 @@ function captchaVerify(req, res, next) {
     });
 }
 
-module.exports = { captchaVerify, isConfigured, getProvider };
+module.exports = { captchaVerify, isConfigured, getProvider, getPublicCaptchaConfig };

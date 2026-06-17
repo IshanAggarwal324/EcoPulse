@@ -127,7 +127,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!response.ok) {
         const msg = data.errors?.join(', ') || data.message || 'Registration failed';
-        return { success: false, message: msg, errors: data.errors };
+        return { success: false, message: msg, errors: data.errors, code: data.code || null };
       }
 
       const { user: newUser } = parseAuthResponse(data);

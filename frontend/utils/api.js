@@ -129,6 +129,7 @@ export async function fetchApi(path, options = {}) {
 
 export const authApi = {
   getMe: () => fetchApi('/auth/me'),
+  getCaptchaConfig: () => fetchApi('/auth/captcha-config', { skipAuth: true }),
   updateProfile: (body) => fetchApi('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
   updatePassword: (body) => fetchApi('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
   verifyEmail: (token) =>

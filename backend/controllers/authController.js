@@ -525,6 +525,14 @@ const resendVerification = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
 });
 
+const getCaptchaConfig = asyncHandler(async (req, res) => {
+  const { getPublicCaptchaConfig } = require('../middleware/captchaVerify');
+  res.status(200).json({
+    success: true,
+    captcha: getPublicCaptchaConfig(),
+  });
+});
+
 module.exports = {
   register,
   login,
@@ -535,4 +543,5 @@ module.exports = {
   updatePassword,
   verifyEmail,
   resendVerification,
+  getCaptchaConfig,
 };
