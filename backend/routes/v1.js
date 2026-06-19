@@ -24,4 +24,9 @@ router.use('/marketplace', ...guardedUser, require('./marketplace'));
 router.use('/assistant', ...guardedUser, require('./assistant'));
 router.use('/admin', protect, requirePasswordCurrent, authorize('admin', 'moderator'), require('./admin'));
 
+// Sub-module 1.2.5 — device HTTP telemetry push. Auth is device-based
+// (x-device-id / x-api-key via deviceAuth), so this is mounted OUTSIDE the
+// guardedUser chain and does not require a user JWT.
+router.use('/telemetry', require('./telemetry'));
+
 module.exports = router;

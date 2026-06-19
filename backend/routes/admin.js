@@ -12,6 +12,7 @@ const adminAuditController = require('../controllers/admin/adminAuditController'
 const adminHealthController = require('../controllers/admin/adminHealthController');
 const adminSimulatorController = require('../controllers/admin/adminSimulatorController');
 const adminDeviceController = require('../controllers/admin/adminDeviceController');
+const adminIngestionController = require('../controllers/admin/adminIngestionController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -55,5 +56,9 @@ router.get('/simulator/preview', adminSimulatorController.getPreview);
 
 // Sub-module 1.1 — Device Registry & Authentication
 router.use('/devices', adminOnly, require('./devices'));
+
+// Sub-module 1.2.7 — Ingestion observability (counters, dead-letters, MQTT status)
+router.get('/ingestion/health', adminIngestionController.getIngestionHealth);
+router.get('/ingestion/errors', adminOnly, adminIngestionController.listIngestionErrors);
 
 module.exports = router;

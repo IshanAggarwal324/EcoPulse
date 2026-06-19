@@ -11,6 +11,7 @@ const v1Routes = require('./routes/v1');
 const blockchainSyncService = require('./services/blockchainSyncService');
 const socketBroadcastService = require('./services/socketBroadcastService');
 const simulatorManager = require('./services/simulatorManager');
+const mqttIngestionService = require('./services/mqtt/mqttIngestionService');
 const { initSocket } = require('./socket');
 
 const startServer = async () => {
@@ -108,6 +109,8 @@ const startServer = async () => {
     blockchainSyncService.listenToBlockchainEvents();
     // Start the embedded grid simulator when SIMULATOR_EMBEDDED=true.
     simulatorManager.startIfEnabled();
+    // Start the MQTT ingestion service when MQTT_INGESTION_ENABLED=true.
+    mqttIngestionService.start();
   });
 };
 

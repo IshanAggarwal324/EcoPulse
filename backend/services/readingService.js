@@ -3,11 +3,18 @@ const EnergyReading = require('../models/EnergyReading');
 const EnergyNode = require('../models/EnergyNode');
 const socketBroadcastService = require('./socketBroadcastService');
 
+const VALID_SOURCES = EnergyReading.VALID_SOURCES;
+
 const toNumber = (value, fallback = 0) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
+/**
+ * Validate the numeric core of a reading. Reused by every entry point so input
+ * sanitization is identical for admin, simulator, device, and public-api paths
+ * (guardrail 1.2: "Input sanitization reusing validateReadingInput").
+ */
 const validateReadingInput = ({ nodeId, energyGenerated, energyConsumed }) => {
   if (!nodeId) {
     const err = new Error('nodeId is required');
@@ -21,44 +28,88 @@ const validateReadingInput = ({ nodeId, energyGenerated, energyConsumed }) => {
     throw err;
   }
 
+  const generated = toNumber(energyGenerated);
+  const consumed = toNumber(energyConsumed);
+
+  if (generated < 0 || consumed < 0) {
+    const err = new Error('energyGenerated and energyConsumed must be non-negative');
+    err.statusCode = 400;
+    throw err;
+  }
+
   return {
     nodeId,
-    energyGenerated: Math.max(0, toNumber(energyGenerated)),
-    energyConsumed: Math.max(0, toNumber(energyConsumed)),
+    energyGenerated: generated,
+    energyConsumed: consumed,
   };
 };
 
-const createReading = async ({ nodeId, energyGenerated, energyConsumed }) => {
+const normalizeTimestamp = (timestamp) => {
+  if (timestamp === undefined || timestamp === null) return new Date();
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+/**
+ * Unified ingest pipeline (Sub-module 1.2.4).
+ *
+ * Single entry point shared by MQTT, HTTP push, the simulator, admin REST, and
+ * the public grid poller. Tagged with a `source` and optional provenance fields
+ * so the origin of every reading is traceable.
+ *
+ * @param {object} input
+ * @param {string} input.source     one of VALID_SOURCES
+ * @param {string} input.nodeId
+ * @param {number} input.energyGenerated
+ * @param {number} input.energyConsumed
+ * @param {Date|string} [input.timestamp]
+ * @param {object} [input.meta]     optional provenance: deviceId, providerKey,
+ *                                  externalReadingId, unit
+ */
+const ingestReading = async ({
+  source,
+  nodeId,
+  energyGenerated,
+  energyConsumed,
+  timestamp,
+  meta,
+}) => {
+  const normalizedSource = VALID_SOURCES.includes(source) ? source : 'admin';
   const input = validateReadingInput({ nodeId, energyGenerated, energyConsumed });
 
-  const reading = await EnergyReading.create({
+  const provenance = meta && typeof meta === 'object' ? meta : {};
+
+  const doc = {
     nodeId: input.nodeId,
     energyGenerated: input.energyGenerated,
     energyConsumed: input.energyConsumed,
-  });
+    timestamp: normalizeTimestamp(timestamp),
+    source: normalizedSource,
+    deviceId: provenance.deviceId || null,
+    providerKey: provenance.providerKey || null,
+    externalReadingId: provenance.externalReadingId || null,
+    unit: provenance.unit === 'MW' ? 'MW' : 'kW',
+  };
+
+  const reading = await EnergyReading.create(doc);
 
   await socketBroadcastService.emitReadingAndAnalytics(reading);
   return reading;
 };
 
-const listReadings = async ({ nodeId, limit = 100, maxLimit = 500 } = {}) => {
-  const query = {};
-  if (nodeId) {
-    query.nodeId = mongoose.Types.ObjectId.isValid(nodeId)
-      ? new mongoose.Types.ObjectId(nodeId)
-      : nodeId;
-  }
-
-  const cappedLimit = Math.min(parseInt(limit, 10) || 100, maxLimit);
-
-  return EnergyReading.find(query)
-    .sort({ timestamp: -1 })
-    .limit(cappedLimit)
-    .populate('nodeId', 'name nodeType sourceType status');
-};
+/**
+ * Admin REST wrapper (1.2.4 backward-compat).
+ * Kept as a thin wrapper so readingController / admin routes need no changes.
+ */
+const createReading = (input) =>
+  ingestReading({ ...input, source: 'admin' });
 
 /**
- * Socket simulator path: persist when nodeId is valid, else broadcast ephemeral reading.
+ * Socket simulator wrapper (1.2.4 backward-compat).
+ *
+ * Preserves the historical ephemeral-broadcast behavior: if the nodeId does not
+ * resolve to a persisted EnergyNode, the reading is broadcast over the socket
+ * without being stored (used by the dashboard demo path).
  */
 const ingestSimulatedReading = async (data) => {
   const input = validateReadingInput({
@@ -70,21 +121,46 @@ const ingestSimulatedReading = async (data) => {
   if (mongoose.Types.ObjectId.isValid(input.nodeId)) {
     const nodeExists = await EnergyNode.exists({ _id: input.nodeId });
     if (nodeExists) {
-      return createReading(input);
+      return ingestReading({ ...input, source: 'simulated' });
     }
   }
 
   const ephemeral = {
     ...input,
-    timestamp: new Date().toISOString(),
+    source: 'simulated',
+    timestamp: data?.timestamp || new Date().toISOString(),
   };
   socketBroadcastService.emitNewReading(ephemeral);
   return ephemeral;
 };
 
+const listReadings = async ({ nodeId, source, limit = 100, maxLimit = 500 } = {}) => {
+  const query = {};
+  if (nodeId) {
+    query.nodeId = mongoose.Types.ObjectId.isValid(nodeId)
+      ? new mongoose.Types.ObjectId(nodeId)
+      : nodeId;
+  }
+
+  // Sub-module 1.2.6 — optional source filter. Whitelisted against VALID_SOURCES
+  // so a caller cannot probe with arbitrary strings / Mongo operators.
+  if (source && VALID_SOURCES.includes(source)) {
+    query.source = source;
+  }
+
+  const cappedLimit = Math.min(parseInt(limit, 10) || 100, maxLimit);
+
+  return EnergyReading.find(query)
+    .sort({ timestamp: -1 })
+    .limit(cappedLimit)
+    .populate('nodeId', 'name nodeType sourceType status');
+};
+
 module.exports = {
+  ingestReading,
   createReading,
   listReadings,
   ingestSimulatedReading,
   validateReadingInput,
+  VALID_SOURCES,
 };
