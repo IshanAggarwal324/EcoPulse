@@ -14,6 +14,7 @@ const simulatorManager = require('./services/simulatorManager');
 const mqttIngestionService = require('./services/mqtt/mqttIngestionService');
 const timeseriesSetup = require('./services/timeseries/timeseriesSetup');
 const rollupWorker = require('./workers/rollupWorker');
+const publicGridPoller = require('./workers/publicGridPoller');
 const { isTimeseriesEnabled } = require('./config/timeseries');
 const { initSocket } = require('./socket');
 
@@ -127,6 +128,10 @@ const startServer = async () => {
       });
       rollupWorker.start();
     }
+
+    // Sub-module 1.5.3 — start the public grid poller when
+    // PUBLIC_GRID_INGESTION_ENABLED=true (and public APIs are an allowed source).
+    publicGridPoller.start();
   });
 };
 

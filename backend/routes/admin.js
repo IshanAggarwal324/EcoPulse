@@ -73,4 +73,7 @@ router.post('/ingestion/backfill', adminOnly, adminIngestionController.backfill)
 router.get('/ingestion/timeseries/status', adminTimeseriesController.getStatus);
 router.post('/ingestion/timeseries/rollup', adminOnly, adminTimeseriesController.triggerRollup);
 
+// Sub-module 1.5.5 — Public grid source admin surface (CRUD + poll-now + reset)
+router.use('/public-grid-sources', adminOnly, require('./adminPublicGrid'));
+
 module.exports = router;
