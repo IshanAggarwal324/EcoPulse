@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const EnergyReading = require('../models/EnergyReading');
 const EnergyNode = require('../models/EnergyNode');
 const socketBroadcastService = require('./socketBroadcastService');
+const timeseriesWriter = require('./timeseries/timeseriesWriter');
 
 const VALID_SOURCES = EnergyReading.VALID_SOURCES;
 
@@ -91,10 +92,36 @@ const ingestReading = async ({
     unit: provenance.unit === 'MW' ? 'MW' : 'kW',
   };
 
-  const reading = await EnergyReading.create(doc);
+  // Sub-module 1.3.1 — dual-write to the time-series collection. Legacy
+  // `energyreadings` remains the source of truth while TIMESERIES_DUAL_WRITE
+  // is on; post-cutover (1.4) the legacy write is skipped.
+  const writePromises = [];
 
-  await socketBroadcastService.emitReadingAndAnalytics(reading);
-  return reading;
+  if (timeseriesWriter.shouldWriteLegacy()) {
+    writePromises.push(EnergyReading.create(doc));
+  } else {
+    writePromises.push(Promise.resolve(null));
+  }
+
+  writePromises.push(
+    timeseriesWriter.writeToTimeseries({
+      nodeId: input.nodeId,
+      energyGenerated: input.energyGenerated,
+      energyConsumed: input.energyConsumed,
+      timestamp: doc.timestamp,
+      source: normalizedSource,
+      unit: doc.unit,
+      provenance,
+    }),
+  );
+
+  const [reading] = await Promise.all(writePromises);
+
+  // The socket payload is the legacy reading (or a synthesized doc post-cutover
+  // when legacy writes are disabled).
+  const broadcastDoc = reading || doc;
+  await socketBroadcastService.emitReadingAndAnalytics(broadcastDoc);
+  return broadcastDoc;
 };
 
 /**

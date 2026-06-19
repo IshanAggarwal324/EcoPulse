@@ -12,6 +12,9 @@ const blockchainSyncService = require('./services/blockchainSyncService');
 const socketBroadcastService = require('./services/socketBroadcastService');
 const simulatorManager = require('./services/simulatorManager');
 const mqttIngestionService = require('./services/mqtt/mqttIngestionService');
+const timeseriesSetup = require('./services/timeseries/timeseriesSetup');
+const rollupWorker = require('./workers/rollupWorker');
+const { isTimeseriesEnabled } = require('./config/timeseries');
 const { initSocket } = require('./socket');
 
 const startServer = async () => {
@@ -111,6 +114,19 @@ const startServer = async () => {
     simulatorManager.startIfEnabled();
     // Start the MQTT ingestion service when MQTT_INGESTION_ENABLED=true.
     mqttIngestionService.start();
+
+    // Sub-module 1.3 — bootstrap the time-series collection + indexes and
+    // start the hourly rollup worker when TIMESERIES_ENABLED=true.
+    if (isTimeseriesEnabled()) {
+      timeseriesSetup.ensureAll().then((status) => {
+        if (!status.ok) {
+          console.error('[timeseries] setup failed:', status.error);
+        } else {
+          console.log('[timeseries] collection ready');
+        }
+      });
+      rollupWorker.start();
+    }
   });
 };
 

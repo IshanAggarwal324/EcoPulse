@@ -13,6 +13,7 @@ const adminHealthController = require('../controllers/admin/adminHealthControlle
 const adminSimulatorController = require('../controllers/admin/adminSimulatorController');
 const adminDeviceController = require('../controllers/admin/adminDeviceController');
 const adminIngestionController = require('../controllers/admin/adminIngestionController');
+const adminTimeseriesController = require('../controllers/admin/adminTimeseriesController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -60,5 +61,9 @@ router.use('/devices', adminOnly, require('./devices'));
 // Sub-module 1.2.7 — Ingestion observability (counters, dead-letters, MQTT status)
 router.get('/ingestion/health', adminIngestionController.getIngestionHealth);
 router.get('/ingestion/errors', adminOnly, adminIngestionController.listIngestionErrors);
+
+// Sub-module 1.3 — Time-series status + manual rollup trigger
+router.get('/ingestion/timeseries/status', adminTimeseriesController.getStatus);
+router.post('/ingestion/timeseries/rollup', adminOnly, adminTimeseriesController.triggerRollup);
 
 module.exports = router;
