@@ -14,6 +14,7 @@ import {
   Loader2,
   Lock,
   Gauge,
+  Database,
 } from 'lucide-react';
 import SectionTitle from '../../components/ui/SectionTitle';
 import RoleBadge from '../../components/admin/RoleBadge';
@@ -63,6 +64,13 @@ const MODULE_CARDS = [
     description: 'Grid profiles, schedules, and failure modes',
     icon: Gauge,
     phase: 'Phase 6',
+  },
+  {
+    to: '/admin/ingestion',
+    label: 'Ingestion',
+    description: 'Mode, telemetry sources, and backfill',
+    icon: Database,
+    phase: 'Module 1.4',
   },
   {
     to: '/admin/audit-logs',

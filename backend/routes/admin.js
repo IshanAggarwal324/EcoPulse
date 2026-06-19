@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authorize } = require('../middleware/auth');
 const { createAdminRateLimiter } = require('../middleware/rateLimit');
+const simulatorLockdown = require('../middleware/simulatorLockdown');
 
 const adminUserController = require('../controllers/admin/adminUserController');
 const adminNodeController = require('../controllers/admin/adminNodeController');
@@ -47,11 +48,12 @@ router.get('/audit-logs/verify', adminOnly, adminAuditController.verifyAuditInte
 
 router.get('/health', adminHealthController.getHealth);
 
-// Simulator (Phase 6)
+// Simulator (Phase 6). Mutation routes are guarded by the ingestion-mode
+// lockdown (Sub-module 1.4.1): 403 in production public_api/device mode.
 router.get('/simulator/config', adminSimulatorController.getConfig);
-router.put('/simulator/config', adminOnly, adminSimulatorController.updateConfig);
-router.post('/simulator/restart', adminOnly, adminSimulatorController.restart);
-router.post('/simulator/reset', adminOnly, adminSimulatorController.resetConfig);
+router.put('/simulator/config', adminOnly, simulatorLockdown, adminSimulatorController.updateConfig);
+router.post('/simulator/restart', adminOnly, simulatorLockdown, adminSimulatorController.restart);
+router.post('/simulator/reset', adminOnly, simulatorLockdown, adminSimulatorController.resetConfig);
 router.get('/simulator/readings', adminSimulatorController.getRecentReadings);
 router.get('/simulator/preview', adminSimulatorController.getPreview);
 
@@ -61,6 +63,11 @@ router.use('/devices', adminOnly, require('./devices'));
 // Sub-module 1.2.7 — Ingestion observability (counters, dead-letters, MQTT status)
 router.get('/ingestion/health', adminIngestionController.getIngestionHealth);
 router.get('/ingestion/errors', adminOnly, adminIngestionController.listIngestionErrors);
+
+// Sub-module 1.4 — Ingestion mode, unified dashboard, and historical backfill.
+router.get('/ingestion/mode', adminIngestionController.getIngestionMode);
+router.get('/ingestion/dashboard', adminIngestionController.getIngestionDashboard);
+router.post('/ingestion/backfill', adminOnly, adminIngestionController.backfill);
 
 // Sub-module 1.3 — Time-series status + manual rollup trigger
 router.get('/ingestion/timeseries/status', adminTimeseriesController.getStatus);

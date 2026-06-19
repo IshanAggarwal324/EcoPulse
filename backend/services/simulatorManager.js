@@ -1,5 +1,6 @@
 const { SimulatorRunner, configStore } = require('./simulator');
 const readingService = require('./readingService');
+const ingestionMode = require('../config/ingestionMode');
 
 const RECENT_READINGS_LIMIT = 60;
 
@@ -8,8 +9,17 @@ let startedAt = null;
 const recentReadings = [];
 let readingsEmitted = 0;
 
+/**
+ * Sub-module 1.4.1 — the embedded simulator respects the ingestion-mode
+ * lockdown. In production + public_api/device mode the simulator must NOT run
+ * (guardrail 1.4: demo/seed data must never reach a live billing/trading
+ * environment). `SIMULATOR_EMBEDDED` is honored only when the simulator is
+ * permitted by the active mode.
+ */
 const isEmbeddedEnabled = () =>
-  process.env.SIMULATOR_EMBEDDED === 'true' && process.env.NODE_ENV !== 'production';
+  process.env.SIMULATOR_EMBEDDED === 'true' &&
+  process.env.NODE_ENV !== 'production' &&
+  ingestionMode.isSimulatorAllowed();
 
 const pushRecent = (reading) => {
   recentReadings.push(reading);
@@ -61,6 +71,12 @@ const buildRunner = () => {
 };
 
 const start = async () => {
+  if (ingestionMode.isSimulatorLockedDown()) {
+    // Defense in depth: even if an admin calls the restart endpoint, refuse to
+    // start a live simulator in a production public_api/device environment.
+    console.warn('[SimulatorManager] Refusing to start — simulator is locked down by INGESTION_MODE.');
+    return null;
+  }
   if (runner && runner.running) return runner;
   runner = buildRunner();
   runner.onTick = undefined;
@@ -118,6 +134,7 @@ const getStatus = () => ({
   recentCount: recentReadings.length,
   intervalMs: configStore.getIntervalMs(),
   jitterMs: configStore.getJitterMs(),
+  lockedDown: ingestionMode.isSimulatorLockedDown(),
 });
 
 const getRecentReadings = () => [...recentReadings].reverse();

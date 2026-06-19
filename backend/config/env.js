@@ -87,6 +87,29 @@ const validateEnvironment = () => {
     }
   }
 
+  // Sub-module 1.4.1 — surface an invalid INGESTION_MODE without crashing so a
+  // typo can't silently fall back and enable a source that should be off.
+  const ingestionMode = require('./ingestionMode');
+  if (ingestionMode.hasInvalidMode()) {
+    console.warn(
+      `WARNING: INGESTION_MODE="${process.env.INGESTION_MODE}" is invalid. ` +
+        `Valid modes: ${ingestionMode.VALID_MODES.join(', ')}. ` +
+        `Falling back to "${ingestionMode.getIngestionMode()}".`,
+    );
+  }
+
+  // Guardrail 1.4: in production, the embedded simulator MUST NOT run when the
+  // simulator is locked down (public_api / device modes).
+  if (isProduction && ingestionMode.isSimulatorLockedDown()) {
+    const simEmbedded = String(process.env.SIMULATOR_EMBEDDED || '').toLowerCase() === 'true';
+    if (simEmbedded) {
+      console.warn(
+        'WARNING: SIMULATOR_EMBEDDED=true is ignored in production with ' +
+          `INGESTION_MODE=${ingestionMode.getIngestionMode()} (simulator locked down).`,
+      );
+    }
+  }
+
   if (issues.length > 0) {
     const message = issues.map((issue) => `- ${issue}`).join('\n');
     throw new Error(`Environment validation failed:\n${message}`);

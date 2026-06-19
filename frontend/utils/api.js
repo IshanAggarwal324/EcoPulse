@@ -270,4 +270,12 @@ export const adminApi = {
   resetSimulatorConfig: () => fetchApi('/admin/simulator/reset', { method: 'POST' }),
   getSimulatorReadings: (limit = 20) => fetchApi(`/admin/simulator/readings?limit=${limit}`),
   getSimulatorPreview: (sourceType) => fetchApi(`/admin/simulator/preview?sourceType=${sourceType}`),
+
+  // Ingestion (Sub-module 1.4)
+  getIngestionMode: () => fetchApi('/admin/ingestion/mode'),
+  getIngestionDashboard: () => fetchApi('/admin/ingestion/dashboard'),
+  getIngestionHealth: (sinceHours) =>
+    fetchApi(`/admin/ingestion/health${buildQuery(sinceHours ? { sinceHours } : {})}`),
+  backfillIngestion: (body) =>
+    fetchApi('/admin/ingestion/backfill', { method: 'POST', body: JSON.stringify(body) }),
 };
