@@ -11,6 +11,7 @@ const adminReportJobController = require('../controllers/admin/adminReportJobCon
 const adminAuditController = require('../controllers/admin/adminAuditController');
 const adminHealthController = require('../controllers/admin/adminHealthController');
 const adminSimulatorController = require('../controllers/admin/adminSimulatorController');
+const adminDeviceController = require('../controllers/admin/adminDeviceController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -51,5 +52,8 @@ router.post('/simulator/restart', adminOnly, adminSimulatorController.restart);
 router.post('/simulator/reset', adminOnly, adminSimulatorController.resetConfig);
 router.get('/simulator/readings', adminSimulatorController.getRecentReadings);
 router.get('/simulator/preview', adminSimulatorController.getPreview);
+
+// Sub-module 1.1 — Device Registry & Authentication
+router.use('/devices', adminOnly, require('./devices'));
 
 module.exports = router;

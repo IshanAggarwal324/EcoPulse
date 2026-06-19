@@ -21,6 +21,22 @@ const energyNodeSchema = new mongoose.Schema({
     enum: ['active', 'inactive', 'maintenance', 'failed'],
     default: 'active',
   },
+  // Sub-module 1.1.4 — declares which ingestion source feeds this node.
+  // `simulated` is the historical default so existing nodes (and the embedded
+  // simulator) keep working unchanged. `public_api` nodes are admin-seeded grid
+  // zones that never receive a DeviceCredential.
+  ingestionMode: {
+    type: String,
+    enum: ['simulated', 'device', 'public_api', 'hybrid'],
+    default: 'simulated',
+  },
+  // Optional hard cap used by the unified ingestion pipeline to reject
+  // implausible telemetry (kW or MW depending on node scale). Null = uncapped.
+  maxCapacityKw: {
+    type: Number,
+    min: 0,
+    default: null,
+  },
   location: {
     type: String,
   },
