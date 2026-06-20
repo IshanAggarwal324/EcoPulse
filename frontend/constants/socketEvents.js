@@ -7,5 +7,6 @@ export const SOCKET_EVENTS = {
     NEW_READING: 'newReading',
     ANALYTICS_UPDATE: 'analyticsUpdate',
     BLOCKCHAIN_EVENT: 'blockchainEvent',
+    NOTIFICATION: 'notification',
   },
 };

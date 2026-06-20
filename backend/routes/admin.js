@@ -76,4 +76,7 @@ router.post('/ingestion/timeseries/rollup', adminOnly, adminTimeseriesController
 // Sub-module 1.5.5 — Public grid source admin surface (CRUD + poll-now + reset)
 router.use('/public-grid-sources', adminOnly, require('./adminPublicGrid'));
 
+// Sub-module 2.3 — Auto-trading kill switch + matcher observability
+router.use('/auto-trading', require('./adminAutoTrading'));
+
 module.exports = router;

@@ -17,6 +17,7 @@ import AssistantChat from '../../frontend/components/assistant/AssistantChat';
 
 const Dashboard = lazy(() => import('../../frontend/pages/Dashboard'));
 const Trading = lazy(() => import('../../frontend/pages/Trading'));
+const AutoTrading = lazy(() => import('../../frontend/pages/AutoTrading'));
 const CarbonTransactions = lazy(() => import('../../frontend/pages/CarbonTransactions'));
 const Forecasts = lazy(() => import('../../frontend/pages/Forecasts'));
 const Credits = lazy(() => import('../../frontend/pages/Credits'));
@@ -71,6 +72,7 @@ function AuthenticatedApp() {
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
                       <Route path="/trading" element={<Trading />} />
+                      <Route path="/auto-trading" element={<AutoTrading />} />
                       <Route path="/transactions" element={<CarbonTransactions />} />
                       <Route path="/forecasts" element={<Forecasts />} />
                       <Route path="/credits" element={<Credits />} />

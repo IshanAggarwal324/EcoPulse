@@ -208,6 +208,33 @@ export const pricingApi = {
   },
 };
 
+// Sub-module 2.3 — Auto-listing policy + signed-intent enable.
+export const autoTradingApi = {
+  getEip712Domain: () => fetchApi('/trading/auto-policy/eip712-domain'),
+  listPolicies: () => fetchApi('/trading/auto-policy'),
+  getPolicy: (id) => fetchApi(`/trading/auto-policy/${id}`),
+  createPolicy: (body) =>
+    fetchApi('/trading/auto-policy', { method: 'POST', body: JSON.stringify(body) }),
+  updatePolicy: (id, body) =>
+    fetchApi(`/trading/auto-policy/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePolicy: (id) => fetchApi(`/trading/auto-policy/${id}`, { method: 'DELETE' }),
+  enablePolicy: (id, body) =>
+    fetchApi(`/trading/auto-policy/${id}/enable`, { method: 'POST', body: JSON.stringify(body) }),
+  disablePolicy: (id) =>
+    fetchApi(`/trading/auto-policy/${id}/disable`, { method: 'POST', body: JSON.stringify({}) }),
+};
+
+// Sub-module 2.3.5 — in-app notifications (user-scoped).
+export const notificationApi = {
+  list: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/trading/notifications${query ? `?${query}` : ''}`);
+  },
+  markRead: (id) => fetchApi(`/trading/notifications/${id}/read`, { method: 'POST' }),
+  markAllRead: () => fetchApi('/trading/notifications/read-all', { method: 'POST' }),
+  dismiss: (id) => fetchApi(`/trading/notifications/${id}/dismiss`, { method: 'POST' }),
+};
+
 export const assistantApi = {
   chat: (message, sessionId, history) =>
     fetchApi('/assistant/chat', {

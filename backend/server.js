@@ -15,6 +15,7 @@ const mqttIngestionService = require('./services/mqtt/mqttIngestionService');
 const timeseriesSetup = require('./services/timeseries/timeseriesSetup');
 const rollupWorker = require('./workers/rollupWorker');
 const publicGridPoller = require('./workers/publicGridPoller');
+const autoListingMatcher = require('./workers/autoListingMatcher');
 const { isTimeseriesEnabled } = require('./config/timeseries');
 const { initSocket } = require('./socket');
 
@@ -132,6 +133,11 @@ const startServer = async () => {
     // Sub-module 1.5.3 — start the public grid poller when
     // PUBLIC_GRID_INGESTION_ENABLED=true (and public APIs are an allowed source).
     publicGridPoller.start();
+
+    // Sub-module 2.3.3 — start the auto-listing matcher when
+    // AUTO_TRADING_ENABLED=true. The per-tick gate re-reads the admin kill
+    // switch, so a runtime pause takes effect without a restart.
+    autoListingMatcher.start();
   });
 };
 
