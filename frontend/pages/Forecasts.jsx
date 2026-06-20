@@ -1,10 +1,11 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import SectionTitle from '../components/ui/SectionTitle';
 import { forecastSummary } from '../utils/forecastSummary';
 
 const ForecastChart = lazy(() => import('../components/ui/ForecastChart'));
-import { TrendingUp, AlertCircle, Network, GitCompare } from 'lucide-react';
-import { forecastApi, nodesApi, ApiError } from '../utils/api';
+import { TrendingUp, AlertCircle, Network, GitCompare, Sparkles } from 'lucide-react';
+import { forecastApi, nodesApi, pricingApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { Loader2 } from 'lucide-react';
 import EmptyState from '../components/ui/EmptyState';
@@ -54,6 +55,9 @@ const Forecasts = () => {
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Sub-module 2.2 — surplus listing recommendation (single-node view).
+  const [surplusRec, setSurplusRec] = useState(null);
+  const [surplusLoading, setSurplusLoading] = useState(false);
   const toast = useToast();
   const fallbackNotifiedRef = React.useRef(false);
 
@@ -143,6 +147,30 @@ const Forecasts = () => {
   useEffect(() => {
     fetchForecasts();
   }, [fetchForecasts]);
+
+  // Fetch a surplus listing recommendation for the selected node (2.2.5).
+  useEffect(() => {
+    if (viewMode !== VIEW_MODES.SINGLE || !selectedNodeId) {
+      setSurplusRec(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      setSurplusLoading(true);
+      try {
+        const res = await pricingApi.getRecommendation({ nodeId: selectedNodeId });
+        if (!cancelled) setSurplusRec(res.data || null);
+      } catch {
+        if (!cancelled) setSurplusRec(null);
+      } finally {
+        if (!cancelled) setSurplusLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, selectedNodeId]);
 
   const chartTitle =
     viewMode === VIEW_MODES.COMPARE
@@ -301,6 +329,58 @@ const Forecasts = () => {
               </Suspense>
             </div>
             <ForecastSummaryCards predictions={forecastData} />
+
+            {viewMode === VIEW_MODES.SINGLE && selectedNodeId && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                {surplusLoading ? (
+                  <p className="text-sm text-slate-400 flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" /> Checking forecast surplus...
+                  </p>
+                ) : surplusRec ? (
+                  <>
+                    <div className="flex items-center gap-2 text-emerald-300 mb-3">
+                      <Sparkles size={18} />
+                      <h4 className="text-sm font-semibold">Surplus & listing suggestion</h4>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs mb-3">
+                      <div>
+                        <p className="text-slate-500">Forecast surplus</p>
+                        <p className="text-slate-200 font-mono">{surplusRec.surplus.totalSurplusKwh} kWh</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Peak surplus</p>
+                        <p className="text-slate-200 font-mono">{surplusRec.surplus.peakSurplusKw} kW</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Suggested unit</p>
+                        <p className="text-slate-200 font-mono">{surplusRec.unitPriceCc} CC/kWh</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Suggested total</p>
+                        <p className="text-slate-200 font-mono">{surplusRec.totalPriceCc} CC</p>
+                      </div>
+                    </div>
+                    {surplusRec.eligible ? (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <Link
+                          to="/trading"
+                          className="touch-target inline-flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                        >
+                          <Sparkles size={14} /> List this surplus
+                        </Link>
+                        <span className="text-[11px] text-slate-500">{surplusRec.disclaimer}</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-300">
+                        Not recommended right now: {surplusRec.reasons.join('; ')}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-500">No surplus recommendation available for this node.</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

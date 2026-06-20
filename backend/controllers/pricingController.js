@@ -9,7 +9,9 @@
 
 const mongoose = require('mongoose');
 const EnergyNode = require('../models/EnergyNode');
+const User = require('../models/User');
 const pricingEngine = require('../services/pricing/pricingEngine');
+const surplusService = require('../services/pricing/surplusService');
 const config = require('../config/pricing');
 const auditService = require('../services/auditService');
 const asyncHandler = require('../utils/asyncHandler');
@@ -101,6 +103,77 @@ const getPricingCurve = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * GET /api/v1/pricing/recommendations?nodeId=&hours=
+ *
+ * Surplus listing recommendation for a node the caller owns (admin may view any).
+ * Recommendations carry a short `expiresAt` TTL; the UI must reject stale ones.
+ */
+const getRecommendations = asyncHandler(async (req, res) => {
+  if (!config.isPricingEnabled()) {
+    return res.status(503).json({ success: false, message: 'Pricing engine is disabled' });
+  }
+
+  const rawNodeId = req.query.nodeId;
+  if (!rawNodeId || !isValidObjectId(rawNodeId)) {
+    return res.status(400).json({ success: false, message: 'A valid nodeId is required' });
+  }
+
+  const node = await EnergyNode.findById(rawNodeId).select('_id userId name status').lean();
+  if (!node) {
+    return res.status(404).json({ success: false, message: 'Node not found' });
+  }
+
+  // Strict ownership scoping (guardrail 2.2). Aggregate recommendations are not
+  // supported — surplus is inherently per-node / per-owner.
+  if (!isAdmin(req) && String(node.userId) !== String(req.user._id)) {
+    auditService.log({
+      actor: req.user,
+      action: 'PRICING_RECOMMENDATION_DENIED',
+      resourceType: 'node',
+      resourceId: rawNodeId,
+      metadata: { reason: 'not_owner' },
+      req,
+      severity: 'warn',
+    });
+    return res.status(403).json({ success: false, message: 'Not authorized to view this node' });
+  }
+
+  // Load the caller's walletAddress (needed for the duplicate-listing guard).
+  const user = await User.findById(req.user._id).select('walletAddress isEmailVerified').lean();
+  if (!user) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const hours = req.query.hours ? config.clampHours(req.query.hours) : undefined;
+
+  const recommendation = await surplusService.buildRecommendation({
+    node,
+    user,
+    hours,
+  });
+
+  auditService.log({
+    actor: req.user,
+    action: 'PRICING_RECOMMENDATION_VIEWED',
+    resourceType: 'node',
+    resourceId: rawNodeId,
+    metadata: {
+      eligible: recommendation.eligible,
+      energyAmount: recommendation.energyAmount,
+      unitPriceCc: recommendation.unitPriceCc,
+      surplusKwh: recommendation.surplus.totalSurplusKwh,
+      activeListingCount: recommendation.market.activeListingCount,
+      algoVersion: recommendation.algoVersion,
+    },
+    req,
+    severity: 'info',
+  });
+
+  res.status(200).json({ success: true, data: recommendation });
+});
+
 module.exports = {
   getPricingCurve,
+  getRecommendations,
 };

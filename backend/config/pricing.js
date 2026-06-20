@@ -98,6 +98,26 @@ const getCacheTtlSeconds = () => toPositiveInt(process.env.PRICING_CACHE_TTL_SEC
 // Historical trade lookback for the market anchor (days).
 const getHistoricalLookbackDays = () => toPositiveInt(process.env.PRICING_HISTORICAL_LOOKBACK_DAYS, 30);
 
+/* ── Surplus / recommendations (Sub-module 2.2) ─────────────────────── */
+
+// Minimum forecast surplus (kWh over the horizon) required to warrant a listing
+// recommendation. Below this the recommendation is returned as ineligible.
+const getMinSurplusKwh = () => toFinite(process.env.PRICING_MIN_SURPLUS_KWH, 1);
+
+// Hard cap on recommended energyAmount (kWh). Bounds the suggestion so a
+// runaway forecast can never recommend listing an absurd volume.
+const getMaxRecommendationKwh = () =>
+  toFinite(process.env.PRICING_MAX_RECOMMENDATION_KWH, 10000);
+
+// How long a recommendation stays valid (minutes). Stale recommendations are
+// rejected at list time (guardrail 2.2). Default 15 min.
+const getRecommendationTtlMinutes = () =>
+  toPositiveInt(process.env.PRICING_RECOMMENDATION_TTL_MINUTES, 15);
+
+// Recommendation horizon (hours). How far ahead the surplus window is scanned.
+const getRecommendationHorizonHours = () =>
+  toPositiveInt(process.env.PRICING_RECOMMENDATION_HORIZON_HOURS, 168);
+
 const clampPrice = (value) => {
   const floor = getPriceFloorCc();
   const ceiling = getPriceCeilingCc();
@@ -125,6 +145,10 @@ module.exports = {
   getMinDemandKwh,
   getCacheTtlSeconds,
   getHistoricalLookbackDays,
+  getMinSurplusKwh,
+  getMaxRecommendationKwh,
+  getRecommendationTtlMinutes,
+  getRecommendationHorizonHours,
   clampPrice,
   clampHours,
   MAX_CURVE_HOURS,

@@ -197,6 +197,17 @@ export const forecastApi = {
   },
 };
 
+export const pricingApi = {
+  getCurve: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/pricing/curve${query ? `?${query}` : ''}`);
+  },
+  getRecommendation: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/pricing/recommendations${query ? `?${query}` : ''}`);
+  },
+};
+
 export const assistantApi = {
   chat: (message, sessionId, history) =>
     fetchApi('/assistant/chat', {

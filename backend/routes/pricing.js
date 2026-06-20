@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getPricingCurve } = require('../controllers/pricingController');
+const { getPricingCurve, getRecommendations } = require('../controllers/pricingController');
 const { protect } = require('../middleware/auth');
 const { createRateLimiter } = require('../middleware/rateLimit');
 
@@ -12,5 +12,6 @@ const pricingLimiter = createRateLimiter({
 });
 
 router.get('/curve', protect, pricingLimiter, getPricingCurve);
+router.get('/recommendations', protect, pricingLimiter, getRecommendations);
 
 module.exports = router;

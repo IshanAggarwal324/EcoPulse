@@ -8,7 +8,7 @@ import {
   mintDevTokens,
   DEV_MINT_ENABLED,
 } from '../utils/blockchain';
-import { marketplaceApi, tradesApi, analyticsApi } from '../utils/api';
+import { marketplaceApi, tradesApi, analyticsApi, nodesApi, pricingApi } from '../utils/api';
 import { useSocketEvent, useSocketReconnect } from '../context/SocketContext';
 import { SOCKET_EVENTS } from '../constants/socketEvents';
 import SectionTitle from '../components/ui/SectionTitle';
@@ -25,7 +25,7 @@ import {
 } from '../utils/transactionUtils';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
-import { Loader2, Store, ListOrdered, Zap } from 'lucide-react';
+import { Loader2, Store, ListOrdered, Zap, Sparkles } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },
@@ -63,6 +63,12 @@ const Trading = () => {
 
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
+
+  // Sub-module 2.2 — forecast-derived listing suggestion.
+  const [nodes, setNodes] = useState([]);
+  const [listNodeId, setListNodeId] = useState('');
+  const [recommendation, setRecommendation] = useState(null);
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
 
   const {
     account,
@@ -254,6 +260,50 @@ const Trading = () => {
     loadHistory(account, false);
   }, [account, loadHistory]);
 
+  // Load owned nodes for the suggestion picker (Sub-module 2.2).
+  useEffect(() => {
+    let cancelled = false;
+    const loadNodes = async () => {
+      try {
+        const res = await nodesApi.getAll();
+        if (cancelled) return;
+        const list = res.data || [];
+        setNodes(list);
+        if (list.length > 0) setListNodeId(list[0]._id);
+      } catch {
+        if (!cancelled) setNodes([]);
+      }
+    };
+    loadNodes();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch a surplus listing recommendation whenever the selected node changes.
+  useEffect(() => {
+    if (!listNodeId) {
+      setRecommendation(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      setRecommendationLoading(true);
+      try {
+        const res = await pricingApi.getRecommendation({ nodeId: listNodeId });
+        if (!cancelled) setRecommendation(res.data || null);
+      } catch {
+        if (!cancelled) setRecommendation(null);
+      } finally {
+        if (!cancelled) setRecommendationLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [listNodeId]);
+
   useSocketReconnect(() => {
     loadOrders();
     if (account) {
@@ -386,6 +436,16 @@ const Trading = () => {
       ? (Number(price) / Number(amount)).toFixed(4)
       : null;
 
+  const recommendationExpired =
+    recommendation?.expiresAt && new Date(recommendation.expiresAt).getTime() <= Date.now();
+
+  const applySuggestion = () => {
+    if (!recommendation || !recommendation.eligible || recommendationExpired) return;
+    setAmount(String(recommendation.energyAmount));
+    setPrice(String(recommendation.totalPriceCc));
+    toast.info('Suggested amount and price applied from forecast');
+  };
+
   const summaryCards = [
     {
       label: 'Active orders',
@@ -463,6 +523,65 @@ const Trading = () => {
             Post energy for sale. Buyers pay in CC when they fill your order.
           </p>
           <form onSubmit={handleListEnergy} className="space-y-4">
+            {nodes.length > 0 && (
+              <div>
+                <label className="block text-slate-400 text-sm mb-1">Source node (for suggestion)</label>
+                <select
+                  value={listNodeId}
+                  onChange={(e) => setListNodeId(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:outline-none focus:border-emerald-500"
+                >
+                  {nodes.map((node) => (
+                    <option key={node._id} value={node._id}>
+                      {node.name} ({node.nodeType})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {listNodeId && (
+              <div className="rounded-lg border border-slate-700/60 bg-slate-900/40 p-3">
+                {recommendationLoading ? (
+                  <p className="text-xs text-slate-500 flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" /> Calculating forecast suggestion...
+                  </p>
+                ) : recommendation ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-emerald-300">
+                        <Sparkles size={16} />
+                        <span className="text-sm font-semibold">Forecast suggestion</span>
+                      </div>
+                      {recommendation.eligible && !recommendationExpired && (
+                        <button
+                          type="button"
+                          onClick={applySuggestion}
+                          className="touch-target text-xs font-medium px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+                        >
+                          Use suggestion
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-400">
+                      <span>Surplus: <span className="text-slate-200 font-mono">{recommendation.surplus.totalSurplusKwh} kWh</span></span>
+                      <span>Unit: <span className="text-slate-200 font-mono">{recommendation.unitPriceCc} CC/kWh</span></span>
+                      <span>Total: <span className="text-slate-200 font-mono">{recommendation.totalPriceCc} CC</span></span>
+                      <span>Valid until: <span className="text-slate-200 font-mono">{recommendationExpired ? 'expired' : new Date(recommendation.expiresAt).toLocaleTimeString()}</span></span>
+                    </div>
+                    {!recommendation.eligible && (
+                      <p className="mt-2 text-xs text-amber-300">
+                        {recommendation.reasons.join('; ')}
+                      </p>
+                    )}
+                    <p className="mt-2 text-[11px] text-slate-600">{recommendation.disclaimer}</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-slate-500">No suggestion available for this node.</p>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="block text-slate-400 text-sm mb-1">Energy amount (units)</label>
               <input
