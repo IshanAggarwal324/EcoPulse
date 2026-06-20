@@ -21,6 +21,7 @@ router.use('/forecast', ...guardedUser, require('./forecast'));
 router.use('/analytics', ...guardedUser, require('./analytics'));
 router.use('/trades', ...guardedUser, require('./trades'));
 router.use('/marketplace', ...guardedUser, require('./marketplace'));
+router.use('/pricing', ...guardedUser, require('./pricing'));
 router.use('/assistant', ...guardedUser, require('./assistant'));
 router.use('/admin', protect, requirePasswordCurrent, authorize('admin', 'moderator'), require('./admin'));
 
