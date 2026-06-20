@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,8 @@ from typing import Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
 
 @dataclass
@@ -21,6 +24,8 @@ class DocChunk:
     section_index: int
     file_path: str
     char_count: int = 0
+    tags: list[str] = field(default_factory=list)
+    audience: str = ""
 
     def __post_init__(self):
         if self.char_count == 0:
@@ -35,6 +40,8 @@ class CachedEmbedding:
     section_index: int
     file_path: str
     embedding: list[float]
+    tags: list[str] = field(default_factory=list)
+    audience: str = ""
 
 
 @dataclass
@@ -71,6 +78,71 @@ def _split_by_h2(markdown: str) -> list[tuple[str, str]]:
     return chunks
 
 
+def _parse_frontmatter(raw: str) -> tuple[dict, str]:
+    """Parse a minimal YAML frontmatter block (no external dependency).
+
+    Only supports the simple `key: value` and `key: [a, b, c]` forms used by
+    assistant docs. Anything more complex is ignored. Returns (meta, body).
+    """
+    match = _FRONTMATTER_RE.match(raw)
+    if not match:
+        return {}, raw
+
+    block = match.group(1)
+    body = raw[match.end():]
+    meta: dict = {}
+
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip().lower()
+        value = value.strip()
+        if not key:
+            continue
+
+        if value.startswith("[") and value.endswith("]"):
+            items = [
+                item.strip().strip("\"'")
+                for item in value[1:-1].split(",")
+                if item.strip()
+            ]
+            meta[key] = items
+        else:
+            meta[key] = value.strip("\"'")
+
+    return meta, body
+
+
+def _is_within_dir(path: Path, root: Path) -> bool:
+    """True if `path` resolves inside `root` (guards against symlink escape)."""
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _iter_doc_files(docs_path: Path) -> list[Path]:
+    """Recursively list `.md` files under docs_path, applying security guards.
+
+    - Skips hidden files and files in hidden directories (e.g. `.env`-style).
+    - Skips symlinks that escape the docs root.
+    - Never traverses outside the configured docs directory.
+    """
+    root = docs_path.resolve()
+    files: list[Path] = []
+    for candidate in docs_path.rglob("*.md"):
+        if any(part.startswith(".") for part in candidate.relative_to(docs_path).parts):
+            continue
+        if not _is_within_dir(candidate, root):
+            logger.warning("Skipping doc outside docs root (possible symlink escape): %s", candidate)
+            continue
+        files.append(candidate)
+    return sorted(files)
+
+
 def loadDocChunks(docs_dir: str | Path) -> list[DocChunk]:
     docs_path = Path(docs_dir)
 
@@ -80,7 +152,7 @@ def loadDocChunks(docs_dir: str | Path) -> list[DocChunk]:
 
     all_chunks: list[DocChunk] = []
 
-    md_files = sorted(docs_path.glob("*.md"))
+    md_files = _iter_doc_files(docs_path)
 
     if not md_files:
         logger.warning("No .md files found in %s", docs_path)
@@ -94,7 +166,11 @@ def loadDocChunks(docs_dir: str | Path) -> list[DocChunk]:
             logger.exception("Failed to read doc file: %s", md_file)
             continue
 
-        sections = _split_by_h2(raw)
+        meta, body = _parse_frontmatter(raw)
+        tags = meta.get("tags", []) if isinstance(meta.get("tags"), list) else []
+        audience = str(meta.get("audience", ""))
+
+        sections = _split_by_h2(body)
 
         if not sections:
             logger.debug("Skipping empty doc: %s", doc_id)
@@ -109,6 +185,8 @@ def loadDocChunks(docs_dir: str | Path) -> list[DocChunk]:
                     content=content,
                     section_index=idx,
                     file_path=str(md_file),
+                    tags=list(tags),
+                    audience=audience,
                 )
             )
 
@@ -133,6 +211,8 @@ def _cache_to_dict(cache: EmbeddingCache) -> dict:
                 "section_index": c.section_index,
                 "file_path": c.file_path,
                 "embedding": c.embedding,
+                "tags": c.tags,
+                "audience": c.audience,
             }
             for c in cache.chunks
         ],
@@ -148,6 +228,8 @@ def _dict_to_cache(data: dict) -> EmbeddingCache:
             section_index=c["section_index"],
             file_path=c["file_path"],
             embedding=c["embedding"],
+            tags=c.get("tags", []),
+            audience=c.get("audience", ""),
         )
         for c in data.get("chunks", [])
     ]
@@ -175,6 +257,13 @@ def _save_cache_to_disk(cache: EmbeddingCache, cache_path: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         path.write_text(json.dumps(_cache_to_dict(cache)), encoding="utf-8")
+        # Lock down cache file permissions (owner read/write only). The cache
+        # may contain document excerpts; treat it as sensitive. Best-effort:
+        # Windows ignores POSIX mode bits, so this is a no-op there.
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            logger.debug("Could not set restrictive perms on cache file %s", cache_path)
         logger.info("Saved embedding cache to %s (%d chunks)", cache_path, len(cache.chunks))
     except OSError:
         logger.exception("Failed to save embedding cache to %s", cache_path)
@@ -250,6 +339,8 @@ def buildEmbeddingCache(
             section_index=c.section_index,
             file_path=c.file_path,
             embedding=emb,
+            tags=c.tags,
+            audience=c.audience,
         )
         for c, emb in zip(chunks, all_embeddings)
     ]
@@ -274,6 +365,8 @@ class SearchResult:
     excerpt: str
     score: float
     section_index: int
+    tags: list[str] = field(default_factory=list)
+    audience: str = ""
 
 
 def cosineSimilarity(a: list[float] | np.ndarray, b: list[float] | np.ndarray) -> float:
@@ -311,6 +404,8 @@ def searchChunks(
             excerpt=c.content[:500],
             score=round(s, 4),
             section_index=c.section_index,
+            tags=c.tags,
+            audience=c.audience,
         )
         for s, c in top
     ]
@@ -345,9 +440,41 @@ class DocRagService:
         )
         self._initialized = True
 
+    def rebuild(self, docs_dir: str | None = None) -> dict:
+        """Reload chunks from disk and rebuild the embedding cache.
+
+        Used by the admin reindex endpoint. Returns a small status summary.
+        """
+        dir_path = docs_dir or self._settings.docs_dir
+        chunks = loadDocChunks(dir_path) if dir_path else []
+        if not chunks:
+            self._cache = EmbeddingCache(model=self._settings.embedding_model)
+            self._initialized = True
+            logger.info("Reindex: no chunks loaded (DOCS_DIR=%s)", dir_path)
+            return {"reindexed": False, "chunks_loaded": 0, "docs_dir": dir_path}
+
+        self._cache = buildEmbeddingCache(
+            chunks=chunks,
+            gemini_api_key=self._settings.gemini_api_key,
+            model=self._settings.embedding_model,
+            cache_path=self._settings.embedding_cache_path,
+        )
+        self._initialized = True
+        logger.info("Reindex complete: %d chunks", len(self._cache.chunks))
+        return {
+            "reindexed": True,
+            "chunks_loaded": len(self._cache.chunks),
+            "docs_dir": dir_path,
+        }
+
     @property
     def is_available(self) -> bool:
         return bool(self._cache.chunks)
+
+    @property
+    def docs_loaded_count(self) -> int:
+        """Distinct source documents currently in the cache."""
+        return len({c.doc_id for c in self._cache.chunks})
 
     def retrieveDocChunks(self, query: str, top_k: int = 3) -> list[dict]:
         if not self.is_available:
@@ -365,6 +492,8 @@ class DocRagService:
                 "excerpt": r.excerpt,
                 "score": r.score,
                 "sectionIndex": r.section_index,
+                "tags": r.tags,
+                "audience": r.audience,
             }
             for r in results
         ]

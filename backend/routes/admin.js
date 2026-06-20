@@ -16,6 +16,7 @@ const adminDeviceController = require('../controllers/admin/adminDeviceControlle
 const adminIngestionController = require('../controllers/admin/adminIngestionController');
 const adminTimeseriesController = require('../controllers/admin/adminTimeseriesController');
 const adminMarketplaceController = require('../controllers/admin/adminMarketplaceController');
+const adminAssistantController = require('../controllers/admin/adminAssistantController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -84,5 +85,8 @@ router.use('/auto-trading', require('./adminAutoTrading'));
 router.get('/marketplace/status', adminMarketplaceController.getStatus);
 router.post('/marketplace/pause', adminOnly, adminMarketplaceController.pause);
 router.post('/marketplace/resume', adminOnly, adminMarketplaceController.resume);
+
+// Sub-module 3.1.4 — assistant doc RAG reindex (admin + internal key only)
+router.post('/assistant/reindex', adminOnly, adminAssistantController.reindexAssistant);
 
 module.exports = router;

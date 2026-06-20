@@ -88,4 +88,8 @@ async function fetchDocChunks(query, topK = 3) {
   }
 }
 
-module.exports = { GenaiServiceError, sendGenaiRequest, postToGenaiService, postNarrate, postChat, fetchDocChunks };
+async function reindexAssistantDocs() {
+  return sendGenaiRequest(() => postToGenaiService('/assistant/reindex', {}));
+}
+
+module.exports = { GenaiServiceError, sendGenaiRequest, postToGenaiService, postNarrate, postChat, fetchDocChunks, reindexAssistantDocs };

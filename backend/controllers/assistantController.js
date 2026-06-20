@@ -3,7 +3,10 @@ const { classifyIntent } = require('../services/intentClassifier');
 const { retrieveForIntent } = require('../services/retrievalService');
 const asyncHandler = require('../utils/asyncHandler');
 
-const DOC_CHUNK_INTENTS = new Set(['general', 'faq']);
+// Sub-module 3.1.5 — hybrid retrieval for all intents. Doc chunks are fetched
+// for every question (not just faq/general) so the assistant always has access
+// to curated knowledge alongside structured live data.
+const DOC_CHUNK_TOP_K = 2;
 const MAX_MESSAGE_CHARS = 1200;
 const MAX_HISTORY_TURNS = 12;
 const MAX_HISTORY_CONTENT_CHARS = 800;
@@ -83,12 +86,10 @@ const postAssistantChat = asyncHandler(async (req, res) => {
 
   let docChunks = null;
   let docSources = [];
-  if (DOC_CHUNK_INTENTS.has(intent)) {
-    const chunks = await fetchDocChunks(safeMessage);
-    if (chunks.length > 0) {
-      docChunks = sanitizeDocChunks(chunks);
-      docSources = buildDocSources(chunks);
-    }
+  const chunks = await fetchDocChunks(safeMessage, DOC_CHUNK_TOP_K);
+  if (chunks.length > 0) {
+    docChunks = sanitizeDocChunks(chunks);
+    docSources = buildDocSources(chunks);
   }
 
   const safeHistory = sanitizeConversationHistory(conversationHistory);

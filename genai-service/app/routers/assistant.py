@@ -108,3 +108,17 @@ async def get_doc_chunks(request: DocChunksRequest, http_request: Request):
         return {"chunks": []}
     chunks = rag.retrieveDocChunks(request.query.strip(), top_k=request.top_k)
     return {"chunks": chunks}
+
+
+@router.post("/reindex")
+async def reindex_docs(http_request: Request):
+    """Rebuild the doc RAG embedding cache from DOCS_DIR.
+
+    Protected by the internal API key middleware (every non-/health path is).
+    Only the configured docs directory is ever read.
+    """
+    rag = getattr(http_request.app.state, "doc_rag_service", None)
+    if rag is None:
+        return {"reindexed": False, "detail": "Doc RAG service not initialized"}
+    result = rag.rebuild()
+    return result

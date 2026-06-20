@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from app.config import get_settings
 
@@ -14,14 +14,17 @@ async def root():
 
 
 @router.get("/health")
-async def health():
+async def health(request: Request):
     settings = get_settings()
+    rag = getattr(request.app.state, "doc_rag_service", None)
+    docs_loaded_count = rag.docs_loaded_count if rag is not None else 0
     return {
         "status": "ok" if settings.genai_available else "degraded",
         "provider": "gemini",
         "available": settings.genai_available,
         "model": settings.genai_model,
         "fallbackMode": not settings.genai_available,
+        "docs_loaded_count": docs_loaded_count,
     }
 
 
