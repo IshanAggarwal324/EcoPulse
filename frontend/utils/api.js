@@ -236,13 +236,15 @@ export const notificationApi = {
 };
 
 export const assistantApi = {
-  chat: (message, sessionId, history) =>
+  chat: (message, sessionId, history, context = {}) =>
     fetchApi('/assistant/chat', {
       method: 'POST',
       body: JSON.stringify({
         message,
         ...(sessionId ? { sessionId } : {}),
         ...(history?.length ? { conversationHistory: history } : {}),
+        ...(context.nodeId ? { nodeId: context.nodeId } : {}),
+        ...(context.pageContext ? { pageContext: context.pageContext } : {}),
       }),
     }),
 

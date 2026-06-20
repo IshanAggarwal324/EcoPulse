@@ -26,6 +26,12 @@ const FORECAST_PATTERN = /\b(forecast|predict(?:ion)?|future|outlook|trend|upcom
 
 const NODES_PATTERN = /\b(node|nodes|solar|wind|turbine|panel|active\s*node|status|capacity|farm)\b/i;
 
+const BILL_ANALYSIS_PATTERN = /\b(bill|usage|consumption|consumed|how\s*much\s*(?:energy|power|electricity)\s*(?:did|do|have)\s*i\s*(?:use|used)|compare(?:d)?\s*(?:to|with|vs|versus)\s*(?:last|previous|prior)\s*(?:period|week|month)|my\s*(?:energy\s*)?(?:bill|usage|consumption)|spike|increase\s*in\s*(?:usage|consumption))\b/i;
+
+const NODE_DETAIL_PATTERN = /\b(node\s*detail|status\s*of|details?\s*(?:for|of|about)|info(?:rmation)?\s*(?:on|about|for)|last\s*reading|readings?\s*(?:for|from|on))\b/i;
+
+const NODE_ID_PATTERN = /\b[0-9a-fA-F]{24}\b/;
+
 const FAQ_PATTERN = /\b(how\s+(?:do(?:es)?|can|to|should|is|are|will)|what\s+(?:is|are|do|does|can|should|will)|explain|tell\s+me\s+about|describe|guide|help\s+me\s+(?:understand|with)|overview|walkthrough|tutorial|definition)\b/i;
 
 const FAQ_KEYWORD_PATTERN = /\b(ecopulse|platform|assistant|dashboard|wallet|metamask|blockchain|smart\s*contract|erc[\s-]?20|hardhat|simulator|demo|register|sign\s*up|login|password|settings|page|pages)\b/i;
@@ -60,12 +66,32 @@ function matchNodesIntent(message) {
   return NODES_PATTERN.test(message);
 }
 
+function matchBillAnalysisIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  return BILL_ANALYSIS_PATTERN.test(message);
+}
+
+function matchNodeDetailIntent(message) {
+  if (!message || typeof message !== 'string') return false;
+  // node_detail requires a node reference (name/id hint) plus a detail cue,
+  // so generic "my nodes" queries still route to the lighter `nodes` intent.
+  return NODE_DETAIL_PATTERN.test(message) || (NODES_PATTERN.test(message) && NODE_ID_PATTERN.test(message));
+}
+
+function detectNodeIdFromMessage(message) {
+  if (!message || typeof message !== 'string') return null;
+  const m = message.match(NODE_ID_PATTERN);
+  return m ? m[0] : null;
+}
+
 function matchFaqIntent(message) {
   if (!message || typeof message !== 'string') return false;
   return FAQ_PATTERN.test(message) || FAQ_KEYWORD_PATTERN.test(message);
 }
 
 const INTENT_MATCHERS = [
+  { intent: 'bill_analysis', matcher: matchBillAnalysisIntent },
+  { intent: 'node_detail', matcher: matchNodeDetailIntent },
   { intent: 'wallet_profit', matcher: matchWalletProfitIntent },
   { intent: 'carbon', matcher: matchCarbonIntent },
   { intent: 'forecast', matcher: matchForecastIntent },
@@ -76,30 +102,37 @@ const INTENT_MATCHERS = [
 
 function classifyIntent(message) {
   if (!message || typeof message !== 'string') {
-    return { intent: 'general', period: null };
+    return { intent: 'general', period: null, nodeId: null };
   }
 
   for (const { intent, matcher } of INTENT_MATCHERS) {
     if (matcher(message)) {
-      return { intent, period: detectPeriodFromMessage(message) };
+      return {
+        intent,
+        period: detectPeriodFromMessage(message),
+        nodeId: detectNodeIdFromMessage(message),
+      };
     }
   }
 
   if (matchFaqIntent(message)) {
-    return { intent: 'faq', period: null };
+    return { intent: 'faq', period: null, nodeId: detectNodeIdFromMessage(message) };
   }
 
-  return { intent: 'general', period: detectPeriodFromMessage(message) };
+  return { intent: 'general', period: detectPeriodFromMessage(message), nodeId: detectNodeIdFromMessage(message) };
 }
 
 module.exports = {
   detectPeriodFromMessage,
+  detectNodeIdFromMessage,
   matchGridEnergyIntent,
   matchWalletProfitIntent,
   matchCarbonIntent,
   matchTradesIntent,
   matchForecastIntent,
   matchNodesIntent,
+  matchBillAnalysisIntent,
+  matchNodeDetailIntent,
   matchFaqIntent,
   classifyIntent,
 };

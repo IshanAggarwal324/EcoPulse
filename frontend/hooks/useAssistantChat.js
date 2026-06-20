@@ -22,7 +22,7 @@ export default function useAssistantChat() {
   }, [messages]);
 
   const sendMessage = useCallback(
-    async (text) => {
+    async (text, context = {}) => {
       const trimmed = text.trim();
       if (!trimmed || isLoading) return;
 
@@ -34,6 +34,7 @@ export default function useAssistantChat() {
           trimmed,
           sessionIdRef.current,
           getHistory(),
+          context,
         );
         const data = res.data || res;
 

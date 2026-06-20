@@ -70,6 +70,56 @@ const getUniqueTraderCount = async () => {
   return new Set([...sellers, ...buyers.filter(Boolean)]).size;
 };
 
+/**
+ * Approximate count of currently-active listings, derived from the on-chain
+ * event log. A listing is active when its most recent event is still `listed`
+ * (i.e. it has not subsequently been purchased or cancelled). This avoids a
+ * live contract read so the assistant path stays offline-friendly.
+ */
+const getActiveListingCount = async () => {
+  const [row] = await Trade.aggregate([
+    { $sort: { blockTimestamp: 1 } },
+    { $group: { _id: '$listingId', lastEvent: { $last: '$eventType' } } },
+    { $match: { lastEvent: 'listed' } },
+    { $count: 'active' },
+  ]);
+  return row?.active || 0;
+};
+
+/**
+ * Daily average unit price (CC per kWh) for completed purchases since `since`.
+ * Used to show the assistant a compact price trend instead of raw trade rows.
+ */
+const getUnitPriceTrend = async (since) => {
+  const match = {
+    eventType: 'purchased',
+    energyAmount: { $gt: 0 },
+    ...(since ? { blockTimestamp: { $gte: since } } : {}),
+  };
+
+  const rows = await Trade.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$blockTimestamp' } },
+        avgUnitPrice: {
+          $avg: { $divide: [{ $toDouble: '$price' }, '$energyAmount'] },
+        },
+        trades: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  return rows
+    .slice(-14)
+    .map((row) => ({
+      date: row._id,
+      avgUnitPriceCc: Number((row.avgUnitPrice || 0).toFixed(4)),
+      trades: row.trades || 0,
+    }));
+};
+
 const getWalletFlowHistory = async (walletAddress, since) => {
   const wallet = walletAddress.toLowerCase();
   const match = {
@@ -131,6 +181,8 @@ module.exports = {
   getTradeStats,
   getPlatformVolumeByDay,
   getUniqueTraderCount,
+  getActiveListingCount,
+  getUnitPriceTrend,
   getWalletFlowHistory,
   parsePrice,
 };

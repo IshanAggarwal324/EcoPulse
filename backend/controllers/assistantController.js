@@ -70,7 +70,7 @@ function buildDocSources(chunks) {
 }
 
 const postAssistantChat = asyncHandler(async (req, res) => {
-  const { message, sessionId, conversationHistory } = req.body;
+  const { message, sessionId, conversationHistory, nodeId: bodyNodeId } = req.body;
   const safeMessage = normalizeText(message, MAX_MESSAGE_CHARS);
   if (!safeMessage) {
     return res.status(400).json({
@@ -80,9 +80,20 @@ const postAssistantChat = asyncHandler(async (req, res) => {
   }
 
   const walletAddress = req.user?.walletAddress || null;
+  const userId = req.user?._id || null;
 
-  const { intent, period } = classifyIntent(safeMessage);
-  const { retrieved_data, sources } = await retrieveForIntent(intent, { walletAddress, period });
+  const { intent, period, nodeId: detectedNodeId } = classifyIntent(safeMessage);
+  // Prefer an explicit client-supplied nodeId, then a detected one. The
+  // retrievers re-validate ownership, so this hint alone cannot leak data.
+  const nodeId = bodyNodeId || detectedNodeId || null;
+
+  const { retrieved_data, sources } = await retrieveForIntent(intent, {
+    walletAddress,
+    period,
+    userId,
+    nodeId,
+    message: safeMessage,
+  });
 
   let docChunks = null;
   let docSources = [];

@@ -1,10 +1,23 @@
 const { getEnergyTotals } = require('./analytics/energyAnalytics');
-const { getTradeStats, getPlatformVolumeByDay, getWalletFlowHistory } = require('./analytics/tradeAnalytics');
+const { getTradeStats, getPlatformVolumeByDay, getActiveListingCount, getUnitPriceTrend } = require('./analytics/tradeAnalytics');
 const { getNodeStats } = require('./analytics/nodeAnalytics');
 const { getCarbonStats } = require('./analytics/carbonAnalytics');
 const { parsePeriod } = require('../utils/periodHelpers');
+const {
+  retrieveRecentReadings,
+  retrieveBillAnalysis,
+  retrieveUserNodes,
+} = require('./assistantRetrievers');
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
+
+function buildInternalHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
+  };
+}
 
 async function retrieveGridEnergy(period) {
   const parsed = parsePeriod(period || '7d');
@@ -99,9 +112,11 @@ async function retrieveTrades(period) {
   const since = parsed ? parsed.sinceDate : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const label = parsed ? parsed.label : 'Last 7 days';
 
-  const [stats, dailyVolume] = await Promise.all([
+  const [stats, dailyVolume, activeListings, unitPriceTrend] = await Promise.all([
     getTradeStats(),
     getPlatformVolumeByDay(since),
+    getActiveListingCount(),
+    getUnitPriceTrend(since),
   ]);
 
   return {
@@ -111,6 +126,8 @@ async function retrieveTrades(period) {
       totalVolumeCredits: stats.totalVolumeCredits,
       totalListings: stats.totalListings,
       cancelledListings: stats.cancelledListings,
+      activeListings,
+      unitPriceTrend,
       dailyVolume: Array.isArray(dailyVolume) ? dailyVolume.slice(-30) : dailyVolume,
       period: label,
     },
@@ -120,14 +137,22 @@ async function retrieveTrades(period) {
   };
 }
 
-async function retrieveForecast() {
+// Sub-module 3.2.1/3.2.2 — forecast retrieval must POST to the AI service
+// `/forecast/` endpoint (matching forecastController.js). The previous GET
+// request always 404'd against the POST-only route. Supports an optional
+// per-node forecast via `nodeId`.
+async function retrieveForecast({ nodeId = null } = {}) {
   let forecastData = null;
   let available = false;
 
   try {
-    const response = await fetch(`${AI_SERVICE_URL}/forecast/?days=7`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+    const body = { days_to_predict: 7, use_dummy_data: false };
+    if (nodeId) body.node_id = nodeId;
+
+    const response = await fetch(`${AI_SERVICE_URL}/forecast/`, {
+      method: 'POST',
+      headers: buildInternalHeaders(),
+      body: JSON.stringify(body),
     });
 
     if (response.ok) {
@@ -136,7 +161,8 @@ async function retrieveForecast() {
         predictions: data.predictions || null,
         modelStatus: data.model_status || null,
         daysToPredict: data.meta?.daysToPredict || 7,
-        mode: data.meta?.mode || 'aggregate',
+        mode: data.meta?.mode || (nodeId ? 'single' : 'aggregate'),
+        nodeName: data.nodeName || null,
       };
       available = true;
     }
@@ -151,7 +177,7 @@ async function retrieveForecast() {
       explanation: available ? null : 'Forecast service is currently unavailable.',
     },
     sources: [
-      { type: 'forecast', label: '7-day LSTM energy forecast', endpoint: '/forecast?days=7' },
+      { type: 'forecast', label: nodeId ? '7-day node forecast' : '7-day LSTM energy forecast', endpoint: '/forecast/' },
     ],
   };
 }
@@ -176,12 +202,17 @@ const INTENT_RETRIEVER_MAP = {
   wallet_profit: (ctx) => retrieveWalletProfit(ctx.walletAddress, ctx.period),
   carbon: (ctx) => retrieveCarbon(ctx.walletAddress),
   trades: (ctx) => retrieveTrades(ctx.period),
-  forecast: () => retrieveForecast(),
-  nodes: () => retrieveNodes(),
+  forecast: (ctx) => retrieveForecast({ nodeId: ctx.nodeId }),
+  nodes: (ctx) => retrieveUserNodes(ctx.userId),
+  bill_analysis: (ctx) => retrieveBillAnalysis(ctx.userId, ctx.period),
+  node_detail: (ctx) => retrieveRecentReadings(ctx.userId, ctx.nodeId),
 };
 
-async function retrieveForIntent(intent, { walletAddress = null, period = null } = {}) {
-  const ctx = { walletAddress, period };
+async function retrieveForIntent(
+  intent,
+  { walletAddress = null, period = null, userId = null, nodeId = null, message = null } = {},
+) {
+  const ctx = { walletAddress, period, userId, nodeId, message };
   const retriever = INTENT_RETRIEVER_MAP[intent];
 
   if (!retriever) {
