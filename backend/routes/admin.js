@@ -89,4 +89,7 @@ router.post('/marketplace/resume', adminOnly, adminMarketplaceController.resume)
 // Sub-module 3.1.4 — assistant doc RAG reindex (admin + internal key only)
 router.post('/assistant/reindex', adminOnly, adminAssistantController.reindexAssistant);
 
+// Sub-module 3.4.2 — aggregated assistant chat analytics
+router.get('/assistant/analytics', adminAssistantController.getAssistantAnalytics);
+
 module.exports = router;

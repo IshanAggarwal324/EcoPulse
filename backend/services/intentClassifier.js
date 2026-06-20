@@ -92,10 +92,12 @@ function matchFaqIntent(message) {
 const INTENT_MATCHERS = [
   { intent: 'bill_analysis', matcher: matchBillAnalysisIntent },
   { intent: 'node_detail', matcher: matchNodeDetailIntent },
+  // trades is checked before wallet_profit: "list energy for sale" should route
+  // to trading, not wallet-profit (the word "sale" otherwise matches wallet).
+  { intent: 'trades', matcher: matchTradesIntent },
   { intent: 'wallet_profit', matcher: matchWalletProfitIntent },
   { intent: 'carbon', matcher: matchCarbonIntent },
   { intent: 'forecast', matcher: matchForecastIntent },
-  { intent: 'trades', matcher: matchTradesIntent },
   { intent: 'nodes', matcher: matchNodesIntent },
   { intent: 'grid_energy', matcher: matchGridEnergyIntent },
 ];

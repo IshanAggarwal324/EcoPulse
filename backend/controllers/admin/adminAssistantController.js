@@ -1,4 +1,5 @@
 const { reindexAssistantDocs, GenaiServiceError } = require('../../services/genaiClient');
+const assistantMetrics = require('../../services/assistantMetrics');
 const asyncHandler = require('../../utils/asyncHandler');
 
 // Sub-module 3.1.4 — rebuilds the GenAI doc RAG embedding cache. Admin + internal
@@ -25,6 +26,14 @@ const reindexAssistant = asyncHandler(async (req, res) => {
   });
 });
 
+// Sub-module 3.4.2 — aggregated assistant analytics (intent distribution,
+// retrieval hit rate, doc chunk usage). Counters only — never chat content.
+const getAssistantAnalytics = asyncHandler(async (req, res) => {
+  const data = await assistantMetrics.getAnalytics();
+  res.status(200).json({ success: true, data });
+});
+
 module.exports = {
   reindexAssistant,
+  getAssistantAnalytics,
 };

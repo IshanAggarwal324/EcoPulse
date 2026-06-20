@@ -28,6 +28,11 @@ class ReportMetrics(BaseModel):
         default=None,
         description="Carbon stats: totalCreditsTraded, walletBalance, estimatedGridCredits. Null when no wallet.",
     )
+    forecast_outlook: Optional[dict[str, Any]] = Field(
+        default=None,
+        alias="forecastOutlook",
+        description="7-day forecast outlook: summary, forecasts[{date,predicted}], disclaimer. Null when forecast unavailable.",
+    )
     period_label: str = Field(
         alias="periodLabel",
         description="Human-readable period label, e.g. 'Last 7 days'",
@@ -123,6 +128,11 @@ class AssistantChatRequest(BaseModel):
         max_length=1200,
         description="User's chat message",
     )
+    intent: Optional[str] = Field(
+        default=None,
+        max_length=40,
+        description="Classified intent (e.g. bill_analysis, forecast) used to select a prompt template",
+    )
     retrieved_data: Optional[dict[str, Any]] = Field(
         default=None,
         alias="retrieved_data",
@@ -133,6 +143,11 @@ class AssistantChatRequest(BaseModel):
         alias="doc_chunks",
         max_length=6,
         description="Optional document RAG excerpts for FAQ-style questions",
+    )
+    user_context: Optional[dict[str, Any]] = Field(
+        default=None,
+        alias="user_context",
+        description="Lightweight caller context (nodeName, pageContext). No secrets/PII.",
     )
     conversation_history: Optional[list[ConversationTurn]] = Field(
         default=None,

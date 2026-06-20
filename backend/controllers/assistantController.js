@@ -1,6 +1,8 @@
 const { postChat, fetchDocChunks, GenaiServiceError } = require('../services/genaiClient');
 const { classifyIntent } = require('../services/intentClassifier');
 const { retrieveForIntent } = require('../services/retrievalService');
+const assistantMetrics = require('../services/assistantMetrics');
+const assistantSession = require('../services/assistantSessionStore');
 const asyncHandler = require('../utils/asyncHandler');
 
 // Sub-module 3.1.5 — hybrid retrieval for all intents. Doc chunks are fetched
@@ -69,8 +71,30 @@ function buildDocSources(chunks) {
   return sources;
 }
 
+// 3.3.3 — normalize + dedup source attribution so every chip has a stable
+// type/label and no near-duplicates leak to the UI.
+const MAX_SOURCES = 6;
+function normalizeSources(sources) {
+  if (!Array.isArray(sources)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    const type = normalizeText(src.type, 20) || 'analytics';
+    const label = normalizeText(src.label, 120) || type;
+    const key = `${type}:${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const entry = { type, label };
+    if (src.docId) entry.docId = normalizeText(src.docId, 120);
+    out.push(entry);
+    if (out.length >= MAX_SOURCES) break;
+  }
+  return out;
+}
+
 const postAssistantChat = asyncHandler(async (req, res) => {
-  const { message, sessionId, conversationHistory, nodeId: bodyNodeId } = req.body;
+  const { message, sessionId, conversationHistory, nodeId: bodyNodeId, pageContext } = req.body;
   const safeMessage = normalizeText(message, MAX_MESSAGE_CHARS);
   if (!safeMessage) {
     return res.status(400).json({
@@ -103,14 +127,21 @@ const postAssistantChat = asyncHandler(async (req, res) => {
     docSources = buildDocSources(chunks);
   }
 
+  // 3.3.1 — lightweight, PII-free caller context for the prompt. Never include
+  // internal ids, wallet, or email here.
+  const userContext = {};
+  if (pageContext) userContext.pageContext = normalizeText(pageContext, 40);
+
   const safeHistory = sanitizeConversationHistory(conversationHistory);
 
   let chatResult;
   try {
     chatResult = await postChat({
       message: safeMessage,
+      intent,
       retrieved_data: sanitizeRetrievedData(retrieved_data),
       doc_chunks: docChunks,
+      user_context: Object.keys(userContext).length ? userContext : undefined,
       conversation_history: safeHistory,
     });
   } catch (error) {
@@ -124,15 +155,36 @@ const postAssistantChat = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  const finalSources = normalizeSources([...sources, ...docSources]);
+  const sourceTypes = finalSources.map((s) => s.type);
+  const docIds = docSources.map((s) => s.docId).filter(Boolean);
+
+  // 3.4.1 / 3.4.2 — best-effort session snapshot + aggregated analytics.
+  // Both are fire-and-forget: a Redis outage must never break the chat path,
+  // and only metadata (intent/source-types/doc-ids) is persisted — never the
+  // message, reply, or retrieved_data contents.
+  assistantMetrics.recordChat({ intent, sourceTypes, docIds }).catch(() => {});
+  if (sessionId) {
+    assistantSession
+      .saveSnapshot(sessionId, { intent, sourceTypes, docIds, period })
+      .catch(() => {});
+  }
+  // 3.3 guardrail: log intent + source attribution only (never the prompt or
+  // user message body) for debugging / analytics.
+  console.info('[assistant] chat', {
+    intent,
+    sources: sourceTypes,
+  });
+
   res.status(200).json({
     success: true,
     data: {
       reply: chatResult.reply,
-      sources: [...sources, ...docSources],
+      sources: finalSources,
       disclaimer: chatResult.disclaimer,
       sessionId: sessionId || null,
     },
   });
 });
 
-module.exports = { postAssistantChat };
+module.exports = { postAssistantChat, normalizeSources, buildDocSources };
