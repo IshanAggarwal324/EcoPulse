@@ -220,7 +220,7 @@ async function retrieveRecentReadings(userId, nodeId, hours = 168) {
           .slice(0, 3),
         dailySeries: series,
       },
-      sources: [{ type: 'analytics', label: `Recent readings (${span}h)`, endpoint: 'energyreadings_hourly' }],
+      sources: [{ type: 'reading', label: `Recent readings (${span}h)`, endpoint: 'energyreadings_hourly' }],
     };
   });
 }
@@ -283,7 +283,7 @@ async function retrieveBillAnalysis(userId, period) {
         period: parsed ? parsed.label : `Last ${hours}h`,
         ...analysis,
       },
-      sources: [{ type: 'analytics', label: 'Bill analysis', endpoint: 'energyreadings_hourly' }],
+      sources: [{ type: 'bill', label: 'Bill analysis', endpoint: 'energyreadings_hourly' }],
     };
   });
 }
@@ -329,7 +329,7 @@ async function retrieveUserNodes(userId) {
         activeCount: nodeList.filter((n) => n.status === 'active').length,
         nodes: nodeList,
       },
-      sources: [{ type: 'analytics', label: 'User nodes', endpoint: 'energyreadings_hourly' }],
+      sources: [{ type: 'nodes', label: 'User nodes', endpoint: 'energyreadings_hourly' }],
     };
   });
 }

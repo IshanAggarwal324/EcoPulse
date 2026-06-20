@@ -15,6 +15,20 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_DISCLAIMER = "Based on simulated demo data."
 
+# Output-sanitization (3.3 guardrail): strip HTML/tags and script-ish content
+# from model replies. The assistant is a plain-text chat; no markup should
+# reach the UI.
+_TAG_RE = re.compile(r"<[^>]+>")
+_SCRIPT_RE = re.compile(r"<\s*script", re.IGNORECASE)
+
+
+def _sanitize_reply(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = _TAG_RE.sub("", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:4000]
+
 
 class DocChunksRequest(BaseModel):
     query: str = Field(
@@ -44,8 +58,13 @@ def _parse_chat_response(
         )
 
     try:
+        raw_reply = parsed.get("reply", fallback_reply)
+        # Guardrail: reject script-bearing replies outright; strip any other tags.
+        if _SCRIPT_RE.search(raw_reply or ""):
+            logger.warning("Stripped script-bearing model reply")
+            raw_reply = fallback_reply
         return AssistantChatResponse(
-            reply=parsed.get("reply", fallback_reply),
+            reply=_sanitize_reply(raw_reply),
             disclaimer=parsed.get(
                 "disclaimer",
                 _DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
@@ -70,6 +89,8 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
         message=safe_message,
         retrieved_data=request.retrieved_data,
         doc_chunks=request.doc_chunks,
+        intent=request.intent,
+        user_context=request.user_context,
     )
 
     if history:
@@ -78,7 +99,7 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
         )
         user_prompt = f"Conversation history:\n{history_text}\n\n{user_prompt}"
 
-    fallback_reply = render_chat_reply(safe_message, request.retrieved_data)
+    fallback_reply = render_chat_reply(safe_message, request.retrieved_data, request.intent)
     is_demo = bool(
         request.retrieved_data and request.retrieved_data.get("meta", {}).get("isDemoData", True)
     )

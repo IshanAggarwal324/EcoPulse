@@ -35,7 +35,7 @@ async function retrieveGridEnergy(period) {
       period: label,
     },
     sources: [
-      { type: 'analytics', label: `Grid energy totals (${label})`, endpoint: '/analytics/energy' },
+      { type: 'reading', label: `Grid energy totals (${label})`, endpoint: '/analytics/energy' },
     ],
   };
 }
@@ -71,7 +71,7 @@ async function retrieveWalletProfit(walletAddress, period) {
       period: label,
     },
     sources: [
-      { type: 'analytics', label: `Wallet flow history (${label})`, endpoint: '/analytics/trades' },
+      { type: 'wallet', label: `Wallet flow history (${label})`, endpoint: '/analytics/trades' },
     ],
   };
 }
@@ -102,7 +102,7 @@ async function retrieveCarbon(walletAddress) {
       walletNetFlow: balanceAnalytics?.wallet?.netFlow ?? null,
     },
     sources: [
-      { type: 'analytics', label: 'Carbon credit stats', endpoint: '/analytics/carbon' },
+      { type: 'carbon', label: 'Carbon credit stats', endpoint: '/analytics/carbon' },
     ],
   };
 }
@@ -132,7 +132,7 @@ async function retrieveTrades(period) {
       period: label,
     },
     sources: [
-      { type: 'analytics', label: `Trade stats (${label})`, endpoint: '/analytics/trades' },
+      { type: 'trade', label: `Trade stats (${label})`, endpoint: '/analytics/trades' },
     ],
   };
 }
@@ -192,7 +192,7 @@ async function retrieveNodes() {
       byStatus,
     },
     sources: [
-      { type: 'analytics', label: 'Node overview', endpoint: '/analytics/nodes' },
+      { type: 'nodes', label: 'Node overview', endpoint: '/analytics/nodes' },
     ],
   };
 }
