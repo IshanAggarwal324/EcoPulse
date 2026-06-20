@@ -15,6 +15,7 @@ const adminSimulatorController = require('../controllers/admin/adminSimulatorCon
 const adminDeviceController = require('../controllers/admin/adminDeviceController');
 const adminIngestionController = require('../controllers/admin/adminIngestionController');
 const adminTimeseriesController = require('../controllers/admin/adminTimeseriesController');
+const adminMarketplaceController = require('../controllers/admin/adminMarketplaceController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -78,5 +79,10 @@ router.use('/public-grid-sources', adminOnly, require('./adminPublicGrid'));
 
 // Sub-module 2.3 — Auto-trading kill switch + matcher observability
 router.use('/auto-trading', require('./adminAutoTrading'));
+
+// Sub-module 2.4 guardrail — marketplace (contract) emergency stop
+router.get('/marketplace/status', adminMarketplaceController.getStatus);
+router.post('/marketplace/pause', adminOnly, adminMarketplaceController.pause);
+router.post('/marketplace/resume', adminOnly, adminMarketplaceController.resume);
 
 module.exports = router;

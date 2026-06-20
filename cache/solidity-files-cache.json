@@ -268,8 +268,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\EnergyTrading.sol": {
-      "lastModificationDate": 1781533227831,
-      "contentHash": "f1213ab4ce297213a69dbca1d9ee3b09",
+      "lastModificationDate": 1781962695391,
+      "contentHash": "beb83b39b84b460d380dbf03917ef9a1",
       "sourceName": "contracts/EnergyTrading.sol",
       "solcConfig": {
         "version": "0.8.28",

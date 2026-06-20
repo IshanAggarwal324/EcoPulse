@@ -10,6 +10,7 @@ const controller = require('../controllers/admin/adminAutoTradingController');
 const adminOnly = authorize('admin');
 
 router.get('/status', controller.getStatus);
+router.get('/analytics', controller.getAnalytics);
 router.post('/pause', adminOnly, controller.pause);
 router.post('/resume', adminOnly, controller.resume);
 router.post('/run', adminOnly, controller.runOnce);

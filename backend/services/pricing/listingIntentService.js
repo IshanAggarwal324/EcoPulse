@@ -333,6 +333,97 @@ async function sweepExpiredIntents() {
   }
 }
 
+/**
+ * Post-list validation (Sub-module 2.4.2): link an on-chain EnergyListed event
+ * back to the signed ListingIntent that authorized it.
+ *
+ * The on-chain event only carries (listingId, seller, energyAmount, price), so
+ * the match is by signer wallet (the seller). We pick the newest *active* intent
+ * for that wallet whose authorized bounds still cover the realized listing, and
+ * atomically transition it to 'consumed' while stamping the resulting listing id
+ * + tx hash. This closes the recommendation → on-chain confirmation loop.
+ *
+ * Safety:
+ *   - Atomic status transition (filter on status:'active') prevents a double
+ *     link if the same event is indexed twice (re-org re-scan / real-time + poll).
+ *   - The realized listing must fit within the intent bounds; an out-of-bounds
+ *     listing is recorded as 'revoked' (anomaly) rather than silently consumed.
+ *   - Returns { linked, intent, reason } so the caller can audit each outcome.
+ *
+ * @returns {Promise<{linked:boolean, intent:object|null, reason:string}>}
+ */
+async function linkOnChainListing({
+  sellerWallet,
+  listingId,
+  txHash,
+  energyAmount,
+  price,
+  chainId = null,
+}) {
+  const seller = String(sellerWallet || '').toLowerCase();
+  if (!seller || !ADDRESS_RE.test(seller)) {
+    return { linked: false, intent: null, reason: 'invalid_seller' };
+  }
+
+  const energy = Math.max(0, Number(energyAmount) || 0);
+  const totalPriceCc = Math.max(0, Number(price) || 0);
+  const unitPriceCc = energy > 0 ? totalPriceCc / energy : 0;
+
+  const candidate = await ListingIntent.findOne({
+    signer: seller,
+    status: 'active',
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  if (!candidate) {
+    return { linked: false, intent: null, reason: 'no_active_intent' };
+  }
+
+  // Bounds sanity: a consumed intent should reflect a listing within what the
+  // wallet owner signed for. Out-of-bounds is treated as an anomaly (revoke).
+  const energyOk = candidate.maxEnergyKwh == null || energy <= Number(candidate.maxEnergyKwh);
+  const unitOk =
+    candidate.minUnitPriceCc == null || unitPriceCc + 1e-9 >= Number(candidate.minUnitPriceCc);
+  const totalOk =
+    candidate.maxTotalCc == null || totalPriceCc <= Number(candidate.maxTotalCc) + 1e-9;
+
+  const stamp = {
+    status: 'consumed',
+    consumedAt: new Date(),
+    consumedListingId: Number(listingId),
+    consumedTxHash: String(txHash || '').toLowerCase(),
+    consumedChainId: chainId,
+  };
+
+  if (!energyOk || !unitOk || !totalOk) {
+    const reason = 'listing_outside_intent_bounds';
+    await ListingIntent.updateOne(
+      { _id: candidate._id, status: 'active' },
+      {
+        $set: {
+          ...stamp,
+          status: 'revoked',
+          revokedAt: new Date(),
+          revokedReason: reason,
+        },
+      },
+    ).catch(() => {});
+    return { linked: false, intent: candidate, reason };
+  }
+
+  const res = await ListingIntent.updateOne(
+    { _id: candidate._id, status: 'active' },
+    { $set: stamp },
+  );
+
+  if (res.modifiedCount > 0) {
+    return { linked: true, intent: { ...candidate, ...stamp }, reason: 'consumed' };
+  }
+  // Lost the race (another worker consumed/revoked it first) — not an error.
+  return { linked: false, intent: candidate, reason: 'already_consumed' };
+}
+
 module.exports = {
   INTENT_TYPES,
   buildTypedData,
@@ -344,6 +435,7 @@ module.exports = {
   getActiveIntentForPolicy,
   revokeIntent,
   sweepExpiredIntents,
+  linkOnChainListing,
   toMicroCcUint,
   microCcToCc,
 };

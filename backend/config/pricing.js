@@ -78,6 +78,15 @@ const getMarketPressureWeight = () => {
   return Math.min(1, Math.max(0, w));
 };
 
+// Weight (0..1) given to the *live* order-book average asking unit price when
+// resolving the market anchor (Sub-module 2.4.1 feedback loop). The book anchor
+// is blended with the historical trade average so freshly-listed supply prices
+// feed back into recommendations without overwhelming the longer-term signal.
+const getOrderBookAnchorWeight = () => {
+  const w = toFinite(process.env.PRICING_ORDERBOOK_ANCHOR_WEIGHT, 0.2);
+  return Math.min(1, Math.max(0, w));
+};
+
 // Confidence band tuning. Bands widen as forecast confidence drops (guardrail
 // 2.1.5). BAND_BASE is the minimum half-band even at perfect confidence.
 const getBandBase = () => toFinite(process.env.PRICING_BAND_BASE, 0.05);
@@ -139,6 +148,7 @@ module.exports = {
   getDefaultBasePriceCc,
   getSurplusCoefficient,
   getMarketAnchorWeight,
+  getOrderBookAnchorWeight,
   getMarketPressureWeight,
   getBandBase,
   getBandUncertaintyScale,

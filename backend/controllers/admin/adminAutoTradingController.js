@@ -11,6 +11,7 @@ const AutoTradingConfig = require('../../models/AutoTradingConfig');
 const AutoListingPolicy = require('../../models/AutoListingPolicy');
 const autoTradingService = require('../../services/pricing/autoTradingService');
 const autoListingMatcher = require('../../workers/autoListingMatcher');
+const autoTradingAnalytics = require('../../services/analytics/autoTradingAnalytics');
 const autoConfig = require('../../config/autoTrading');
 const auditService = require('../../services/auditService');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -124,4 +125,18 @@ const runOnce = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: summary });
 });
 
-module.exports = { getStatus, pause, resume, runOnce };
+/**
+ * Sub-module 2.4.4 — marketplace feedback analytics dashboard. Conversion rate,
+ * recommendation accuracy, and listing-volume anomaly detection.
+ */
+const getAnalytics = asyncHandler(async (req, res) => {
+  const sinceDays = (() => {
+    const parsed = parseInt(req.query?.sinceDays, 10);
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= 365 ? parsed : 30;
+  })();
+
+  const data = await autoTradingAnalytics.getAutoTradingAnalytics({ sinceDays });
+  res.status(200).json({ success: true, data });
+});
+
+module.exports = { getStatus, pause, resume, runOnce, getAnalytics };

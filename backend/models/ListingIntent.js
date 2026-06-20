@@ -102,6 +102,25 @@ const listingIntentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Post-list validation link (Sub-module 2.4.2): when the on-chain
+    // EnergyListed event for the listing authorized by this intent is indexed,
+    // the matcher/sync layer stamps the resulting listing id + tx here and
+    // transitions status to 'consumed'. This closes the recommendation →
+    // on-chain confirmation loop without the backend ever signing anything.
+    consumedListingId: {
+      type: Number,
+      default: null,
+    },
+    consumedTxHash: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      default: null,
+    },
+    consumedChainId: {
+      type: Number,
+      default: null,
+    },
     revokedAt: {
       type: Date,
       default: null,
@@ -132,6 +151,9 @@ const listingIntentSchema = new mongoose.Schema(
 
 listingIntentSchema.index({ userId: 1, nonce: -1 });
 listingIntentSchema.index({ policyId: 1, status: 1, expiresAt: 1 });
+// Fast lookup for post-list validation: find an intent to link by its consumer.
+listingIntentSchema.index({ signer: 1, status: 1, createdAt: -1 });
+listingIntentSchema.index({ consumedTxHash: 1, consumedListingId: 1 });
 
 listingIntentSchema.virtual('isExpired').get(function () {
   return this.expiresAt ? this.expiresAt.getTime() <= Date.now() : true;

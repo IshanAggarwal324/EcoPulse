@@ -77,12 +77,19 @@ class BlockchainService {
       const status = Number(listing.status ?? listing[3]);
       if (status !== 0) return;
 
+      const expiresAtRaw = listing.expiresAt ?? listing[5] ?? 0;
+      const expiresAt = Number(expiresAtRaw);
+      // Sub-module 2.4.3 — drop expired-but-not-yet-pruned listings from the
+      // live order book so they don't inflate supply/depth metrics.
+      if (expiresAt > 0 && Math.floor(Date.now() / 1000) >= expiresAt) return;
+
       activeListings.push({
         id: i,
         seller: listing.seller,
         energyAmount: listing.energyAmount.toString(),
         price: ethers.formatEther(listing.price),
         createdAt: Number(listing.createdAt ?? listing[4]),
+        expiresAt: expiresAt > 0 ? expiresAt : null,
       });
     });
 
@@ -99,16 +106,21 @@ class BlockchainService {
     }
 
     const status = Number(listing.status ?? listing[3]);
-    const statusLabels = ['active', 'sold', 'cancelled'];
+    const statusLabels = ['active', 'sold', 'cancelled', 'expired'];
+
+    const expiresAtRaw = listing.expiresAt ?? listing[5] ?? 0;
+    const expiresAt = Number(expiresAtRaw);
+    const isExpired = expiresAt > 0 && Math.floor(Date.now() / 1000) >= expiresAt;
 
     return {
       id: Number(listingId),
       seller,
       energyAmount: (listing.energyAmount ?? listing[1]).toString(),
       price: ethers.formatEther(listing.price ?? listing[2]),
-      status: statusLabels[status] || 'unknown',
+      status: isExpired && status === 0 ? 'expired' : statusLabels[status] || 'unknown',
       createdAt: Number(listing.createdAt ?? listing[4]),
-      isActive: status === 0,
+      expiresAt: expiresAt > 0 ? expiresAt : null,
+      isActive: status === 0 && !isExpired,
     };
   }
 
@@ -159,12 +171,53 @@ class BlockchainService {
   }
 
   /**
+   * List Energy with an auto-expiry (Sub-module 2.4.3). Stale supply is pruned
+   * from the order book once the duration elapses.
+   * @param {number} energyAmount
+   * @param {string} price (in string ether format)
+   * @param {number} durationSeconds (clamped by the contract to [1m, 90d])
+   */
+  static async listEnergyWithExpiry(energyAmount, price, durationSeconds) {
+    const contract = this.getEnergyTradingContract();
+    const tx = await contract.listEnergyWithExpiry(
+      energyAmount,
+      ethers.parseEther(price),
+      durationSeconds,
+    );
+    await tx.wait();
+    return tx.hash;
+  }
+
+  /**
+   * @notice Prune an expired listing on-chain (Sub-module 2.4.3). Callable by
+   * the deployer/relayer wallet; anyone may call it on-chain directly too.
+   */
+  static async expireListing(listingId) {
+    const contract = this.getEnergyTradingContract();
+    const tx = await contract.expireListing(listingId);
+    await tx.wait();
+    return tx.hash;
+  }
+
+  /**
    * Purchase Energy
    * @param {number} listingId
    */
   static async purchaseEnergy(listingId) {
     const contract = this.getEnergyTradingContract();
     const tx = await contract.purchaseEnergy(listingId);
+    await tx.wait();
+    return tx.hash;
+  }
+
+  /**
+   * Purchase a fraction of a listing (Sub-module 2.4.3 partial fills).
+   * @param {number} listingId
+   * @param {number} energyAmount amount to fill (must be <= remaining)
+   */
+  static async purchaseEnergyPartial(listingId, energyAmount) {
+    const contract = this.getEnergyTradingContract();
+    const tx = await contract.purchaseEnergyPartial(listingId, energyAmount);
     await tx.wait();
     return tx.hash;
   }
@@ -178,6 +231,29 @@ class BlockchainService {
       const tx = await ccContract.approve(energyTradingAddress, ethers.parseEther(amount));
       await tx.wait();
       return tx.hash;
+  }
+
+  /**
+   * Emergency stop (2.4 guardrail): pause all marketplace writes. Owner-only on
+   * the contract; the deployer wallet (PRIVATE_KEY) is the contract owner.
+   */
+  static async pauseMarketplace() {
+    const contract = this.getEnergyTradingContract();
+    const tx = await contract.pause();
+    await tx.wait();
+    return tx.hash;
+  }
+
+  static async unpauseMarketplace() {
+    const contract = this.getEnergyTradingContract();
+    const tx = await contract.unpause();
+    await tx.wait();
+    return tx.hash;
+  }
+
+  static async isMarketplacePaused() {
+    const contract = this.getEnergyTradingContractReadOnly();
+    return Boolean(await contract.paused());
   }
 }
 

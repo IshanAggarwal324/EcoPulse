@@ -157,6 +157,48 @@ const getInitialFromBlock = async (provider, contractAddress, configuredFromBloc
   return low;
 };
 
+/**
+ * Sub-module 2.4.2 — post-list validation helper.
+ *
+ * Links a newly-indexed on-chain EnergyListed event to the signed ListingIntent
+ * that authorized it (lazy-require to avoid a load-order cycle between the sync
+ * service and the pricing/intent services). Audits the outcome so the
+ * recommendation → on-chain confirmation loop is observable.
+ */
+async function linkListedIntent(tradeData, chainId) {
+  const { linkOnChainListing } = require('./pricing/listingIntentService');
+  const outcome = await linkOnChainListing({
+    sellerWallet: tradeData.seller,
+    listingId: tradeData.listingId,
+    txHash: tradeData.txHash,
+    energyAmount: tradeData.energyAmount,
+    price: Number(tradeData.price),
+    chainId,
+  });
+
+  if (outcome.intent) {
+    const actorUser = await auditService.resolveActorFromWallet(tradeData.seller);
+    auditService
+      .log({
+        actor: actorUser || { _id: null, email: null, role: null },
+        action: 'LISTING_INTENT_LINKED',
+        resourceType: 'listing_intent',
+        resourceId: String(outcome.intent._id),
+        metadata: {
+          linked: outcome.linked,
+          reason: outcome.reason,
+          listingId: tradeData.listingId,
+          txHash: tradeData.txHash,
+          chainId,
+        },
+        severity: outcome.linked ? 'info' : 'warn',
+      })
+      .catch(() => {});
+  }
+
+  return outcome;
+}
+
 const indexLogs = async (contract, logs, eventName, provider, chainId, contractAddress) => {
   let indexed = 0;
 
@@ -204,6 +246,18 @@ const indexLogs = async (contract, logs, eventName, provider, chainId, contractA
           },
           severity: 'info',
         });
+
+        // Sub-module 2.4.2 — post-list validation: link a freshly-indexed
+        // on-chain listing back to the signed ListingIntent that authorized it.
+        // Runs only on NEW inserts so a re-org re-scan never double-links.
+        if (tradeData.eventType === 'listed' && tradeData.seller) {
+          linkListedIntent(tradeData, chainId).catch((linkErr) => {
+            console.warn(
+              `[Sync] Post-list intent link failed for listing ${tradeData.listingId}:`,
+              linkErr.message,
+            );
+          });
+        }
       }
     } catch (error) {
       console.warn(`[Sync] Skipped ${eventName} log at block ${log.blockNumber}:`, error.message);

@@ -8,6 +8,7 @@ const {
 } = require('./tradeAnalytics');
 const { getCarbonStats, getCarbonBalanceAnalytics } = require('./carbonAnalytics');
 const { getSummary, getRealtimeSnapshot } = require('./summaryService');
+const { getAutoTradingAnalytics } = require('./autoTradingAnalytics');
 
 module.exports = {
   getSummary,
@@ -21,4 +22,5 @@ module.exports = {
   getPlatformVolumeByDay,
   getUniqueTraderCount,
   getWalletFlowHistory,
+  getAutoTradingAnalytics,
 };

@@ -77,10 +77,40 @@ function blendMarketAnchor(forecastImpliedPrice, historicalAvgUnitPrice) {
 }
 
 /**
+ * Resolve the market anchor used as the pricing base, blending the historical
+ * trade average with the *live* order-book average asking price (Sub-module
+ * 2.4.1 feedback loop). When either signal is absent the other is used; when
+ * both are absent the configured default base price is returned.
+ *
+ * The book anchor weight is deliberately small (default 0.2) so a freshly-listed
+ * outlier cannot dominate the long-run historical anchor, while still letting
+ * live supply conditions feed back into recommendations.
+ */
+function resolveMarketAnchor(historicalAvgUnitPrice, bookAvgUnitPriceCc) {
+  const historical = safeNumber(historicalAvgUnitPrice);
+  const book = safeNumber(bookAvgUnitPriceCc);
+  // A real order book always carries positive prices; 0/absent means "no live
+  // book signal" and must not drag the anchor toward zero.
+  const histPresent = historical !== null && historical > 0;
+  const bookPresent = book !== null && book > 0;
+
+  if (histPresent && bookPresent) {
+    const bookWeight = config.getOrderBookAnchorWeight();
+    return historical * (1 - bookWeight) + book * bookWeight;
+  }
+  if (histPresent) return historical;
+  if (bookPresent) return book;
+  return config.getDefaultBasePriceCc();
+}
+
+/**
  * Map a forecast point + market depth into a raw (pre-clamp) price and surplus.
  */
-function computePricePoint({ forecastGen, forecastCon, historicalAvgUnitPrice, listedEnergyKw }) {
-  const basePrice = blendMarketAnchor(config.getDefaultBasePriceCc(), historicalAvgUnitPrice);
+function computePricePoint({ forecastGen, forecastCon, historicalAvgUnitPrice, listedEnergyKw, bookAvgUnitPriceCc }) {
+  const basePrice = blendMarketAnchor(
+    resolveMarketAnchor(historicalAvgUnitPrice, bookAvgUnitPriceCc),
+    historicalAvgUnitPrice,
+  );
   const surplusRatio = computeSurplusRatio(forecastGen, forecastCon);
 
   // No usable forecast -> fall back to anchored base price, neutral surplus.
@@ -146,20 +176,52 @@ async function getHistoricalAvgUnitPrice() {
 }
 
 /**
- * Live sell-side order book depth (kWh). The EcoPulse marketplace has no
- * standing buy orders, so listed energy acts as additional supply pressure on
- * price. Returns 0 if the chain/marketplace is unavailable.
+ * Live order-book depth metrics (Sub-module 2.4.1). The EcoPulse marketplace
+ * has no standing buy orders, so the active sell book acts as additional supply
+ * pressure on price. Returns a normalized snapshot; every field falls back to a
+ * zero/empty signal if the chain/marketplace is unavailable so a transient RPC
+ * outage never poisons the pricing curve.
  */
-async function getMarketDepthKw() {
+async function getMarketDepth() {
+  const empty = {
+    totalEnergyKw: 0,
+    totalVolumeCc: 0,
+    avgUnitPriceCc: null,
+    minUnitPriceCc: 0,
+    maxUnitPriceCc: 0,
+    listingCount: 0,
+    hasDepth: false,
+    computedAt: new Date().toISOString(),
+  };
   try {
     // Lazy require to avoid loading ethers/blockchain in the pure-math path
     // and to keep the unit tests free of chain coupling.
-    const { getActiveOrders } = require('../marketplaceService');
-    const { summary } = await getActiveOrders({ limit: 100 });
-    return Number.isFinite(summary?.totalEnergy) ? summary.totalEnergy : 0;
+    const { getMarketDepth: fetchDepth } = require('../marketplaceService');
+    const depth = await fetchDepth({ limit: 100 });
+    return {
+      totalEnergyKw: Number.isFinite(depth?.totalEnergyKw) ? depth.totalEnergyKw : 0,
+      totalVolumeCc: Number.isFinite(depth?.totalVolumeCc) ? depth.totalVolumeCc : 0,
+      avgUnitPriceCc: Number.isFinite(depth?.avgUnitPriceCc) && depth.avgUnitPriceCc > 0
+        ? depth.avgUnitPriceCc
+        : null,
+      minUnitPriceCc: Number.isFinite(depth?.minUnitPriceCc) ? depth.minUnitPriceCc : 0,
+      maxUnitPriceCc: Number.isFinite(depth?.maxUnitPriceCc) ? depth.maxUnitPriceCc : 0,
+      listingCount: Number.isFinite(depth?.listingCount) ? depth.listingCount : 0,
+      hasDepth: Boolean(depth?.hasDepth),
+      computedAt: depth?.computedAt || empty.computedAt,
+    };
   } catch {
-    return 0;
+    return empty;
   }
+}
+
+/**
+ * Backward-compatible scalar accessor (total listed energy in kW). New callers
+ * should use getMarketDepth() for the full feedback snapshot.
+ */
+async function getMarketDepthKw() {
+  const depth = await getMarketDepth();
+  return depth.totalEnergyKw;
 }
 
 /**
@@ -205,7 +267,7 @@ function normalizePrediction(pred) {
  * Build the full pricing curve. Pure with respect to its arguments (the I/O is
  * done by the caller via fetchForecastCurve / analytics) so it is unit-testable.
  */
-function buildPricingCurve({ predictions, historicalAvgUnitPrice, listedEnergyKw }) {
+function buildPricingCurve({ predictions, historicalAvgUnitPrice, listedEnergyKw, bookAvgUnitPriceCc }) {
   const curve = (predictions || []).map((raw) => {
     const p = normalizePrediction(raw);
     const { price, surplusKw, surplusRatio, hasForecast } = computePricePoint({
@@ -213,6 +275,7 @@ function buildPricingCurve({ predictions, historicalAvgUnitPrice, listedEnergyKw
       forecastCon: p.forecastCon,
       historicalAvgUnitPrice,
       listedEnergyKw,
+      bookAvgUnitPriceCc,
     });
     const clamped = config.clampPrice(price);
     const bands = buildConfidenceBands(clamped, p.confidence);
@@ -282,16 +345,20 @@ async function getPricingCurve({ nodeId = null, hours = 24, bypassCache = false 
     if (cached) return { ...cached, cached: true };
   }
 
-  const [historicalAvgUnitPrice, listedEnergyKw, forecast] = await Promise.all([
+  const [historicalAvgUnitPrice, marketDepth, forecast] = await Promise.all([
     getHistoricalAvgUnitPrice(),
-    getMarketDepthKw(),
+    getMarketDepth(),
     fetchForecastCurve({ nodeId, days }),
   ]);
+
+  const listedEnergyKw = marketDepth.totalEnergyKw;
+  const bookAvgUnitPriceCc = marketDepth.avgUnitPriceCc;
 
   const curve = buildPricingCurve({
     predictions: forecast.predictions,
     historicalAvgUnitPrice,
     listedEnergyKw,
+    bookAvgUnitPriceCc,
   });
 
   const payload = {
@@ -299,11 +366,18 @@ async function getPricingCurve({ nodeId = null, hours = 24, bypassCache = false 
     hours: clampedHours,
     points: curve,
     algoVersion: config.PRICING_ALGO_VERSION,
-    basePriceCc:
-      historicalAvgUnitPrice !== null
-        ? historicalAvgUnitPrice
-        : config.getDefaultBasePriceCc(),
+    basePriceCc: resolveMarketAnchor(historicalAvgUnitPrice, bookAvgUnitPriceCc),
     marketDepthKw: listedEnergyKw,
+    marketDepth: {
+      listingCount: marketDepth.listingCount,
+      totalEnergyKw: marketDepth.totalEnergyKw,
+      totalVolumeCc: marketDepth.totalVolumeCc,
+      avgUnitPriceCc: bookAvgUnitPriceCc,
+      minUnitPriceCc: marketDepth.minUnitPriceCc,
+      maxUnitPriceCc: marketDepth.maxUnitPriceCc,
+      hasDepth: marketDepth.hasDepth,
+      computedAt: marketDepth.computedAt,
+    },
     forecastAvailable: forecast.available,
     modelStatus: forecast.modelStatus || null,
     bounds: {
@@ -328,11 +402,13 @@ module.exports = {
   computePricePoint,
   computeSurplusRatio,
   blendMarketAnchor,
+  resolveMarketAnchor,
   buildConfidenceBands,
   buildPricingCurve,
   normalizePrediction,
   // Data fetchers
   getHistoricalAvgUnitPrice,
+  getMarketDepth,
   getMarketDepthKw,
   fetchForecastCurve,
   // Cache helpers (exported for tests)
