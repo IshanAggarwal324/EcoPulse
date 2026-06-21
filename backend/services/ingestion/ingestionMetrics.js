@@ -11,6 +11,7 @@
  */
 
 const IngestionError = require('../../models/IngestionError');
+const { logger } = require('../../utils/logger');
 
 const counters = {
   accepted: 0,
@@ -157,7 +158,7 @@ const recordRejection = async ({
       ip: ip || null,
     });
   } catch (err) {
-    console.error('[ingestionMetrics] failed to persist dead-letter:', err.message);
+    logger.warn('ingestion dead-letter persist failed', { err, kind, source, component: 'ingestion' });
   }
 };
 

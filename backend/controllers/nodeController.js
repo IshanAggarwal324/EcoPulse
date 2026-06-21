@@ -61,10 +61,25 @@ const createNode = async (req, res) => {
 
 const getNodes = async (req, res) => {
   try {
-    const nodes = await EnergyNode.find();
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const skip = (page - 1) * limit;
+    const filter = isPrivileged(req.user) ? {} : { userId: req.user._id };
+
+    const [nodes, total] = await Promise.all([
+      EnergyNode.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      EnergyNode.countDocuments(filter),
+    ]);
+
     res.status(200).json({
       success: true,
       count: nodes.length,
+      total,
+      pagination: {
+        page,
+        limit,
+        pages: Math.ceil(total / limit) || 1,
+      },
       data: nodes.map((node) => toNodeResponse(node, req)),
     });
   } catch (error) {

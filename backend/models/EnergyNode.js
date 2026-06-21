@@ -49,4 +49,8 @@ const energyNodeSchema = new mongoose.Schema({
   timestamps: true,
 });
 
+energyNodeSchema.index({ userId: 1, createdAt: -1 });
+energyNodeSchema.index({ status: 1 });
+energyNodeSchema.index({ ingestionMode: 1 });
+
 module.exports = mongoose.model('EnergyNode', energyNodeSchema);

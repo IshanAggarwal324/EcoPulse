@@ -3,12 +3,17 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const connectDB = require('./config/db');
 const { disconnectDB } = require('./config/db');
 const { validateEnvironment } = require('./config/env');
 const { disconnectRedis } = require('./config/redis');
+const correlationId = require('./middleware/correlationId');
+const metricsMiddleware = require('./middleware/metricsMiddleware');
+const { metricsHandler } = require('./routes/metrics');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
+const { logger } = require('./utils/logger');
 const v1Routes = require('./routes/v1');
 const blockchainSyncService = require('./services/blockchainSyncService');
 const socketBroadcastService = require('./services/socketBroadcastService');
@@ -66,9 +71,12 @@ const startServer = async () => {
   };
 
   app.use(cors(corsOptions));
+  app.use(compression());
   app.use(helmet());
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  app.use(correlationId);
+  app.use(metricsMiddleware);
   app.use(requestLogger);
 
   app.get('/api/health', (req, res) => {
@@ -78,6 +86,8 @@ const startServer = async () => {
       timestamp: new Date().toISOString(),
     });
   });
+
+  app.get('/metrics', metricsHandler);
 
   app.use('/api/v1', v1Routes);
 
@@ -117,7 +127,7 @@ const startServer = async () => {
         await blockchainSyncService.syncBlockchainTrades();
         await socketBroadcastService.flushAnalytics('full');
       } catch (err) {
-        console.warn('Background blockchain sync skipped:', err.message);
+        logger.warn('background blockchain sync skipped', { err, component: 'blockchain-sync' });
       }
     };
 
@@ -128,7 +138,7 @@ const startServer = async () => {
   const shutdown = async (signal) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[shutdown] Received ${signal}, stopping services...`);
+    logger.info('shutdown signal received', { signal, component: 'shutdown' });
 
     stopBackgroundSync();
     blockchainSyncService.stopListeningToBlockchainEvents();
@@ -139,7 +149,7 @@ const startServer = async () => {
     autoListingMatcher.stop();
 
     const forceExitTimer = setTimeout(() => {
-      console.error(`[shutdown] Forced exit after ${SHUTDOWN_TIMEOUT_MS}ms`);
+      logger.error('shutdown forced exit', { timeoutMs: SHUTDOWN_TIMEOUT_MS, component: 'shutdown' });
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
     forceExitTimer.unref();
@@ -152,31 +162,31 @@ const startServer = async () => {
       await disconnectRedis();
       await disconnectDB();
       clearTimeout(forceExitTimer);
-      console.log('[shutdown] Complete');
+      logger.info('shutdown complete', { component: 'shutdown' });
       process.exit(0);
     } catch (err) {
       clearTimeout(forceExitTimer);
-      console.error('[shutdown] Error during shutdown:', err.message);
+      logger.error('shutdown error', { err, component: 'shutdown' });
       process.exit(1);
     }
   };
 
   process.on('SIGTERM', () => {
     shutdown('SIGTERM').catch((err) => {
-      console.error('[shutdown] Unhandled shutdown error:', err.message);
+      logger.error('shutdown unhandled error', { err, component: 'shutdown' });
       process.exit(1);
     });
   });
 
   process.on('SIGINT', () => {
     shutdown('SIGINT').catch((err) => {
-      console.error('[shutdown] Unhandled shutdown error:', err.message);
+      logger.error('shutdown unhandled error', { err, component: 'shutdown' });
       process.exit(1);
     });
   });
 
   server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    logger.info('server listening', { port: PORT, component: 'server' });
     // Abort requests that take longer than 30s (prevents slow-loris style DoS)
     server.requestTimeout = 30000;
     server.headersTimeout = 35000;
@@ -192,9 +202,9 @@ const startServer = async () => {
     if (isTimeseriesEnabled()) {
       timeseriesSetup.ensureAll().then((status) => {
         if (!status.ok) {
-          console.error('[timeseries] setup failed:', status.error);
+          logger.error('timeseries setup failed', { err: status.error, component: 'timeseries' });
         } else {
-          console.log('[timeseries] collection ready');
+          logger.info('timeseries collection ready', { component: 'timeseries' });
         }
       });
       rollupWorker.start();
@@ -212,6 +222,6 @@ const startServer = async () => {
 };
 
 startServer().catch((err) => {
-  console.error('Fatal startup error:', err.message);
+  logger.error('fatal startup error', { err });
   process.exit(1);
 });

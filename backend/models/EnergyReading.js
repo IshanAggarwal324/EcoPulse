@@ -54,6 +54,7 @@ const energyReadingSchema = new mongoose.Schema({
 
 // Index to optimize querying readings by node and time
 energyReadingSchema.index({ nodeId: 1, timestamp: -1 });
+energyReadingSchema.index({ timestamp: -1 });
 // Dedup / source-filtered lookups (public_api externalReadingId uniqueness).
 energyReadingSchema.index({ providerKey: 1, externalReadingId: 1 }, { sparse: true });
 

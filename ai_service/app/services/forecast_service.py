@@ -1,4 +1,7 @@
+"""Forecast service — orchestrates model inference and batch requests."""
+import asyncio
 import logging
+import os
 from datetime import datetime
 from datetime import timedelta
 from typing import Optional
@@ -12,6 +15,8 @@ from models.preprocessing import prepare_for_prediction
 from utils.database import get_historical_data
 
 logger = logging.getLogger(__name__)
+
+BATCH_CONCURRENCY = max(1, int(os.getenv("FORECAST_BATCH_CONCURRENCY", "5")))
 
 
 class ForecastService:
@@ -52,19 +57,23 @@ class ForecastService:
     ) -> tuple[list[NodeForecast], list[dict]]:
         forecasts: list[NodeForecast] = []
         errors: list[dict] = []
+        sem = asyncio.Semaphore(BATCH_CONCURRENCY)
 
-        for node_id in node_ids:
-            try:
-                results = await self._forecast_for_node(
-                    days_to_predict, use_dummy_data, node_id
-                )
-                forecasts.append(NodeForecast(node_id=node_id, predictions=results))
-            except InsufficientDataError as exc:
-                errors.append(
-                    {"node_id": node_id, "error_code": exc.error_code, "detail": exc.message}
-                )
-            except Exception as exc:
-                errors.append({"node_id": node_id, "error_code": "FORECAST_ERROR", "detail": str(exc)})
+        async def run_one(node_id: str) -> None:
+            async with sem:
+                try:
+                    results = await self._forecast_for_node(
+                        days_to_predict, use_dummy_data, node_id
+                    )
+                    forecasts.append(NodeForecast(node_id=node_id, predictions=results))
+                except InsufficientDataError as exc:
+                    errors.append(
+                        {"node_id": node_id, "error_code": exc.error_code, "detail": exc.message}
+                    )
+                except Exception as exc:
+                    errors.append({"node_id": node_id, "error_code": "FORECAST_ERROR", "detail": str(exc)})
+
+        await asyncio.gather(*(run_one(node_id) for node_id in node_ids))
 
         if not forecasts:
             raise BatchForecastError(errors)
@@ -82,21 +91,25 @@ class ForecastService:
     ) -> tuple[list[NodeForecast], list[dict]]:
         forecasts: list[NodeForecast] = []
         errors: list[dict] = []
+        sem = asyncio.Semaphore(BATCH_CONCURRENCY)
 
-        for node_id in node_ids:
-            try:
-                results = await self.predict_without_model(
-                    days_to_predict, use_dummy_data, node_id
-                )
-                forecasts.append(NodeForecast(node_id=node_id, predictions=results))
-            except InsufficientDataError as exc:
-                errors.append(
-                    {"node_id": node_id, "error_code": exc.error_code, "detail": exc.message}
-                )
-            except Exception as exc:
-                errors.append(
-                    {"node_id": node_id, "error_code": "FORECAST_ERROR", "detail": str(exc)}
-                )
+        async def run_one(node_id: str) -> None:
+            async with sem:
+                try:
+                    results = await self.predict_without_model(
+                        days_to_predict, use_dummy_data, node_id
+                    )
+                    forecasts.append(NodeForecast(node_id=node_id, predictions=results))
+                except InsufficientDataError as exc:
+                    errors.append(
+                        {"node_id": node_id, "error_code": exc.error_code, "detail": exc.message}
+                    )
+                except Exception as exc:
+                    errors.append(
+                        {"node_id": node_id, "error_code": "FORECAST_ERROR", "detail": str(exc)}
+                    )
+
+        await asyncio.gather(*(run_one(node_id) for node_id in node_ids))
 
         if not forecasts:
             raise BatchForecastError(errors)
@@ -123,8 +136,12 @@ class ForecastService:
         sequence = prepare_for_prediction(
             df, scaler, look_back=self._settings.look_back_days
         )
-        raw_predictions = predict_future(
-            model, sequence, days_to_predict, scaler
+        raw_predictions = await asyncio.to_thread(
+            predict_future,
+            model,
+            sequence,
+            days_to_predict,
+            scaler,
         )
         return self._format_predictions(raw_predictions, df.index[-1])
 

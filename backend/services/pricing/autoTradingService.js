@@ -31,6 +31,7 @@ const surplusService = require('./surplusService');
 const listingIntentService = require('./listingIntentService');
 const notificationService = require('../notificationService');
 const auditService = require('../auditService');
+const { logBackgroundError } = require('../../utils/logger');
 const pricingConfig = require('../../config/pricing');
 const autoConfig = require('../../config/autoTrading');
 const { getRedisClient, isRedisAvailable } = require('../../config/redis');
@@ -631,7 +632,9 @@ function logDecision(policy, decision) {
       req: null,
       severity: decision.matched ? 'info' : 'info',
     })
-    .catch(() => {});
+    .catch((err) => logBackgroundError('autoTrading.auditDecision', err, {
+      policyId: String(policy._id),
+    }));
 }
 
 module.exports = {

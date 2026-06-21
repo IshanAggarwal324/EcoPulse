@@ -4,6 +4,8 @@ const SyncState = require('../models/SyncState');
 const BlockchainService = require('./blockchainService');
 const socketBroadcastService = require('./socketBroadcastService');
 const auditService = require('./auditService');
+const { logger, logBackgroundError } = require('../utils/logger');
+const { invalidateActiveListingsCache } = require('./listingCache');
 
 const SYNC_STATE_KEY = 'energy_trading';
 const DEFAULT_SYNC_CHUNK_SIZE = 500;
@@ -24,9 +26,9 @@ const stopListeningToBlockchainEvents = () => {
 
   try {
     eventListenerContract.removeAllListeners();
-    console.log('[Sync] Blockchain event listeners removed');
+    logger.info('blockchain event listeners removed', { component: 'blockchain-sync' });
   } catch (err) {
-    console.warn('[Sync] Failed to remove blockchain event listeners:', err.message);
+    logger.warn('failed to remove blockchain event listeners', { err, component: 'blockchain-sync' });
   }
 
   eventListenerContract = null;
@@ -207,7 +209,9 @@ async function linkListedIntent(tradeData, chainId) {
         },
         severity: outcome.linked ? 'info' : 'warn',
       })
-      .catch(() => {});
+      .catch((err) => logBackgroundError('blockchainSync.listingIntentAudit', err, {
+        listingId: tradeData.listingId,
+      }));
   }
 
   return outcome;
@@ -536,6 +540,9 @@ const syncBlockchainTrades = async () => {
       message: null,
       indexed,
       lastSyncedBlock: toBlock,
+    });
+    await invalidateActiveListingsCache().catch((err) => {
+      logBackgroundError('blockchainSync.invalidateListingCache', err);
     });
     return result;
   } catch (error) {

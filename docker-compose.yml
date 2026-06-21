@@ -1,0 +1,72 @@
+# EcoPulse local production-parity stack (H19).
+# Usage: copy service .env.example files, then `docker compose up --build`
+
+services:
+  mongodb:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  ai-service:
+    build:
+      context: ./ai_service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongodb:27017/ecopulse
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:-dev-internal-key-change-me}
+    depends_on:
+      - mongodb
+
+  genai-service:
+    build:
+      context: ./genai-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      NODE_ENV: production
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:-dev-internal-key-change-me}
+      AI_SERVICE_URL: http://ai-service:8000
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: "5000"
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongodb:27017/ecopulse
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai-service:8000
+      GENAI_SERVICE_URL: http://genai-service:8001
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:-dev-internal-key-change-me}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-at-least-32-chars-long}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-at-least-32-chars-long}
+      CORS_ORIGIN: http://localhost:5173
+      RECAPTCHA_SECRET: ${RECAPTCHA_SECRET:-dev-recaptcha-secret}
+      METRICS_ENABLED: "true"
+    depends_on:
+      - mongodb
+      - redis
+      - ai-service
+      - genai-service
+
+volumes:
+  mongodb_data:

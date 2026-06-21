@@ -1,5 +1,6 @@
 const Trade = require('../models/Trade');
 const BlockchainService = require('./blockchainService');
+const { getCachedActiveListings } = require('./listingCache');
 
 const parsePrice = (value) => {
   const num = parseFloat(value);
@@ -71,7 +72,7 @@ const getActiveOrders = async ({
   page = 1,
   limit = 50,
 } = {}) => {
-  const listings = await BlockchainService.getActiveListings();
+  const listings = await getCachedActiveListings(() => BlockchainService.getActiveListings());
   const normalizedSeller = seller ? String(seller).toLowerCase() : null;
 
   let filtered = listings;

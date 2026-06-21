@@ -4,6 +4,7 @@ const { retrieveForIntent } = require('../services/retrievalService');
 const assistantMetrics = require('../services/assistantMetrics');
 const assistantSession = require('../services/assistantSessionStore');
 const asyncHandler = require('../utils/asyncHandler');
+const { logger, logBackgroundError } = require('../utils/logger');
 
 // Sub-module 3.1.5 — hybrid retrieval for all intents. Doc chunks are fetched
 // for every question (not just faq/general) so the assistant always has access
@@ -163,18 +164,15 @@ const postAssistantChat = asyncHandler(async (req, res) => {
   // Both are fire-and-forget: a Redis outage must never break the chat path,
   // and only metadata (intent/source-types/doc-ids) is persisted — never the
   // message, reply, or retrieved_data contents.
-  assistantMetrics.recordChat({ intent, sourceTypes, docIds }).catch(() => {});
+  assistantMetrics.recordChat({ intent, sourceTypes, docIds }).catch((err) => {
+    logBackgroundError('assistant.metrics', err, { intent });
+  });
   if (sessionId) {
     assistantSession
       .saveSnapshot(sessionId, { intent, sourceTypes, docIds, period })
-      .catch(() => {});
+      .catch((err) => logBackgroundError('assistant.sessionSnapshot', err, { intent }));
   }
-  // 3.3 guardrail: log intent + source attribution only (never the prompt or
-  // user message body) for debugging / analytics.
-  console.info('[assistant] chat', {
-    intent,
-    sources: sourceTypes,
-  });
+  logger.info('assistant chat completed', { intent, sources: sourceTypes, component: 'assistant' });
 
   res.status(200).json({
     success: true,

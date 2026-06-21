@@ -112,7 +112,7 @@ async def get_historical_data_timeseries(
 
 async def get_historical_data(
     use_dummy: bool = False,
-    days: int = 365,
+    days: int = FORECAST_LOOKBACK_DAYS,
     node_id: Optional[str] = None,
 ) -> pd.DataFrame:
     # Sub-module 1.3.5 — route to the time-series read path when enabled.
@@ -155,27 +155,31 @@ async def get_historical_data(
         except InvalidId:
             return pd.DataFrame(columns=['timestamp', 'generation', 'consumption']).set_index('timestamp')
 
-    cursor = readings_collection.find(query).sort("timestamp", 1)
+    pipeline = [
+        {"$match": query},
+        {
+            "$group": {
+                "_id": {"$dateTrunc": {"date": "$timestamp", "unit": "day", "timezone": "UTC"}},
+                "generation": {"$sum": "$energyGenerated"},
+                "consumption": {"$sum": "$energyConsumed"},
+            }
+        },
+        {"$sort": {"_id": 1}},
+    ]
 
-    documents = await cursor.to_list(length=None)
+    rows = await readings_collection.aggregate(pipeline).to_list(length=None)
 
-    if not documents:
+    if not rows:
         return pd.DataFrame(columns=['timestamp', 'generation', 'consumption']).set_index('timestamp')
 
-    df = pd.DataFrame(documents)
-
-    df['generation'] = df.get('energyGenerated', df.get('generation', 0)).fillna(0)
-    df['consumption'] = df.get('energyConsumed', df.get('consumption', 0)).fillna(0)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
-
-    daily = df.groupby(df['timestamp'].dt.date).agg({
-        'generation': 'sum',
-        'consumption': 'sum',
-    }).reset_index()
-
-    daily.rename(columns={'timestamp': 'date'}, inplace=True)
-    daily['timestamp'] = pd.to_datetime(daily['date'])
-    daily = daily[['timestamp', 'generation', 'consumption']]
-    daily.set_index('timestamp', inplace=True)
-
+    daily = pd.DataFrame([
+        {
+            "timestamp": row["_id"],
+            "generation": row.get("generation", 0),
+            "consumption": row.get("consumption", 0),
+        }
+        for row in rows
+    ])
+    daily['timestamp'] = pd.to_datetime(daily['timestamp'])
+    daily = daily[['timestamp', 'generation', 'consumption']].set_index('timestamp')
     return daily

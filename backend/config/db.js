@@ -11,6 +11,16 @@ const connectDB = async () => {
     throw new Error(message);
   }
 
+  const maxPoolSize = (() => {
+    const parsed = parseInt(process.env.MONGO_MAX_POOL_SIZE || '50', 10);
+    return Number.isFinite(parsed) && parsed >= 10 ? parsed : 50;
+  })();
+
+  const minPoolSize = (() => {
+    const parsed = parseInt(process.env.MONGO_MIN_POOL_SIZE || '0', 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  })();
+
   try {
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB runtime error:', err.message);
@@ -19,10 +29,11 @@ const connectDB = async () => {
     const conn = await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
-      maxPoolSize: 10,
+      maxPoolSize,
+      minPoolSize,
       retryWrites: true,
     });
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log(`MongoDB Connected: ${conn.connection.host} (pool max=${maxPoolSize})`);
     return conn;
   } catch (error) {
     throw new Error(`Failed to connect to MongoDB: ${error.message}`);

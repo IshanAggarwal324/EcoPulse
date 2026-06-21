@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const deviceService = require('../services/deviceService');
 const auditService = require('../services/auditService');
+const { logBackgroundError } = require('../utils/logger');
 
 const DEVICE_ID_HEADER = 'x-device-id';
 const API_KEY_HEADER = 'x-api-key';
@@ -55,7 +56,7 @@ const deviceAuth = asyncHandler(async (req, res, next) => {
         req,
         severity: code === 'AUTH_FAILED' ? 'info' : 'warn',
       })
-      .catch(() => {});
+      .catch((err) => logBackgroundError('deviceAuth.auditFailed', err, { code }));
 
     // Identical body/shape for every failure so the cause can't be inferred.
     return res.status(status).json({
@@ -106,9 +107,9 @@ const deviceAuth = asyncHandler(async (req, res, next) => {
         req,
         severity: 'warn',
       })
-      .catch(() => {});
-
-    return res.status(409).json({
+      .catch((err) => logBackgroundError('deviceAuth.auditNodeInactive', err, {
+        nodeStatus: node.status,
+      }));
       success: false,
       message: 'Bound node is not active',
       code: 'NODE_INACTIVE',

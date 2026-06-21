@@ -1,34 +1,16 @@
 {
   "name": "genai-service",
   "version": "1.0.0",
-  "description": "EcoPulse GenAI Service — Chatbot & Report Generation",
-  "main": "index.js",
+  "description": "EcoPulse GenAI Service — Python FastAPI (Gemini assistant, report narration)",
+  "private": true,
+  "main": "main.py",
   "scripts": {
-    "start": "node index.js",
-    "start:prod": "NODE_ENV=production node index.js",
-    "dev": "nodemon index.js"
+    "start": "python -m uvicorn main:app --host 0.0.0.0 --port 8001",
+    "start:prod": "python -m gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-8001} --workers 2",
+    "dev": "python -m uvicorn main:app --reload --host 0.0.0.0 --port 8001",
+    "test": "python -m unittest discover -s tests -p test_*.py"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "engines": {
     "node": ">=18.0.0"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "axios": "^1.16.1",
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^7.5.0",
-    "jsonwebtoken": "^9.0.3",
-    "uuid": "^11.1.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.14"
-  },
-  "overrides": {
-    "form-data": "4.0.6"
   }
 }

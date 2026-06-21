@@ -5,6 +5,9 @@ const {
   getTimeseriesBySource,
 } = require('./timeseriesAnalytics');
 
+const LEGACY_TOTALS_TTL_MS = parseInt(process.env.ENERGY_TOTALS_CACHE_MS || '30000', 10);
+let legacyTotalsCache = { at: 0, sinceKey: null, value: null };
+
 /**
  * Energy analytics (Sub-module 1.3.4 — flag-aware dispatcher).
  *
@@ -19,9 +22,17 @@ const getEnergyTotals = async (since) => {
     return getTimeseriesEnergyTotals(since);
   }
 
+  const sinceKey = since ? since.toISOString() : 'all';
+  if (
+    legacyTotalsCache.sinceKey === sinceKey
+    && Date.now() - legacyTotalsCache.at < LEGACY_TOTALS_TTL_MS
+  ) {
+    return legacyTotalsCache.value;
+  }
+
   const match = since ? { timestamp: { $gte: since } } : {};
 
-  const [result] = await EnergyReading.aggregate([
+  const [resultRow] = await EnergyReading.aggregate([
     { $match: match },
     {
       $group: {
@@ -33,11 +44,14 @@ const getEnergyTotals = async (since) => {
     },
   ]);
 
-  return {
-    totalGenerated: result?.totalGenerated || 0,
-    totalConsumed: result?.totalConsumed || 0,
-    readingCount: result?.readingCount || 0,
+  const totals = {
+    totalGenerated: resultRow?.totalGenerated || 0,
+    totalConsumed: resultRow?.totalConsumed || 0,
+    readingCount: resultRow?.readingCount || 0,
   };
+
+  legacyTotalsCache = { at: Date.now(), sinceKey, value: totals };
+  return totals;
 };
 
 /**

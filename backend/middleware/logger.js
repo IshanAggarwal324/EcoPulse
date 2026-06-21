@@ -1,3 +1,5 @@
+const { logger } = require('../utils/logger');
+
 const SENSITIVE_QUERY_KEYS = new Set([
   'token',
   'password',
@@ -40,7 +42,18 @@ const sanitizeUrlForLog = (url) => {
 
 const requestLogger = (req, res, next) => {
   const path = sanitizeUrlForLog(req.originalUrl || req.url);
-  console.log(`[${new Date().toISOString()}] ${req.method} ${path}`);
+  const started = Date.now();
+
+  res.on('finish', () => {
+    logger.info('http request', {
+      method: req.method,
+      path,
+      status: res.statusCode,
+      durationMs: Date.now() - started,
+      ip: req.ip,
+    });
+  });
+
   next();
 };
 

@@ -1,4 +1,13 @@
 const Trade = require('../../models/Trade');
+const { getRedisClient, isRedisAvailable } = require('../../config/redis');
+
+const ACTIVE_LISTING_COUNT_KEY = 'analytics:active_listing_count';
+const getActiveListingCountTtl = () => {
+  const parsed = parseInt(process.env.ACTIVE_LISTING_COUNT_CACHE_SECONDS || '60', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 60;
+};
+
+let activeListingCountMemory = { at: 0, value: 0 };
 
 const parsePrice = (price) => {
   const value = parseFloat(price);
@@ -77,13 +86,48 @@ const getUniqueTraderCount = async () => {
  * live contract read so the assistant path stays offline-friendly.
  */
 const getActiveListingCount = async () => {
+  const now = Date.now();
+  if (now - activeListingCountMemory.at < getActiveListingCountTtl() * 1000) {
+    return activeListingCountMemory.value;
+  }
+
+  if (isRedisAvailable()) {
+    try {
+      const cached = await getRedisClient().get(ACTIVE_LISTING_COUNT_KEY);
+      if (cached !== null) {
+        const value = parseInt(cached, 10) || 0;
+        activeListingCountMemory = { at: now, value };
+        return value;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
   const [row] = await Trade.aggregate([
-    { $sort: { blockTimestamp: 1 } },
-    { $group: { _id: '$listingId', lastEvent: { $last: '$eventType' } } },
+    { $sort: { listingId: 1, blockTimestamp: -1, blockNumber: -1 } },
+    { $group: { _id: '$listingId', lastEvent: { $first: '$eventType' } } },
     { $match: { lastEvent: 'listed' } },
     { $count: 'active' },
   ]);
-  return row?.active || 0;
+
+  const value = row?.active || 0;
+  activeListingCountMemory = { at: now, value };
+
+  if (isRedisAvailable()) {
+    try {
+      await getRedisClient().set(
+        ACTIVE_LISTING_COUNT_KEY,
+        String(value),
+        'EX',
+        getActiveListingCountTtl(),
+      );
+    } catch {
+      // best-effort
+    }
+  }
+
+  return value;
 };
 
 /**

@@ -56,6 +56,7 @@ const tradeSchema = new mongoose.Schema({
 tradeSchema.index({ txHash: 1, logIndex: 1 }, { unique: true });
 tradeSchema.index({ eventType: 1, blockTimestamp: -1 });
 tradeSchema.index({ listingId: 1, eventType: 1 });
+tradeSchema.index({ listingId: 1, blockTimestamp: -1, blockNumber: -1 });
 tradeSchema.index({ seller: 1, blockTimestamp: -1 });
 tradeSchema.index({ buyer: 1, blockTimestamp: -1 });
 tradeSchema.index({ blockNumber: -1 });

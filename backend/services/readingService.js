@@ -120,7 +120,7 @@ const ingestReading = async ({
   // The socket payload is the legacy reading (or a synthesized doc post-cutover
   // when legacy writes are disabled).
   const broadcastDoc = reading || doc;
-  await socketBroadcastService.emitReadingAndAnalytics(broadcastDoc);
+  socketBroadcastService.emitReadingAndAnalytics(broadcastDoc);
   return broadcastDoc;
 };
 

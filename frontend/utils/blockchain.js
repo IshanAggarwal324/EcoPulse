@@ -203,20 +203,29 @@ export const fetchAllListings = async () => {
     const nextId = await contract.nextListingId();
     const numListings = Number(nextId);
     const activeListings = [];
+    const chunkSize = 16;
 
-    for (let i = 0; i < numListings; i++) {
-      const listing = await contract.listings(i);
-      const status = Number(listing.status ?? listing[3]);
-      if (status === LISTING_STATUS.Active) {
-        activeListings.push({
-          id: i,
-          seller: listing.seller,
-          energyAmount: listing.energyAmount.toString(),
-          price: ethers.formatEther(listing.price),
-          createdAt: Number(listing.createdAt ?? listing[4]),
-        });
-      }
+    for (let start = 0; start < numListings; start += chunkSize) {
+      const end = Math.min(start + chunkSize, numListings);
+      const batch = await Promise.all(
+        Array.from({ length: end - start }, (_, offset) => contract.listings(start + offset)),
+      );
+
+      batch.forEach((listing, offset) => {
+        const i = start + offset;
+        const status = Number(listing.status ?? listing[3]);
+        if (status === LISTING_STATUS.Active) {
+          activeListings.push({
+            id: i,
+            seller: listing.seller,
+            energyAmount: listing.energyAmount.toString(),
+            price: ethers.formatEther(listing.price),
+            createdAt: Number(listing.createdAt ?? listing[4]),
+          });
+        }
+      });
     }
+
     return activeListings;
   } catch (err) {
     console.error("Error fetching listings:", err);

@@ -19,6 +19,7 @@
 
 const config = require('../../config/pricing');
 const pricingEngine = require('./pricingEngine');
+const { getCachedActiveListings } = require('../listingCache');
 
 const HOUR_MS = 3600 * 1000;
 
@@ -133,7 +134,7 @@ async function getActiveListingCountsByWallet(walletAddresses) {
 
   try {
     const BlockchainService = require('../blockchainService');
-    const listings = await BlockchainService.getActiveListings();
+    const listings = await getCachedActiveListings(() => BlockchainService.getActiveListings());
     for (const listing of listings) {
       const seller = String(listing.seller || '').toLowerCase();
       if (map.has(seller)) {

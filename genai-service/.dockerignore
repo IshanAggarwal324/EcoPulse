@@ -1,10 +1,11 @@
-node_modules
-npm-debug.log
+__pycache__
+*.pyc
 .env
 .env.*
 !.env.example
 tests
-coverage
 .git
 .gitignore
 *.md
+node_modules
+package-lock.json

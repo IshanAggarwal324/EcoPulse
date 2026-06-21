@@ -68,11 +68,22 @@ class BlockchainService {
       return [];
     }
 
-    const listings = await Promise.all(
-      Array.from({ length: nextId }, (_, i) => contract.listings(i))
+    const chunkSize = Math.min(
+      Math.max(parseInt(process.env.LISTINGS_RPC_CHUNK_SIZE || '32', 10) || 32, 1),
+      128,
     );
+    const listings = [];
+
+    for (let start = 0; start < nextId; start += chunkSize) {
+      const end = Math.min(start + chunkSize, nextId);
+      const batch = await Promise.all(
+        Array.from({ length: end - start }, (_, offset) => contract.listings(start + offset)),
+      );
+      listings.push(...batch);
+    }
 
     const activeListings = [];
+    const nowSec = Math.floor(Date.now() / 1000);
 
     listings.forEach((listing, i) => {
       const status = Number(listing.status ?? listing[3]);
@@ -82,7 +93,7 @@ class BlockchainService {
       const expiresAt = Number(expiresAtRaw);
       // Sub-module 2.4.3 — drop expired-but-not-yet-pruned listings from the
       // live order book so they don't inflate supply/depth metrics.
-      if (expiresAt > 0 && Math.floor(Date.now() / 1000) >= expiresAt) return;
+      if (expiresAt > 0 && nowSec >= expiresAt) return;
 
       activeListings.push({
         id: i,
