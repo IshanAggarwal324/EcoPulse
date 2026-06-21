@@ -12,18 +12,21 @@ const {
 const auditService = require('../services/auditService');
 const DUMMY_BCRYPT_HASH = '$2a$10$8wM17rRLf4vH4vPSc6Qh9.jv4CuUu63eVUsM8c7kwh28ykVfoCENW';
 
+const isProduction = process.env.NODE_ENV === 'production';
+const cookieSameSite = isProduction ? 'none' : 'lax';
+
 const getAccessCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: isProduction,
+  sameSite: cookieSameSite,
   path: '/',
   maxAge: 15 * 60 * 1000,
 });
 
 const getRefreshCookieOptions = () => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: isProduction,
+  sameSite: cookieSameSite,
   path: '/api/v1/auth',
   maxAge: 7 * 24 * 60 * 60 * 1000,
 });
