@@ -110,6 +110,8 @@ const deviceAuth = asyncHandler(async (req, res, next) => {
       .catch((err) => logBackgroundError('deviceAuth.auditNodeInactive', err, {
         nodeStatus: node.status,
       }));
+
+    return res.status(403).json({
       success: false,
       message: 'Bound node is not active',
       code: 'NODE_INACTIVE',

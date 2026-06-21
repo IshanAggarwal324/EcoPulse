@@ -53,9 +53,9 @@ jobs:
         with:
           node-version: '20'
       - name: Install Hardhat dependencies
-        run: npm install
+        run: npm ci
       - name: Run contract tests
-        run: npx hardhat test
+        run: npm run test:contracts
 
   ai-service:
     name: AI Service Check

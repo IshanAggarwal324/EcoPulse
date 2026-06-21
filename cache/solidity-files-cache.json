@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\CarbonCredit.sol": {
-      "lastModificationDate": 1782035596065,
-      "contentHash": "ef2ece912bd1a3b25c56a99998a6bd39",
+      "lastModificationDate": 1782050791114,
+      "contentHash": "7f69451d7ab76e784822a35d1bc03420",
       "sourceName": "contracts/CarbonCredit.sol",
       "solcConfig": {
         "version": "0.8.28",
