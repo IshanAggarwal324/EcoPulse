@@ -9,7 +9,9 @@ const {
   retrieveUserNodes,
 } = require('./assistantRetrievers');
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const { getAiServiceUrl } = require('../config/serviceUrls');
+
+const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 
 function buildInternalHeaders() {

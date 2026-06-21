@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const blockchainSyncService = require('./blockchainSyncService');
+const { getAiServiceUrl, getGenaiServiceUrl } = require('../config/serviceUrls');
 
 const nowIso = () => new Date().toISOString();
 
@@ -392,8 +393,8 @@ const deriveOverall = (components) => {
 // whole health check. Each probe resolves (never rejects) with a normalized
 // shape, so Promise.all is safe here.
 const getHealth = async () => {
-  const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-  const genaiServiceUrl = process.env.GENAI_SERVICE_URL || 'http://localhost:8001';
+  const aiServiceUrl = getAiServiceUrl();
+  const genaiServiceUrl = getGenaiServiceUrl();
 
   const [mongodb, aiService, genaiService, blockchain] = await Promise.all([
     probeMongo(),

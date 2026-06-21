@@ -4,7 +4,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const connectDB = require('./config/db');
+const { disconnectDB } = require('./config/db');
 const { validateEnvironment } = require('./config/env');
+const { disconnectRedis } = require('./config/redis');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const v1Routes = require('./routes/v1');
@@ -17,7 +19,9 @@ const rollupWorker = require('./workers/rollupWorker');
 const publicGridPoller = require('./workers/publicGridPoller');
 const autoListingMatcher = require('./workers/autoListingMatcher');
 const { isTimeseriesEnabled } = require('./config/timeseries');
-const { initSocket } = require('./socket');
+const { initSocket, closeSocket } = require('./socket');
+
+const SHUTDOWN_TIMEOUT_MS = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '15000', 10);
 
 const startServer = async () => {
   validateEnvironment();
@@ -89,10 +93,26 @@ const startServer = async () => {
 
   app.use(errorHandler);
 
+  let blockchainSyncBootstrapTimer = null;
+  let blockchainSyncInterval = null;
+  let shuttingDown = false;
+
+  const stopBackgroundSync = () => {
+    if (blockchainSyncBootstrapTimer) {
+      clearTimeout(blockchainSyncBootstrapTimer);
+      blockchainSyncBootstrapTimer = null;
+    }
+    if (blockchainSyncInterval) {
+      clearInterval(blockchainSyncInterval);
+      blockchainSyncInterval = null;
+    }
+  };
+
   const startBackgroundSync = () => {
     const intervalMs = parseInt(process.env.BLOCKCHAIN_SYNC_INTERVAL_MS || '60000', 10);
 
     const runSync = async () => {
+      if (shuttingDown) return;
       try {
         await blockchainSyncService.syncBlockchainTrades();
         await socketBroadcastService.flushAnalytics('full');
@@ -101,9 +121,59 @@ const startServer = async () => {
       }
     };
 
-    setTimeout(runSync, 5000);
-    setInterval(runSync, intervalMs);
+    blockchainSyncBootstrapTimer = setTimeout(runSync, 5000);
+    blockchainSyncInterval = setInterval(runSync, intervalMs);
   };
+
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] Received ${signal}, stopping services...`);
+
+    stopBackgroundSync();
+    blockchainSyncService.stopListeningToBlockchainEvents();
+    simulatorManager.stop();
+    mqttIngestionService.stop();
+    rollupWorker.stop();
+    publicGridPoller.stop();
+    autoListingMatcher.stop();
+
+    const forceExitTimer = setTimeout(() => {
+      console.error(`[shutdown] Forced exit after ${SHUTDOWN_TIMEOUT_MS}ms`);
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+    forceExitTimer.unref();
+
+    try {
+      await closeSocket();
+      await new Promise((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+      await disconnectRedis();
+      await disconnectDB();
+      clearTimeout(forceExitTimer);
+      console.log('[shutdown] Complete');
+      process.exit(0);
+    } catch (err) {
+      clearTimeout(forceExitTimer);
+      console.error('[shutdown] Error during shutdown:', err.message);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => {
+    shutdown('SIGTERM').catch((err) => {
+      console.error('[shutdown] Unhandled shutdown error:', err.message);
+      process.exit(1);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    shutdown('SIGINT').catch((err) => {
+      console.error('[shutdown] Unhandled shutdown error:', err.message);
+      process.exit(1);
+    });
+  });
 
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);

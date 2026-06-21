@@ -14,6 +14,7 @@ const autoTradingService = require('../services/pricing/autoTradingService');
 const autoConfig = require('../config/autoTrading');
 
 let timer = null;
+let bootstrapTimer = null;
 let running = false;
 let lastRunAt = null;
 let lastRunSummary = null;
@@ -47,7 +48,7 @@ const start = () => {
 
   // Stagger the first run ~3 min after boot so server wiring settles and the
   // pricing cache / forecast service are warm.
-  setTimeout(tick, 3 * 60 * 1000);
+  bootstrapTimer = setTimeout(tick, 3 * 60 * 1000);
   const intervalMs = autoConfig.getMatcherIntervalMs();
   timer = setInterval(tick, intervalMs);
   console.log(`[autoListingMatcher] started (every ${intervalMs}ms, notify-only v1)`);
@@ -55,6 +56,10 @@ const start = () => {
 };
 
 const stop = () => {
+  if (bootstrapTimer) {
+    clearTimeout(bootstrapTimer);
+    bootstrapTimer = null;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;

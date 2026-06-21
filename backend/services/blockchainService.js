@@ -1,9 +1,10 @@
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
+const { getRpcUrl } = require('../config/serviceUrls');
 
 // Load environment variables. Never fall back to known dev private keys.
-const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
+const rpcUrl = getRpcUrl();
 const privateKey = process.env.PRIVATE_KEY || "";
 const carbonCreditAddress = process.env.CARBON_CREDIT_ADDRESS;
 const energyTradingAddress = process.env.ENERGY_TRADING_ADDRESS;

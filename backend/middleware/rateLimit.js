@@ -1,4 +1,5 @@
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
+const { createMemoryStore } = require('./rateLimitMemory');
 
 const RATE_LIMIT_PREFIX = 'rl';
 
@@ -11,7 +12,7 @@ return current
 `;
 
 function createRateLimiter({ windowMs, maxRequests, message }) {
-  const hits = new Map();
+  const memoryStore = createMemoryStore(windowMs);
   let scriptSha = null;
   const redisClient = getRedisClient();
 
@@ -20,15 +21,6 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
       numberOfKeys: 1,
       lua: INCREMENT_SCRIPT,
     });
-  }
-
-  function cleanup() {
-    const now = Date.now();
-    for (const [key, entry] of hits) {
-      if (now - entry.resetTime > windowMs) {
-        hits.delete(key);
-      }
-    }
   }
 
   async function redisIncrement(key) {
@@ -43,7 +35,6 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
 
   return async function rateLimit(req, res, next) {
     const userId = req.user?._id?.toString() || req.ip;
-    const now = Date.now();
 
     const reject = () => {
       const auditService = require('../services/auditService');
@@ -60,7 +51,7 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
         },
         req,
         severity: 'warn',
-      });
+      }).catch(() => {});
 
       res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
       return res.status(429).json({
@@ -80,23 +71,12 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
       }
     }
 
-    let entry = hits.get(userId);
-    if (!entry || now - entry.resetTime > windowMs) {
-      entry = { count: 0, resetTime: now };
-      hits.set(userId, entry);
-    }
-
-    entry.count++;
-
-    if (entry.count > maxRequests) {
+    const count = memoryStore.increment(userId);
+    if (count > maxRequests) {
       return reject();
     }
 
-    if (entry.count % 50 === 0) {
-      cleanup();
-    }
-
-    next();
+    return next();
   };
 }
 
@@ -156,6 +136,14 @@ function createPreviewRateLimiter() {
   });
 }
 
+function createApiRateLimiter() {
+  return createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: parseInt(process.env.API_RATE_LIMIT_MAX || '120', 10),
+    message: 'API rate limit exceeded. Please try again later.',
+  });
+}
+
 module.exports = {
   createRateLimiter,
   createChatRateLimiter,
@@ -165,4 +153,5 @@ module.exports = {
   createForecastRateLimiter,
   createProfileRateLimiter,
   createPreviewRateLimiter,
+  createApiRateLimiter,
 };

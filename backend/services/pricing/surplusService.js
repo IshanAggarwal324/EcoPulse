@@ -109,13 +109,41 @@ function computeSurplus(points) {
  */
 async function getActiveListingCount(walletAddress) {
   if (!walletAddress) return 0;
+  const counts = await getActiveListingCountsByWallet([walletAddress]);
+  return counts.get(String(walletAddress).toLowerCase()) ?? 0;
+}
+
+/**
+ * Count active listings per seller wallet in one chain scan (H22 batching).
+ *
+ * @param {string[]} walletAddresses
+ * @returns {Promise<Map<string, number>>} lowercased wallet -> count
+ */
+async function getActiveListingCountsByWallet(walletAddresses) {
+  const map = new Map();
+  const normalized = [
+    ...new Set(
+      (walletAddresses || [])
+        .filter(Boolean)
+        .map((w) => String(w).toLowerCase()),
+    ),
+  ];
+  for (const w of normalized) map.set(w, 0);
+  if (normalized.length === 0) return map;
+
   try {
-    const { getActiveOrders } = require('../marketplaceService');
-    const { summary } = await getActiveOrders({ seller: walletAddress, limit: 100 });
-    return Number.isFinite(summary?.totalActive) ? summary.totalActive : 0;
+    const BlockchainService = require('../blockchainService');
+    const listings = await BlockchainService.getActiveListings();
+    for (const listing of listings) {
+      const seller = String(listing.seller || '').toLowerCase();
+      if (map.has(seller)) {
+        map.set(seller, map.get(seller) + 1);
+      }
+    }
   } catch {
-    return 0;
+    // Degrade to zero counts — same posture as getActiveListingCount.
   }
+  return map;
 }
 
 /**
@@ -127,19 +155,24 @@ async function getActiveListingCount(walletAddress) {
  * @param {number} opts.hours          Horizon override (clamped).
  * @returns {Promise<object>} Recommendation payload.
  */
-async function buildRecommendation({ node, user, hours } = {}) {
+async function buildRecommendation({ node, user, hours, activeListingCount } = {}) {
   const horizon = config.clampHours(hours || config.getRecommendationHorizonHours());
 
   const curve = await pricingEngine.getPricingCurve({ nodeId: String(node._id), hours: horizon });
   const surplus = computeSurplus(curve.points);
 
-  const activeListingCount = await getActiveListingCount(user?.walletAddress);
+  const resolvedListingCount =
+    activeListingCount !== undefined && activeListingCount !== null
+      ? Number(activeListingCount) || 0
+      : await getActiveListingCount(user?.walletAddress);
 
   // Eligibility (guardrail 2.2.2).
   const reasons = [];
   if (node.status !== 'active') reasons.push(`node is ${node.status || 'inactive'}`);
   if (surplus.totalSurplusKwh < config.getMinSurplusKwh()) reasons.push('insufficient forecast surplus');
-  if (activeListingCount > 0) reasons.push(`${activeListingCount} active listing(s) already open`);
+  if (resolvedListingCount > 0) {
+    reasons.push(`${resolvedListingCount} active listing(s) already open`);
+  }
 
   const eligible = reasons.length === 0;
 
@@ -178,7 +211,7 @@ async function buildRecommendation({ node, user, hours } = {}) {
       windowCount: surplus.windows.length,
     },
     market: {
-      activeListingCount,
+      activeListingCount: resolvedListingCount,
       basePriceCc: curve.basePriceCc,
       marketDepthKw: curve.marketDepthKw,
     },
@@ -195,5 +228,6 @@ module.exports = {
   computeSurplus,
   buildRecommendation,
   getActiveListingCount,
+  getActiveListingCountsByWallet,
   hoursPerPoint,
 };

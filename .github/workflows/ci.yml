@@ -22,13 +22,12 @@ jobs:
       - name: Syntax check
         run: |
           find backend -name '*.js' -not -path '*/node_modules/*' | xargs -I{} node -c {}
-      - name: Run MVP tests
-        run: npm test --prefix backend
+      - name: Run unit tests
+        run: npm run test:security --prefix backend
         env:
           NODE_ENV: test
-          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET || 'test-access-secret-at-least-32-chars-long' }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET || 'test-refresh-secret-at-least-32-chars-long' }}
-        continue-on-error: true
+          JWT_ACCESS_SECRET: test-access-secret-at-least-32-chars-long
+          JWT_REFRESH_SECRET: test-refresh-secret-at-least-32-chars-long
 
   frontend-build:
     name: Frontend Build
@@ -44,7 +43,6 @@ jobs:
         run: npm ci --prefix ecopulse || npm install --prefix ecopulse
       - name: Build
         run: npm run build --prefix ecopulse
-        continue-on-error: true
 
   contract-tests:
     name: Smart Contract Tests
@@ -58,7 +56,6 @@ jobs:
         run: npm install
       - name: Run contract tests
         run: npx hardhat test
-        continue-on-error: true
 
   ai-service:
     name: AI Service Check
@@ -76,3 +73,18 @@ jobs:
       - name: Compile check
         run: |
           find ai_service -name '*.py' -not -path '*/__pycache__/*' | xargs -I{} python -m py_compile {}
+      - name: Run unit tests
+        working-directory: ai_service
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+  genai-service:
+    name: GenAI Service Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run unit tests
+        working-directory: genai-service
+        run: python -m unittest discover -s tests -p 'test_*.py'

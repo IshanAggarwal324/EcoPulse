@@ -161,12 +161,27 @@ const ingestSimulatedReading = async (data) => {
   return ephemeral;
 };
 
-const listReadings = async ({ nodeId, source, limit = 100, maxLimit = 500 } = {}) => {
+const toObjectId = (id) => (
+  mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id
+);
+
+const listReadings = async ({ nodeId, nodeIds, source, limit = 100, maxLimit = 500 } = {}) => {
+  if (Array.isArray(nodeIds)) {
+    if (nodeIds.length === 0) return [];
+    const query = { nodeId: { $in: nodeIds.map(toObjectId) } };
+    if (source && VALID_SOURCES.includes(source)) {
+      query.source = source;
+    }
+    const cappedLimit = Math.min(parseInt(limit, 10) || 100, maxLimit);
+    return EnergyReading.find(query)
+      .sort({ timestamp: -1 })
+      .limit(cappedLimit)
+      .populate('nodeId', 'name nodeType sourceType status');
+  }
+
   const query = {};
   if (nodeId) {
-    query.nodeId = mongoose.Types.ObjectId.isValid(nodeId)
-      ? new mongoose.Types.ObjectId(nodeId)
-      : nodeId;
+    query.nodeId = toObjectId(nodeId);
   }
 
   // Sub-module 1.2.6 — optional source filter. Whitelisted against VALID_SOURCES

@@ -89,7 +89,11 @@ function captchaVerify(req, res, next) {
 
   if (!provider) {
     if (process.env.NODE_ENV === 'production') {
-      console.warn('CAPTCHA not configured in production — registration is unprotected');
+      return res.status(503).json({
+        success: false,
+        message: 'Registration is temporarily unavailable — CAPTCHA is not configured',
+        code: 'CAPTCHA_NOT_CONFIGURED',
+      });
     }
     return next();
   }

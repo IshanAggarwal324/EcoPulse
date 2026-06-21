@@ -25,6 +25,7 @@ const config = require('../config/publicGrid');
 const TICK_INTERVAL_MS = 60 * 1000; // scan cadence (per-source cadence is separate)
 
 let timer = null;
+let bootstrapTimer = null;
 let scanning = false;
 let lastScanAt = null;
 let lastScanSummary = null;
@@ -101,13 +102,17 @@ const start = () => {
   publicGridService.setPollerStatusProvider(getStatus);
 
   // Stagger the first scan ~30s after boot so server.js wiring settles.
-  setTimeout(scan, 30 * 1000);
+  bootstrapTimer = setTimeout(scan, 30 * 1000);
   timer = setInterval(scan, TICK_INTERVAL_MS);
   console.log(`[publicGridPoller] started (scan every ${TICK_INTERVAL_MS}ms)`);
   return true;
 };
 
 const stop = () => {
+  if (bootstrapTimer) {
+    clearTimeout(bootstrapTimer);
+    bootstrapTimer = null;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;

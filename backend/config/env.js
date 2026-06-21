@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { isConfigured: isCaptchaConfigured } = require('../middleware/captchaVerify');
 
 /** SHA-256 of the well-known Hardhat account #0 key (compare only — never store the key in repo). */
 // gitleaks:allow
@@ -71,8 +72,22 @@ const validateEnvironment = () => {
       issues.push('INTERNAL_SERVICE_API_KEY must be set in production');
     }
 
-    if (!process.env.CAPTCHA_SECRET && !process.env.RECAPTCHA_SECRET && !process.env.HCAPTCHA_SECRET && !process.env.TURNSTILE_SECRET) {
-      console.warn('WARNING: No CAPTCHA provider configured in production — registration is vulnerable to bots');
+    if (!isCaptchaConfigured()) {
+      issues.push(
+        'A CAPTCHA provider must be configured in production (RECAPTCHA_SECRET, HCAPTCHA_SECRET, TURNSTILE_SECRET, or CAPTCHA_SECRET)',
+      );
+    }
+
+    if (!process.env.REDIS_URL && !process.env.REDIS_TLS_URL) {
+      issues.push('REDIS_URL (or REDIS_TLS_URL) must be set in production for distributed rate limiting');
+    }
+
+    if (!process.env.AI_SERVICE_URL) {
+      issues.push('AI_SERVICE_URL must be set in production');
+    }
+
+    if (!process.env.GENAI_SERVICE_URL) {
+      issues.push('GENAI_SERVICE_URL must be set in production');
     }
 
     if (process.env.REGISTRATION_OPEN === undefined) {

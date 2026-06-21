@@ -9,9 +9,10 @@
     "simulate": "node simulate_nodes.js",
     "simulate:socket": "node simulate_nodes.js",
     "simulate:rest": "node simulator.js",
-    "test": "node scripts/test-mvp.js",
-    "test:security": "node --test tests/",
-    "test:mvp": "node scripts/test-mvp.js"
+    "test": "node --test tests/*.test.js",
+    "test:security": "node --test tests/*.test.js",
+    "test:mvp": "node scripts/test-mvp.js",
+    "test:e2e": "node scripts/test-mvp.js"
   },
   "keywords": [],
   "author": "",

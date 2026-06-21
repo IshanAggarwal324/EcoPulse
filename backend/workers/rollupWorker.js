@@ -16,6 +16,7 @@ const { isTimeseriesEnabled, ROLLUP_INTERVAL_MS } = require('../config/timeserie
  */
 
 let timer = null;
+let bootstrapTimer = null;
 let lastRunAt = null;
 let lastRunSummary = null;
 let running = false;
@@ -139,13 +140,17 @@ const tick = async () => {
 const start = () => {
   if (!isTimeseriesEnabled() || timer) return false;
   // Stagger the first run 2 min after boot so the setup service finishes first.
-  setTimeout(tick, 2 * 60 * 1000);
+  bootstrapTimer = setTimeout(tick, 2 * 60 * 1000);
   timer = setInterval(tick, ROLLUP_INTERVAL_MS);
   console.log(`[rollupWorker] started (every ${ROLLUP_INTERVAL_MS}ms)`);
   return true;
 };
 
 const stop = () => {
+  if (bootstrapTimer) {
+    clearTimeout(bootstrapTimer);
+    bootstrapTimer = null;
+  }
   if (timer) {
     clearInterval(timer);
     timer = null;

@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployCarbonCredit, deployEnergyTrading } = require("./helpers/contracts");
 
 /**
  * End-to-end lifecycle mirroring the frontend trading flow:
@@ -18,13 +19,8 @@ describe("Complete blockchain transaction lifecycle", function () {
   beforeEach(async function () {
     [owner, seller, buyer] = await ethers.getSigners();
 
-    const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
-    carbonCredit = await CarbonCredit.deploy(ethers.parseEther("1000000000"));
-    await carbonCredit.waitForDeployment();
-
-    const EnergyTrading = await ethers.getContractFactory("EnergyTrading");
-    energyTrading = await EnergyTrading.deploy(await carbonCredit.getAddress());
-    await energyTrading.waitForDeployment();
+    carbonCredit = await deployCarbonCredit(owner);
+    energyTrading = await deployEnergyTrading(await carbonCredit.getAddress());
   });
 
   async function mintAndApprove(buyerSigner, amount) {

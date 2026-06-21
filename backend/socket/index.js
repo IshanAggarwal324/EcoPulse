@@ -55,4 +55,16 @@ const initSocket = (httpServer, app) => {
 
 const getIo = () => io;
 
-module.exports = { initSocket, getIo };
+const closeSocket = () => new Promise((resolve) => {
+  if (!io) {
+    resolve();
+    return;
+  }
+
+  io.close(() => {
+    io = null;
+    resolve();
+  });
+});
+
+module.exports = { initSocket, getIo, closeSocket };

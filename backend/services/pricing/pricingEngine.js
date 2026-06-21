@@ -26,9 +26,10 @@
 
 const config = require('../../config/pricing');
 const { getRedisClient, isRedisAvailable } = require('../../config/redis');
+const { getAiServiceUrl } = require('../../config/serviceUrls');
 const { getTradeStats } = require('../analytics/tradeAnalytics');
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 const isProduction = process.env.NODE_ENV === 'production';
 

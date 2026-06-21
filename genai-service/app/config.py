@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.env_utils import resolve_debug_flag
+
 
 def _parse_origins(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
@@ -41,7 +43,7 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings(
-        debug=os.getenv("DEBUG", "false").lower() in ("1", "true", "yes"),
+        debug=resolve_debug_flag(),
         port=int(os.getenv("GENAI_PORT", "8001")),
         host=os.getenv("GENAI_HOST", "127.0.0.1"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

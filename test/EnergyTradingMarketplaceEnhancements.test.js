@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { deployCarbonCredit, deployEnergyTrading } = require("./helpers/contracts");
 
 /**
  * Sub-module 2.4.3 — listing expiration + partial fills.
@@ -21,13 +22,8 @@ describe("EnergyTrading 2.4.3 — expiration + partial fills", function () {
   beforeEach(async function () {
     [owner, seller, buyer] = await ethers.getSigners();
 
-    const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
-    carbonCredit = await CarbonCredit.deploy(ethers.parseEther("1000000000"));
-    await carbonCredit.waitForDeployment();
-
-    const EnergyTrading = await ethers.getContractFactory("EnergyTrading");
-    energyTrading = await EnergyTrading.deploy(await carbonCredit.getAddress());
-    await energyTrading.waitForDeployment();
+    carbonCredit = await deployCarbonCredit(owner);
+    energyTrading = await deployEnergyTrading(await carbonCredit.getAddress());
 
     await carbonCredit.mint(buyer.address, ethers.parseEther("1000"));
     await carbonCredit

@@ -1,4 +1,6 @@
-const GENAI_SERVICE_URL = process.env.GENAI_SERVICE_URL || 'http://localhost:8001';
+const { getGenaiServiceUrl } = require('../config/serviceUrls');
+
+const GENAI_SERVICE_URL = getGenaiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 const isProduction = process.env.NODE_ENV === 'production';
 

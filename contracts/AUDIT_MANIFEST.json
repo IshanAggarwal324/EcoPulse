@@ -1,0 +1,27 @@
+{
+  "status": "not_audited",
+  "version": "1.0.0",
+  "requiredBeforeMainnet": true,
+  "lastReviewed": "2026-06-21",
+  "auditor": null,
+  "reportUrl": null,
+  "contractsInScope": [
+    "contracts/CarbonCredit.sol",
+    "contracts/EnergyTrading.sol"
+  ],
+  "acknowledgedRisks": [
+    "Centralized MINTER_ROLE can inflate token supply up to maxSupply",
+    "DEFAULT_ADMIN_ROLE controls minter grants and contract upgrades are not applicable (immutable deploy)",
+    "Marketplace owner can pause trading via pause()",
+    "No on-chain oracle — energy amounts are self-reported off-chain"
+  ],
+  "mainnetDeployRequirements": [
+    "Professional third-party audit completed with all critical/high findings resolved",
+    "Set status to \"audited\" and fill auditor + reportUrl in this file",
+    "Export MAINNET_AUDIT_ACK=confirmed when running scripts/predeploy-check.js --mainnet",
+    "Deploy with explicit maxSupply matching tokenomics (never zero / uncapped)",
+    "Transfer DEFAULT_ADMIN_ROLE on CarbonCredit to a multisig; grant MINTER_ROLE only to operational wallet",
+    "Transfer EnergyTrading ownership to the same multisig via acceptOwnership()",
+    "Verify contracts on Etherscan and publish audit report"
+  ]
+}

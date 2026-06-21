@@ -17,6 +17,20 @@ let lastSyncDebug = {
 };
 
 const blockTimestampCache = new Map();
+let eventListenerContract = null;
+
+const stopListeningToBlockchainEvents = () => {
+  if (!eventListenerContract) return;
+
+  try {
+    eventListenerContract.removeAllListeners();
+    console.log('[Sync] Blockchain event listeners removed');
+  } catch (err) {
+    console.warn('[Sync] Failed to remove blockchain event listeners:', err.message);
+  }
+
+  eventListenerContract = null;
+};
 
 const getSyncChunkSize = () => {
   const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CHUNK_SIZE || '', 10);
@@ -619,8 +633,8 @@ const listenToBlockchainEvents = () => {
 
   try {
     const contract = BlockchainService.getEnergyTradingContractReadOnly();
-    const provider = contract.runner.provider;
     const contractAddress = process.env.ENERGY_TRADING_ADDRESS.toLowerCase();
+    eventListenerContract = contract;
 
     console.log(`[Sync] Starting real-time blockchain event listeners on contract ${contractAddress}...`);
 
@@ -690,5 +704,6 @@ module.exports = {
   getChainStatus,
   getLastSyncDebug: () => lastSyncDebug,
   listenToBlockchainEvents,
+  stopListeningToBlockchainEvents,
 };
 

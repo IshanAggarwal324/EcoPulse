@@ -1,16 +1,19 @@
 from contextlib import asynccontextmanager
+import logging
 import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.dependencies import get_model_store
 from app.handlers.exceptions import register_exception_handlers
+from app.internal_auth import internal_auth_response
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
 from app.routers import forecast, health
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -31,6 +34,10 @@ def create_app() -> FastAPI:
         raise RuntimeError("AI_CORS_ORIGINS must be configured in production")
     if is_production and any(origin == "*" for origin in settings.cors_origins):
         raise RuntimeError("AI_CORS_ORIGINS cannot contain '*' in production")
+    if not settings.internal_api_key and not is_production:
+        logger.warning(
+            "INTERNAL_SERVICE_API_KEY is not set — non-health endpoints will reject requests until configured"
+        )
 
     app = FastAPI(
         title=settings.app_name,
@@ -53,12 +60,13 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def internal_auth_middleware(request: Request, call_next):
-        if request.url.path.startswith("/health"):
-            return await call_next(request)
-        if settings.internal_api_key:
-            provided = request.headers.get("x-internal-api-key")
-            if provided != settings.internal_api_key:
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized internal request"})
+        blocked = internal_auth_response(
+            request.url.path,
+            settings.internal_api_key,
+            request.headers.get("x-internal-api-key"),
+        )
+        if blocked is not None:
+            return blocked
         return await call_next(request)
 
     register_exception_handlers(app)

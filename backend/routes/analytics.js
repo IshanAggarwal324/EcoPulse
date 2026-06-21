@@ -13,9 +13,9 @@ const {
 const { protect, authorize } = require('../middleware/auth');
 
 router.get('/summary', protect, getSummary);
-router.get('/energy', protect, getEnergyAnalytics);
-router.get('/nodes', protect, getNodeAnalytics);
-router.get('/trades', protect, getTradeAnalytics);
+router.get('/energy', protect, authorize('admin', 'moderator'), getEnergyAnalytics);
+router.get('/nodes', protect, authorize('admin', 'moderator'), getNodeAnalytics);
+router.get('/trades', protect, authorize('admin', 'moderator'), getTradeAnalytics);
 router.get('/carbon', protect, getCarbonAnalytics);
 router.get('/carbon/balance', protect, getCarbonBalanceAnalytics);
 router.get('/status', protect, authorize('admin', 'moderator'), getPlatformStatus);

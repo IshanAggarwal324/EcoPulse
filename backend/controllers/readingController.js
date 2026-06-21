@@ -1,6 +1,11 @@
 const readingService = require('../services/readingService');
 const asyncHandler = require('../utils/asyncHandler');
 const { asObjectId } = require('../utils/validators');
+const {
+  isPrivileged,
+  getOwnedNodeIds,
+  assertNodeOwnership,
+} = require('../utils/nodeOwnership');
 
 const createReading = asyncHandler(async (req, res) => {
   const reading = await readingService.createReading(req.body);
@@ -8,8 +13,8 @@ const createReading = asyncHandler(async (req, res) => {
 });
 
 const getReadings = asyncHandler(async (req, res) => {
-  const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'moderator';
-  const maxLimit = isPrivileged ? 500 : 100;
+  const privileged = isPrivileged(req.user);
+  const maxLimit = privileged ? 500 : 100;
 
   const rawNodeId = req.query.nodeId;
   if (rawNodeId !== undefined && rawNodeId !== null && rawNodeId !== '') {
@@ -20,8 +25,28 @@ const getReadings = asyncHandler(async (req, res) => {
         message: 'nodeId must be a valid identifier',
       });
     }
+
+    if (!privileged) {
+      await assertNodeOwnership(req.user._id, nodeId);
+    }
+
     const readings = await readingService.listReadings({
       nodeId,
+      limit: req.query.limit,
+      maxLimit,
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: readings.length,
+      data: readings,
+    });
+  }
+
+  if (!privileged) {
+    const ownedNodeIds = await getOwnedNodeIds(req.user._id);
+    const readings = await readingService.listReadings({
+      nodeIds: ownedNodeIds,
       limit: req.query.limit,
       maxLimit,
     });

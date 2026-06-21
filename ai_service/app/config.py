@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Optional
 
+from app.env_utils import resolve_debug_flag
+
 
 def _parse_origins(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
@@ -44,7 +46,7 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings(
-        debug=os.getenv("DEBUG", "false").lower() in ("1", "true", "yes"),
+        debug=resolve_debug_flag(),
         model_dir=os.getenv("MODEL_DIR", "models/saved"),
         model_filename=os.getenv("MODEL_FILENAME", "lstm_model.keras"),
         scaler_filename=os.getenv("SCALER_FILENAME", "scaler.save"),

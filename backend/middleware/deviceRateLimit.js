@@ -1,4 +1,5 @@
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
+const { createMemoryStore } = require('./rateLimitMemory');
 
 /**
  * Per-device telemetry rate limiter (guardrail 1.1: "Per-device rate limits").
@@ -45,14 +46,8 @@ const ensureRedisScript = () => {
 };
 
 function createDeviceTelemetryRateLimiter() {
-  const memoryBuckets = new Map();
-
-  const cleanup = () => {
-    const now = Date.now();
-    for (const [key, entry] of memoryBuckets) {
-      if (now - entry.resetTime > entry.windowMs) memoryBuckets.delete(key);
-    }
-  };
+  const standardStore = createMemoryStore(TIER_CONFIG.standard.windowMs);
+  const highStore = createMemoryStore(TIER_CONFIG.high.windowMs);
 
   return async function deviceTelemetryRateLimit(req, res, next) {
     const device = req.device;
@@ -60,7 +55,6 @@ function createDeviceTelemetryRateLimiter() {
     const config = TIER_CONFIG[tier];
 
     if (!config) {
-      // unrestricted (or unknown) tier — pass through.
       return next();
     }
 
@@ -68,18 +62,22 @@ function createDeviceTelemetryRateLimiter() {
     const deviceId = device?.deviceId || req.ip;
     const key = `${PREFIX}:${deviceId}:${windowMs}`;
 
+    const reject = () => {
+      res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
+      return res.status(429).json({
+        success: false,
+        message: 'Device telemetry rate limit exceeded',
+        code: 'DEVICE_RATE_LIMITED',
+        retryAfter: Math.ceil(windowMs / 1000),
+      });
+    };
+
     const client = getRedisClient();
     if (client && isRedisAvailable() && typeof client.devRlIncrement === 'function') {
       try {
         const count = await client.devRlIncrement(key, windowMs);
         if (count > maxRequests) {
-          res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
-          return res.status(429).json({
-            success: false,
-            message: 'Device telemetry rate limit exceeded',
-            code: 'DEVICE_RATE_LIMITED',
-            retryAfter: Math.ceil(windowMs / 1000),
-          });
+          return reject();
         }
         return next();
       } catch {
@@ -89,26 +87,12 @@ function createDeviceTelemetryRateLimiter() {
 
     ensureRedisScript();
 
-    const now = Date.now();
-    let entry = memoryBuckets.get(key);
-    if (!entry || now - entry.resetTime > windowMs) {
-      entry = { count: 0, resetTime: now, windowMs };
-      memoryBuckets.set(key, entry);
-    }
-    entry.count += 1;
-
-    if (entry.count > maxRequests) {
-      if (entry.count % 50 === 0) cleanup();
-      res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
-      return res.status(429).json({
-        success: false,
-        message: 'Device telemetry rate limit exceeded',
-        code: 'DEVICE_RATE_LIMITED',
-        retryAfter: Math.ceil(windowMs / 1000),
-      });
+    const memoryStore = tier === 'high' ? highStore : standardStore;
+    const count = memoryStore.increment(key);
+    if (count > maxRequests) {
+      return reject();
     }
 
-    if (entry.count % 50 === 0) cleanup();
     return next();
   };
 }

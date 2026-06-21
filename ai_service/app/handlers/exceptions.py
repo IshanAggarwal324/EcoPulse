@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -69,7 +70,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         logger.exception("Unhandled error on %s", request.url.path)
-        details = str(exc) if settings.debug else None
+        details = str(exc) if settings.debug and not (os.getenv("NODE_ENV") == "production") else None
         return _error_payload(
             message="Internal server error",
             error_code="INTERNAL_ERROR",

@@ -26,6 +26,7 @@ const AutoListingPolicy = require('../../models/AutoListingPolicy');
 const AutoTradingConfig = require('../../models/AutoTradingConfig');
 const EnergyNode = require('../../models/EnergyNode');
 const User = require('../../models/User');
+const ListingIntent = require('../../models/ListingIntent');
 const surplusService = require('./surplusService');
 const listingIntentService = require('./listingIntentService');
 const notificationService = require('../notificationService');
@@ -231,6 +232,74 @@ async function getLastMatchAgeMs(policyId) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Batch preload for matcher ticks (H22)                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Preload nodes, users, intents, and marketplace counts for one matcher tick.
+ * Recommendations are cached per nodeId so multiple policies on the same node
+ * share one pricing/forecast round trip.
+ */
+async function buildEvaluationContext(policies, { now = new Date() } = {}) {
+  const policyIds = policies.map((p) => p._id);
+  const nodeIds = [...new Set(policies.map((p) => p.nodeId))];
+  const userIds = [...new Set(policies.map((p) => p.userId))];
+
+  const [nodes, users, intents] = await Promise.all([
+    EnergyNode.find({ _id: { $in: nodeIds } })
+      .select('_id userId name status nodeType')
+      .lean(),
+    User.find({ _id: { $in: userIds } })
+      .select('walletAddress email preferences isEmailVerified')
+      .lean(),
+    ListingIntent.find({
+      policyId: { $in: policyIds },
+      status: 'active',
+      expiresAt: { $gt: now },
+    })
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
+
+  const nodeById = new Map(nodes.map((n) => [String(n._id), n]));
+  const userById = new Map(users.map((u) => [String(u._id), u]));
+
+  const intentByPolicyId = new Map();
+  for (const intent of intents) {
+    const pid = String(intent.policyId);
+    if (!intentByPolicyId.has(pid)) intentByPolicyId.set(pid, intent);
+  }
+
+  const listingCountByWallet = await surplusService.getActiveListingCountsByWallet(
+    users.map((u) => u.walletAddress),
+  );
+
+  const recommendationByNodeId = new Map();
+
+  const getRecommendation = async (node, user) => {
+    const key = String(node._id);
+    if (recommendationByNodeId.has(key)) return recommendationByNodeId.get(key);
+
+    const walletKey = String(user?.walletAddress || '').toLowerCase();
+    const activeListingCount = listingCountByWallet.get(walletKey) ?? 0;
+    const recommendation = await surplusService.buildRecommendation({
+      node,
+      user,
+      activeListingCount,
+    });
+    recommendationByNodeId.set(key, recommendation);
+    return recommendation;
+  };
+
+  return {
+    nodeById,
+    userById,
+    intentByPolicyId,
+    getRecommendation,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Per-policy evaluation                                               */
 /* ------------------------------------------------------------------ */
 
@@ -240,7 +309,7 @@ async function getLastMatchAgeMs(policyId) {
  *
  * @returns {Promise<object>} decision object
  */
-async function evaluatePolicy(policy) {
+async function evaluatePolicy(policy, ctx = null) {
   const base = {
     policyId: String(policy._id),
     nodeId: String(policy.nodeId),
@@ -250,9 +319,11 @@ async function evaluatePolicy(policy) {
   };
 
   // Node must exist + be active.
-  const node = await EnergyNode.findById(policy.nodeId)
-    .select('_id userId name status nodeType')
-    .lean();
+  const node = ctx
+    ? ctx.nodeById.get(String(policy.nodeId))
+    : await EnergyNode.findById(policy.nodeId)
+        .select('_id userId name status nodeType')
+        .lean();
   if (!node) return { ...base, reason: 'node_missing' };
   if (String(node.userId) !== String(policy.userId)) {
     return { ...base, reason: 'ownership_mismatch' };
@@ -260,17 +331,25 @@ async function evaluatePolicy(policy) {
   if (node.status !== 'active') return { ...base, reason: `node_${node.status}` };
 
   // Authority: a valid signed intent must exist.
-  const intent = await listingIntentService.getActiveIntentForPolicy(policy._id);
+  const intent = ctx
+    ? ctx.intentByPolicyId.get(String(policy._id)) || null
+    : await listingIntentService.getActiveIntentForPolicy(policy._id);
   if (!intent) return { ...base, reason: 'no_active_intent' };
 
   // User + wallet.
-  const user = await User.findById(policy.userId).select('walletAddress email preferences isEmailVerified').lean();
+  const user = ctx
+    ? ctx.userById.get(String(policy.userId))
+    : await User.findById(policy.userId)
+        .select('walletAddress email preferences isEmailVerified')
+        .lean();
   if (!user || !user.walletAddress) return { ...base, reason: 'no_wallet' };
 
   // Build the surplus recommendation (reuses 2.2).
   let recommendation;
   try {
-    recommendation = await surplusService.buildRecommendation({ node, user });
+    recommendation = ctx
+      ? await ctx.getRecommendation(node, user)
+      : await surplusService.buildRecommendation({ node, user });
   } catch (err) {
     return { ...base, reason: 'recommendation_error', error: err.message };
   }
@@ -389,6 +468,8 @@ async function evaluateAll({ now = new Date() } = {}) {
   const policies = await AutoListingPolicy.find({ enabled: true }).lean();
   summary.totalPolicies = policies.length;
 
+  const ctx = policies.length > 0 ? await buildEvaluationContext(policies, { now }) : null;
+
   for (const policy of policies) {
     summary.evaluated += 1;
 
@@ -401,7 +482,7 @@ async function evaluateAll({ now = new Date() } = {}) {
 
     let decision;
     try {
-      decision = await evaluatePolicy(policy);
+      decision = await evaluatePolicy(policy, ctx);
     } catch (err) {
       summary.errors += 1;
       reasons('evaluation_error');
@@ -558,6 +639,7 @@ module.exports = {
   getKillSwitchStatus,
   applyPriceStrategy,
   clampToIntentBounds,
+  buildEvaluationContext,
   evaluatePolicy,
   evaluateAll,
   claimJobSlot,

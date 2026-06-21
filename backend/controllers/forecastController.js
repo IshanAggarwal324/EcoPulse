@@ -1,8 +1,18 @@
 const EnergyReading = require('../models/EnergyReading');
 const EnergyNode = require('../models/EnergyNode');
 const asyncHandler = require('../utils/asyncHandler');
+const ApiError = require('../utils/apiError');
+const {
+  isPrivileged,
+  getOwnedNodeIds,
+  assertNodeOwnership,
+  assertNodesOwnership,
+} = require('../utils/nodeOwnership');
+const { mergeForecastPredictions } = require('../utils/forecastMerge');
 
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+const { getAiServiceUrl } = require('../config/serviceUrls');
+
+const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -46,6 +56,12 @@ async function shouldUseDummyData(forceDummy, nodeId = null) {
   return readingCount < 30;
 }
 
+async function shouldUseDummyDataForNodes(nodeIds) {
+  if (!nodeIds.length) return true;
+  const readingCount = await EnergyReading.countDocuments({ nodeId: { $in: nodeIds } });
+  return readingCount < 30;
+}
+
 function buildDummyWarning(useDummyData) {
   if (!useDummyData) return undefined;
   return isProduction
@@ -61,77 +77,100 @@ function parseNodeIdsParam(nodeIdsParam) {
     .filter(Boolean);
 }
 
+async function resolveBatchNodeIds(req, { allNodes, nodeIdsParam }) {
+  const privileged = isPrivileged(req.user);
+
+  if (allNodes) {
+    if (privileged) {
+      const nodes = await EnergyNode.find().select('_id name');
+      return nodes.map((n) => n._id.toString());
+    }
+    return getOwnedNodeIds(req.user._id);
+  }
+
+  const parsed = parseNodeIdsParam(nodeIdsParam);
+  if (!parsed.length) return [];
+
+  if (privileged) return parsed;
+  return assertNodesOwnership(req.user._id, parsed);
+}
+
+async function runBatchForecast({ nodeIds, daysToPredict, forceDummy }) {
+  if (!nodeIds.length) {
+    throw new ApiError('No energy nodes available for forecast', 403, 'NO_NODES');
+  }
+
+  if (nodeIds.length > 50) {
+    throw new ApiError('A maximum of 50 node IDs is allowed per batch forecast request', 400, 'TOO_MANY_NODES');
+  }
+
+  const nodes = await EnergyNode.find({ _id: { $in: nodeIds } }).select('_id name');
+  const nodeMap = new Map(nodes.map((n) => [n._id.toString(), n.name]));
+
+  const missing = nodeIds.filter((id) => !nodeMap.has(id));
+  if (missing.length > 0) {
+    throw new ApiError('One or more nodes not found', 404, 'NODE_NOT_FOUND', { missingNodeIds: missing });
+  }
+
+  const useDummyData = forceDummy || await shouldUseDummyDataForNodes(nodeIds);
+
+  let response;
+  try {
+    response = await callAiBatchForecast({
+      days_to_predict: daysToPredict,
+      use_dummy_data: useDummyData,
+      node_ids: nodeIds,
+    });
+  } catch (error) {
+    throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE', isProduction ? null : error.message);
+  }
+
+  if (!response.ok) {
+    const errorDetails = await safeUpstreamErrorDetails(response);
+    throw new ApiError(
+      'Error communicating with AI service',
+      response.status,
+      'AI_UPSTREAM_ERROR',
+      errorDetails,
+    );
+  }
+
+  const data = await response.json();
+  const forecasts = (data.forecasts || []).map((entry) => ({
+    nodeId: entry.node_id,
+    nodeName: nodeMap.get(entry.node_id),
+    predictions: entry.predictions,
+  }));
+
+  return {
+    forecasts,
+    modelStatus: data.model_status,
+    useDummyData,
+  };
+}
+
 const getForecast = asyncHandler(async (req, res) => {
   const daysToPredict = parseInt(req.query.days || '7', 10);
   const forceDummy = req.query.useDummy === 'true';
   const nodeId = req.query.nodeId;
   const nodeIdsParam = req.query.nodeIds;
   const allNodes = req.query.allNodes === 'true';
+  const privileged = isPrivileged(req.user);
 
   let nodeIds = parseNodeIdsParam(nodeIdsParam);
 
-  if (allNodes) {
-    const nodes = await EnergyNode.find().select('_id name');
-    nodeIds = nodes.map((n) => n._id.toString());
-  }
+  if (allNodes || nodeIds.length > 0) {
+    nodeIds = await resolveBatchNodeIds(req, { allNodes, nodeIdsParam: nodeIds.join(',') });
 
-  // Multi-node batch forecast
-  if (nodeIds.length > 0) {
-    if (nodeIds.length > 50) {
-      return res.status(400).json({
-        success: false,
-        message: 'A maximum of 50 node IDs is allowed per batch forecast request',
-      });
-    }
-    const nodes = await EnergyNode.find({ _id: { $in: nodeIds } }).select('_id name');
-    const nodeMap = new Map(nodes.map((n) => [n._id.toString(), n.name]));
-
-    const missing = nodeIds.filter((id) => !nodeMap.has(id));
-    if (missing.length > 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'One or more nodes not found',
-        missingNodeIds: missing,
-      });
-    }
-
-    const useDummyData = await shouldUseDummyData(forceDummy);
-
-    let response;
-    try {
-      response = await callAiBatchForecast({
-        days_to_predict: daysToPredict,
-        use_dummy_data: useDummyData,
-        node_ids: nodeIds,
-      });
-    } catch (error) {
-      return res.status(503).json({
-        success: false,
-        message: 'AI service unavailable',
-        ...(!isProduction ? { details: error.message } : {}),
-      });
-    }
-
-    if (!response.ok) {
-      const errorDetails = await safeUpstreamErrorDetails(response);
-      return res.status(response.status).json({
-        success: false,
-        message: 'Error communicating with AI service',
-        ...(errorDetails ? { details: errorDetails } : {}),
-      });
-    }
-
-    const data = await response.json();
-
-    const forecasts = (data.forecasts || []).map((entry) => ({
-      nodeId: entry.node_id,
-      nodeName: nodeMap.get(entry.node_id),
-      predictions: entry.predictions,
-    }));
+    const { forecasts, modelStatus, useDummyData } = await runBatchForecast({
+      nodeIds,
+      daysToPredict,
+      forceDummy,
+    });
 
     return res.status(200).json({
       forecasts,
-      model_status: data.model_status,
+      model_status: modelStatus,
       warning: buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
@@ -142,8 +181,11 @@ const getForecast = asyncHandler(async (req, res) => {
     });
   }
 
-  // Single-node forecast
   if (nodeId) {
+    if (!privileged) {
+      await assertNodeOwnership(req.user._id, nodeId);
+    }
+
     const node = await EnergyNode.findById(nodeId).select('_id name');
     if (!node) {
       return res.status(404).json({
@@ -195,7 +237,30 @@ const getForecast = asyncHandler(async (req, res) => {
     });
   }
 
-  // Network aggregate forecast (all readings combined)
+  if (!privileged) {
+    const ownedNodeIds = await getOwnedNodeIds(req.user._id);
+    const { forecasts, modelStatus, useDummyData } = await runBatchForecast({
+      nodeIds: ownedNodeIds,
+      daysToPredict,
+      forceDummy,
+    });
+
+    const predictions = mergeForecastPredictions(forecasts);
+
+    return res.status(200).json({
+      predictions,
+      model_status: modelStatus,
+      warning: buildDummyWarning(useDummyData),
+      meta: {
+        useDummyData,
+        daysToPredict,
+        nodeCount: forecasts.length,
+        mode: 'aggregate',
+        scopedToUser: true,
+      },
+    });
+  }
+
   const useDummyData = await shouldUseDummyData(forceDummy);
 
   let response;

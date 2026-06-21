@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
+from app.handlers.exceptions import register_exception_handlers
+from app.internal_auth import internal_auth_response
 from app.routers import assistant, health, reports
 from app.services.doc_rag_service import DocRagService
 from app.services.llm_service import LlmService
@@ -22,6 +24,10 @@ def create_app() -> FastAPI:
         raise RuntimeError("GENAI_CORS_ORIGINS must be configured in production")
     if is_production and any(origin == "*" for origin in settings.cors_origins):
         raise RuntimeError("GENAI_CORS_ORIGINS cannot contain '*' in production")
+    if not settings.internal_api_key and not is_production:
+        logger.warning(
+            "INTERNAL_SERVICE_API_KEY is not set — non-health endpoints will reject requests until configured"
+        )
 
     logging.basicConfig(
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -47,13 +53,16 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def internal_auth_middleware(request: Request, call_next):
-        if request.url.path.startswith("/health"):
-            return await call_next(request)
-        if settings.internal_api_key:
-            provided = request.headers.get("x-internal-api-key")
-            if provided != settings.internal_api_key:
-                return JSONResponse(status_code=401, content={"detail": "Unauthorized internal request"})
+        blocked = internal_auth_response(
+            request.url.path,
+            settings.internal_api_key,
+            request.headers.get("x-internal-api-key"),
+        )
+        if blocked is not None:
+            return blocked
         return await call_next(request)
+
+    register_exception_handlers(app)
 
     @app.exception_handler(RuntimeError)
     async def _gemini_error_handler(request: Request, exc: RuntimeError):

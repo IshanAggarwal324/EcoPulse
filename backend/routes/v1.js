@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize, requireEmailVerified, requirePasswordCurrent } = require('../middleware/auth');
+const { createApiRateLimiter } = require('../middleware/rateLimit');
 
 // Auth routes (login, password change, etc.) are mounted WITHOUT the password
 // guard so a flagged user can still change their password to clear the flag.
 const guardedUser = [protect, requirePasswordCurrent, requireEmailVerified];
+const apiRateLimit = createApiRateLimiter();
 
 // Base v1 route for testing
 router.get('/', (req, res) => {
@@ -15,12 +17,12 @@ router.get('/', (req, res) => {
 router.use('/auth', require('./auth'));
 
 // Feature routes require authentication, a current (strong) password, and a verified email (when enabled)
-router.use('/nodes', ...guardedUser, require('./nodes'));
-router.use('/readings', ...guardedUser, require('./readings'));
+router.use('/nodes', ...guardedUser, apiRateLimit, require('./nodes'));
+router.use('/readings', ...guardedUser, apiRateLimit, require('./readings'));
 router.use('/forecast', ...guardedUser, require('./forecast'));
-router.use('/analytics', ...guardedUser, require('./analytics'));
-router.use('/trades', ...guardedUser, require('./trades'));
-router.use('/marketplace', ...guardedUser, require('./marketplace'));
+router.use('/analytics', ...guardedUser, apiRateLimit, require('./analytics'));
+router.use('/trades', ...guardedUser, apiRateLimit, require('./trades'));
+router.use('/marketplace', ...guardedUser, apiRateLimit, require('./marketplace'));
 router.use('/pricing', ...guardedUser, require('./pricing'));
 router.use('/trading', ...guardedUser, require('./autoPolicy'));
 router.use('/assistant', ...guardedUser, require('./assistant'));

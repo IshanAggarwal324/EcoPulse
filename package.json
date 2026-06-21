@@ -23,6 +23,9 @@
     "test": "hardhat test",
     "test:contracts": "hardhat test",
     "compile": "hardhat compile",
+    "predeploy:check": "node scripts/predeploy-check.js",
+    "predeploy:check:mainnet": "node scripts/predeploy-check.js --mainnet",
+    "deploy:sepolia": "node scripts/predeploy-check.js && npx hardhat ignition deploy ignition/modules/EnergySystem.js --network sepolia",
     "docs:pdf": "node docs/generate-pdf.js"
   },
   "dependencies": {

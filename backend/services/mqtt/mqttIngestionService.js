@@ -22,7 +22,7 @@
 const { processDeviceTelemetry } = require('../ingestion/telemetryService');
 const ingestionMetrics = require('../ingestion/ingestionMetrics');
 const DeviceCredential = require('../../models/DeviceCredential');
-const EnergyNode = require('../../models/EnergyNode');
+const mqttDeviceCache = require('../../utils/mqttDeviceCache');
 
 const TOPIC_PATTERN = /^ecopulse\/nodes\/([^/]+)\/telemetry$/;
 const PAYLOAD_MAX_BYTES = parseInt(process.env.MQTT_PAYLOAD_MAX_BYTES || '4096', 10);
@@ -46,16 +46,33 @@ const loadMqttLibrary = () => {
 
 /**
  * Resolve the device + node for an inbound MQTT message from its topic.
- * Devices publish as `ecopulse/nodes/{nodeId}/telemetry`; the broker ACL has
- * already ensured only the bound device can publish here, but we re-verify the
- * device<->node binding at ingest time (defense in depth).
+ * Uses a TTL cache (H23) and a single populated lookup on cache miss.
  */
 const resolveFromTopic = async (topicNodeId) => {
-  const device = await DeviceCredential.findOne({ nodeId: topicNodeId, status: 'active' })
+  const cached = mqttDeviceCache.get(topicNodeId);
+  if (cached) return cached;
+
+  const credential = await DeviceCredential.findOne({ nodeId: topicNodeId, status: 'active' })
+    .populate({
+      path: 'nodeId',
+      select: '_id userId name status nodeType ingestionMode maxCapacityKw',
+    })
     .lean()
     .exec();
-  const node = await EnergyNode.findById(topicNodeId).lean().exec();
-  return { device, node };
+
+  if (!credential) {
+    const miss = { device: null, node: null };
+    mqttDeviceCache.set(topicNodeId, miss);
+    return miss;
+  }
+
+  const node = credential.nodeId && typeof credential.nodeId === 'object'
+    ? credential.nodeId
+    : null;
+  const device = { ...credential, nodeId: node ? node._id : credential.nodeId };
+  const resolved = { device, node };
+  mqttDeviceCache.set(topicNodeId, resolved);
+  return resolved;
 };
 
 const handleMessage = async (topic, rawPayload) => {
@@ -198,6 +215,7 @@ const stop = () => {
   }
   client = null;
   startedAt = null;
+  mqttDeviceCache.clear();
 };
 
 const getStatus = () => ({
