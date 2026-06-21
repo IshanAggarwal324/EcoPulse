@@ -11,7 +11,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGODB_URI", os.getenv("MONGO_URI", "mongodb://localhost:27017"))
-client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
+
+
+def _mongo_client_options() -> dict:
+    """Motor / PyMongo pool tuning (L8)."""
+    def _int(name: str, default: int) -> int:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+
+    return {
+        "maxPoolSize": _int("MONGO_MAX_POOL_SIZE", 50),
+        "minPoolSize": _int("MONGO_MIN_POOL_SIZE", 0),
+        "maxIdleTimeMS": _int("MONGO_MAX_IDLE_TIME_MS", 60_000),
+        "serverSelectionTimeoutMS": _int("MONGO_SERVER_SELECTION_TIMEOUT_MS", 10_000),
+    }
+
+
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI, **_mongo_client_options())
 db = client.ecopulse
 # Mongoose default collection name for EnergyReading model
 readings_collection = db.energyreadings

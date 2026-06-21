@@ -19,12 +19,16 @@ const getOnChainWalletBalances = async (walletAddress) => {
   }
 };
 
-const getCarbonBalanceAnalytics = async (walletAddress, days = 30) => {
+const getCarbonBalanceAnalytics = async (walletAddress, days = 30, tradeStatsOverride = null) => {
   const since = days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : null;
+
+  const tradeStatsPromise = tradeStatsOverride
+    ? Promise.resolve(tradeStatsOverride)
+    : getTradeStats();
 
   const [platformVolumeByDay, tradeStats, uniqueTraders, walletFlows] = await Promise.all([
     getPlatformVolumeByDay(since),
-    getTradeStats(),
+    tradeStatsPromise,
     getUniqueTraderCount(),
     walletAddress ? getWalletFlowHistory(walletAddress, since) : null,
   ]);
@@ -71,7 +75,7 @@ const getCarbonBalanceAnalytics = async (walletAddress, days = 30) => {
 
 const getCarbonStats = async (walletAddress) => {
   const tradeStats = await getTradeStats();
-  const balanceAnalytics = await getCarbonBalanceAnalytics(walletAddress, 30);
+  const balanceAnalytics = await getCarbonBalanceAnalytics(walletAddress, 30, tradeStats);
 
   let walletBalance = balanceAnalytics.wallet?.balance ?? null;
   if (!walletBalance && walletAddress) {

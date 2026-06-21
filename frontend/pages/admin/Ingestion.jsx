@@ -19,9 +19,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { adminApi } from '../../utils/api';
 import { canMutate } from '../../utils/adminNav';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { timeAgo } from '../../utils/adminFormat';
 
-const POLL_MS = 10000;
+const POLL_MS = 20000;
 const inputClass =
   'w-full px-3 py-2.5 bg-slate-950 border border-slate-700/60 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40';
 const labelClass = 'block text-sm font-medium text-slate-300 mb-1.5';
@@ -73,11 +74,7 @@ const Ingestion = () => {
     };
   }, [loadDashboard]);
 
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(loadDashboard, POLL_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, loadDashboard]);
+  useVisibilityPolling(loadDashboard, POLL_MS, autoRefresh);
 
   const handleBackfill = async () => {
     if (!mutate) return;

@@ -35,29 +35,43 @@ const loadArtifactAbi = (relativePath, fallback) => {
   return fallback;
 };
 
-const carbonCreditAbi = loadArtifactAbi(
-  'artifacts/contracts/CarbonCredit.sol/CarbonCredit.json',
-  CARBON_CREDIT_ABI_FALLBACK
-);
-const energyTradingAbi = loadArtifactAbi(
-  'artifacts/contracts/EnergyTrading.sol/EnergyTrading.json',
-  ENERGY_TRADING_ABI_FALLBACK
-);
+let carbonCreditAbi = null;
+let energyTradingAbi = null;
+
+const getCarbonCreditAbi = () => {
+  if (!carbonCreditAbi) {
+    carbonCreditAbi = loadArtifactAbi(
+      'artifacts/contracts/CarbonCredit.sol/CarbonCredit.json',
+      CARBON_CREDIT_ABI_FALLBACK,
+    );
+  }
+  return carbonCreditAbi;
+};
+
+const getEnergyTradingAbi = () => {
+  if (!energyTradingAbi) {
+    energyTradingAbi = loadArtifactAbi(
+      'artifacts/contracts/EnergyTrading.sol/EnergyTrading.json',
+      ENERGY_TRADING_ABI_FALLBACK,
+    );
+  }
+  return energyTradingAbi;
+};
 
 class BlockchainService {
   static getCarbonCreditContract() {
     if (!carbonCreditAddress) throw new Error("CARBON_CREDIT_ADDRESS not configured in .env");
-    return new ethers.Contract(carbonCreditAddress, carbonCreditAbi, getSignerWallet());
+    return new ethers.Contract(carbonCreditAddress, getCarbonCreditAbi(), getSignerWallet());
   }
 
   static getEnergyTradingContract() {
     if (!energyTradingAddress) throw new Error("ENERGY_TRADING_ADDRESS not configured in .env");
-    return new ethers.Contract(energyTradingAddress, energyTradingAbi, getSignerWallet());
+    return new ethers.Contract(energyTradingAddress, getEnergyTradingAbi(), getSignerWallet());
   }
 
   static getEnergyTradingContractReadOnly() {
     if (!energyTradingAddress) throw new Error("ENERGY_TRADING_ADDRESS not configured in .env");
-    return new ethers.Contract(energyTradingAddress, energyTradingAbi, provider);
+    return new ethers.Contract(energyTradingAddress, getEnergyTradingAbi(), provider);
   }
 
   static async getActiveListings() {

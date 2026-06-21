@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { logClientError } from '../utils/clientLogger';
 
 const isDev = import.meta.env.DEV;
 
@@ -14,7 +15,7 @@ export default class AppErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('App render error:', error, info);
+    logClientError('AppErrorBoundary', error, { componentStack: info?.componentStack });
   }
 
   handleReload = () => {

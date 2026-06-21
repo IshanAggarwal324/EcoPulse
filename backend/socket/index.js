@@ -5,6 +5,9 @@ const registerHandlers = require('./registerHandlers');
 const socketBroadcastService = require('../services/socketBroadcastService');
 const { verifyAccessToken } = require('../utils/tokens');
 
+const USER_AUTH_CACHE_TTL_MS = parseInt(process.env.SOCKET_USER_CACHE_TTL_MS || '60000', 10);
+const userAuthCache = new Map();
+
 let io = null;
 
 const getCookieValue = (cookieHeader, key) => {
@@ -15,6 +18,20 @@ const getCookieValue = (cookieHeader, key) => {
     .find((part) => part.startsWith(`${key}=`));
   if (!entry) return null;
   return decodeURIComponent(entry.slice(key.length + 1));
+};
+
+const loadSocketUser = async (decoded) => {
+  const cacheKey = `${decoded.id}:${decoded.version ?? 0}`;
+  const hit = userAuthCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < USER_AUTH_CACHE_TTL_MS) {
+    return hit.user;
+  }
+
+  const user = await User.findById(decoded.id).select('-password +accessTokenVersion');
+  if (user && !user.deletedAt && !user.isBanned) {
+    userAuthCache.set(cacheKey, { at: Date.now(), user });
+  }
+  return user;
 };
 
 const initSocket = (httpServer, app) => {
@@ -32,8 +49,8 @@ const initSocket = (httpServer, app) => {
         return next(new Error('Invalid token type'));
       }
 
-      const user = await User.findById(decoded.id).select('-password +accessTokenVersion');
-      if (!user || user.deletedAt || user.isBanned) {
+      const user = await loadSocketUser(decoded);
+      if (!user) {
         return next(new Error('Not authorized'));
       }
 

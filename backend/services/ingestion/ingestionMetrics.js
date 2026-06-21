@@ -30,6 +30,8 @@ const deviceSeen = new Map();
 const providerSeen = new Map();
 
 const DEVICE_SEEN_MAX = 5000;
+const PROVIDER_SEEN_MAX = parseInt(process.env.INGESTION_PROVIDER_SEEN_MAX || '2000', 10);
+const DEDUP_KEYS_MAX = parseInt(process.env.INGESTION_DEDUP_KEYS_MAX || '5000', 10);
 
 const PERSIST_ENABLED = () =>
   String(process.env.INGESTION_ERROR_PERSIST || 'true').toLowerCase() !== 'false';
@@ -49,6 +51,19 @@ const pruneDedupKeys = () => {
   const now = Date.now();
   for (const [key, expiresAt] of dedupKeys) {
     if (expiresAt <= now) dedupKeys.delete(key);
+  }
+  if (dedupKeys.size <= DEDUP_KEYS_MAX) return;
+  const sorted = [...dedupKeys.entries()].sort((a, b) => a[1] - b[1]);
+  for (const [key] of sorted.slice(0, dedupKeys.size - DEDUP_KEYS_MAX)) {
+    dedupKeys.delete(key);
+  }
+};
+
+const pruneProviderSeen = () => {
+  if (providerSeen.size <= PROVIDER_SEEN_MAX) return;
+  const sorted = [...providerSeen.entries()].sort((a, b) => a[1].at.localeCompare(b[1].at));
+  for (const [key] of sorted.slice(0, providerSeen.size - PROVIDER_SEEN_MAX)) {
+    providerSeen.delete(key);
   }
 };
 
@@ -105,6 +120,7 @@ const recordAccepted = ({ source, transport = 'internal', deviceId, providerKey,
       at: new Date().toISOString(),
       count: (providerSeen.get(providerKey)?.count || 0) + 1,
     });
+    pruneProviderSeen();
   }
 };
 

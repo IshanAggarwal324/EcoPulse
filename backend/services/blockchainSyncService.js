@@ -7,6 +7,8 @@ const auditService = require('./auditService');
 const { logger, logBackgroundError } = require('../utils/logger');
 const { invalidateActiveListingsCache } = require('./listingCache');
 
+// TODO(L7): Off-chain signed order book to reduce listing gas costs.
+// See P2P_Trading_Production_Readiness.md §3 — Off-Chain Order Books.
 const SYNC_STATE_KEY = 'energy_trading';
 const DEFAULT_SYNC_CHUNK_SIZE = 500;
 let isSyncing = false;

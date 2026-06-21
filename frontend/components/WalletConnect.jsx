@@ -1,5 +1,6 @@
 import React, { memo } from 'react';
 import { useWalletState, useWalletActions } from '../context/WalletContext';
+import { logClientError } from '../utils/clientLogger';
 
 const WalletConnect = memo(function WalletConnect() {
   const {
@@ -35,7 +36,7 @@ const WalletConnect = memo(function WalletConnect() {
     try {
       await ensureNetwork();
     } catch (err) {
-      console.error('Network switch failed:', err);
+      logClientError('WalletConnect', err, { phase: 'switchNetwork' });
     }
   };
 

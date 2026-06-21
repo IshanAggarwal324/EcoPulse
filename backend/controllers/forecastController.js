@@ -11,6 +11,7 @@ const {
 const { mergeForecastPredictions } = require('../utils/forecastMerge');
 
 const { getAiServiceUrl } = require('../config/serviceUrls');
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 
 const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
@@ -31,8 +32,23 @@ const buildInternalHeaders = () => ({
   ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
 });
 
+const MIN_FORECAST_DAYS = 1;
+const MAX_FORECAST_DAYS = 90;
+
+const parseForecastDays = (raw) => {
+  const parsed = parseInt(raw || '7', 10);
+  if (!Number.isFinite(parsed) || parsed < MIN_FORECAST_DAYS || parsed > MAX_FORECAST_DAYS) {
+    throw new ApiError(
+      `days must be between ${MIN_FORECAST_DAYS} and ${MAX_FORECAST_DAYS}`,
+      400,
+      'INVALID_FORECAST_DAYS',
+    );
+  }
+  return parsed;
+};
+
 async function callAiForecast(body) {
-  const response = await fetch(`${AI_SERVICE_URL}/forecast/`, {
+  const response = await fetchWithTimeout(`${AI_SERVICE_URL}/forecast/`, {
     method: 'POST',
     headers: buildInternalHeaders(),
     body: JSON.stringify(body),
@@ -41,7 +57,7 @@ async function callAiForecast(body) {
 }
 
 async function callAiBatchForecast(body) {
-  const response = await fetch(`${AI_SERVICE_URL}/forecast/batch`, {
+  const response = await fetchWithTimeout(`${AI_SERVICE_URL}/forecast/batch`, {
     method: 'POST',
     headers: buildInternalHeaders(),
     body: JSON.stringify(body),
@@ -150,7 +166,7 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy }) {
 }
 
 const getForecast = asyncHandler(async (req, res) => {
-  const daysToPredict = parseInt(req.query.days || '7', 10);
+  const daysToPredict = parseForecastDays(req.query.days);
   const forceDummy = req.query.useDummy === 'true';
   const nodeId = req.query.nodeId;
   const nodeIdsParam = req.query.nodeIds;

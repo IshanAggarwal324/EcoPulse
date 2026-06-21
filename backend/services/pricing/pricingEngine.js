@@ -27,6 +27,7 @@
 const config = require('../../config/pricing');
 const { getRedisClient, isRedisAvailable } = require('../../config/redis');
 const { getAiServiceUrl } = require('../../config/serviceUrls');
+const { fetchWithTimeout } = require('../../utils/fetchWithTimeout');
 const { getTradeStats } = require('../analytics/tradeAnalytics');
 
 const AI_SERVICE_URL = getAiServiceUrl();
@@ -235,7 +236,7 @@ async function fetchForecastCurve({ nodeId = null, days = 7 } = {}) {
 
   let response;
   try {
-    response = await fetch(`${AI_SERVICE_URL}/forecast/`, {
+    response = await fetchWithTimeout(`${AI_SERVICE_URL}/forecast/`, {
       method: 'POST',
       headers: buildInternalHeaders(),
       body: JSON.stringify(body),

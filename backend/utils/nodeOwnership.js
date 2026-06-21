@@ -10,6 +10,11 @@ async function getOwnedNodeIds(userId) {
   return nodes.map((n) => n._id.toString());
 }
 
+async function getOwnedNodes(userId) {
+  if (!userId) return [];
+  return EnergyNode.find({ userId }).select('_id name nodeType sourceType status').lean();
+}
+
 async function assertNodeOwnership(userId, nodeId) {
   if (!nodeId || !mongoose.isValidObjectId(nodeId)) {
     throw new ApiError('A valid nodeId is required', 400, 'INVALID_NODE_ID');
@@ -63,6 +68,7 @@ async function assertNodesOwnership(userId, nodeIds) {
 module.exports = {
   isPrivileged,
   getOwnedNodeIds,
+  getOwnedNodes,
   assertNodeOwnership,
   assertNodesOwnership,
 };

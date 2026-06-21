@@ -1,6 +1,6 @@
-const EnergyNode = require('../models/EnergyNode');
 const EnergyReadingHourly = require('../models/EnergyReadingHourly');
 const EnergyReading = require('../models/EnergyReading');
+const { getOwnedNodes } = require('../utils/nodeOwnership');
 const { parsePeriod, resolveSinceDate } = require('../utils/periodHelpers');
 
 /**
@@ -17,8 +17,18 @@ const { parsePeriod, resolveSinceDate } = require('../utils/periodHelpers');
 
 const ANOMALY_SPIKE_FACTOR = 1.5;
 const CACHE_TTL_MS = 60 * 1000;
+const CACHE_MAX_ENTRIES = parseInt(process.env.ASSISTANT_CACHE_MAX || '500', 10);
 
 const _cache = new Map();
+
+function pruneCache() {
+  if (_cache.size <= CACHE_MAX_ENTRIES) return;
+  const sorted = [..._cache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  const drop = sorted.slice(0, _cache.size - CACHE_MAX_ENTRIES);
+  for (const [key] of drop) {
+    _cache.delete(key);
+  }
+}
 
 function withCache(key, ttlMs, fn) {
   const hit = _cache.get(key);
@@ -30,10 +40,12 @@ function withCache(key, ttlMs, fn) {
   if (value && typeof value.then === 'function') {
     return value.then((v) => {
       _cache.set(key, { ts: Date.now(), value: v });
+      pruneCache();
       return v;
     });
   }
   _cache.set(key, { ts: now, value });
+  pruneCache();
   return value;
 }
 
@@ -42,8 +54,7 @@ function clearAssistantCache() {
 }
 
 async function getOwnedNodeIds(userId) {
-  if (!userId) return [];
-  const nodes = await EnergyNode.find({ userId }).select('_id name nodeType sourceType status').lean();
+  const nodes = await getOwnedNodes(userId);
   return nodes;
 }
 

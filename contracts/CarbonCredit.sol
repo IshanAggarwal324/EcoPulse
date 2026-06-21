@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 /// @dev AUDIT REQUIRED (C8): This contract has NOT completed a professional third-party
 ///      audit. Do NOT deploy to mainnet until AUDIT_MANIFEST.json status is "audited"
 ///      and predeploy checks pass. See contracts/SECURITY.md.
+/// @dev TODO(L7): Govern minting via multisig/DAO oracle — see P2P_Trading_Production_Readiness.md §1.
 contract CarbonCredit is ERC20, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 

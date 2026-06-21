@@ -1,4 +1,5 @@
 const { getGenaiServiceUrl } = require('../config/serviceUrls');
+const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 
 const GENAI_SERVICE_URL = getGenaiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
@@ -25,7 +26,7 @@ const sanitizeDetails = (details) => {
 
 async function postToGenaiService(path, body) {
   const url = `${GENAI_SERVICE_URL}${path}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

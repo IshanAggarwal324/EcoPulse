@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { io } from 'socket.io-client';
 import { getSocketClientOptions, SOCKET_URL } from '../utils/socketClient';
+import { logClientError } from '../utils/clientLogger';
 
 /** @typedef {'connected' | 'disconnected' | 'reconnecting' | 'failed'} SocketStatus */
 
@@ -38,7 +39,7 @@ export function SocketProvider({ children }) {
       try {
         listener();
       } catch (err) {
-        console.error('[Socket] Reconnect listener error:', err);
+        logClientError('SocketContext', err, { phase: 'reconnectListener' });
       }
     });
   }, []);

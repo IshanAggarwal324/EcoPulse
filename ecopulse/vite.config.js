@@ -30,6 +30,15 @@ export default defineConfig({
     },
   },
   build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          ethers: ['ethers'],
+          recharts: ['recharts'],
+          socket: ['socket.io-client'],
+        },
+      },
+    },
     commonjsOptions: {
       transformMixedEsModules: true,
     },

@@ -36,9 +36,10 @@ const Dashboard = () => {
     try {
       if (!silent) setRefreshing(true);
       setError(null);
-      const [summaryRes, nodesRes] = await Promise.all([
+      const [summaryRes, nodesRes, forecastData] = await Promise.all([
         analyticsApi.getSummary(wallet ? { wallet } : {}),
         nodesApi.getAll(),
+        forecastApi.get(),
       ]);
 
       const { summary: nextSummary, readings } = applyFullSummary(summaryRes.data);
@@ -46,7 +47,6 @@ const Dashboard = () => {
       if (readings) setLiveReadings(readings);
       setNodes(nodesRes.data || []);
 
-      const forecastData = await forecastApi.get();
       if (forecastData.predictions?.length) {
         setForecastStatus(forecastData.meta?.useDummyData ? 'Ready (demo)' : 'Ready');
       } else {

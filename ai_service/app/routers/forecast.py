@@ -12,6 +12,7 @@ from app.schemas import (
 )
 from app.services.forecast_service import ForecastService
 from app.services.model_store import ModelStore
+from app.services import forecast_cache
 
 router = APIRouter(prefix="/forecast", tags=["Forecast"])
 logger = logging.getLogger(__name__)
@@ -32,6 +33,11 @@ async def get_forecast(
     forecast_service: ForecastService = Depends(get_forecast_service),
     model_store: ModelStore = Depends(get_model_store),
 ):
+    cache_payload = request.model_dump()
+    cached = forecast_cache.get_cached("forecast", cache_payload)
+    if cached is not None:
+        return ForecastResponse(**cached)
+
     model_ready = _ensure_model_loaded(model_store)
     model_status = MODEL_STATUS
 
@@ -55,11 +61,13 @@ async def get_forecast(
     else:
         raise ModelUnavailableError()
 
-    return ForecastResponse(
-        predictions=results,
-        model_status=model_status,
-        node_id=request.node_id,
-    )
+    response_payload = {
+        "predictions": results,
+        "model_status": model_status,
+        "node_id": request.node_id,
+    }
+    forecast_cache.set_cached("forecast", cache_payload, response_payload)
+    return ForecastResponse(**response_payload)
 
 
 @router.post("/batch", response_model=BatchForecastResponse)
@@ -68,6 +76,11 @@ async def get_batch_forecast(
     forecast_service: ForecastService = Depends(get_forecast_service),
     model_store: ModelStore = Depends(get_model_store),
 ):
+    cache_payload = request.model_dump()
+    cached = forecast_cache.get_cached("batch", cache_payload)
+    if cached is not None:
+        return BatchForecastResponse(**cached)
+
     model_ready = _ensure_model_loaded(model_store)
     model_status = MODEL_STATUS
 
@@ -88,4 +101,9 @@ async def get_batch_forecast(
     else:
         raise ModelUnavailableError()
 
-    return BatchForecastResponse(forecasts=forecasts, model_status=model_status)
+    response_payload = {
+        "forecasts": forecasts,
+        "model_status": model_status,
+    }
+    forecast_cache.set_cached("batch", cache_payload, response_payload)
+    return BatchForecastResponse(**response_payload)

@@ -13,7 +13,8 @@ import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
 import VerifyEmail from '../../frontend/pages/VerifyEmail';
-import AssistantChat from '../../frontend/components/assistant/AssistantChat';
+
+const AssistantChat = lazy(() => import('../../frontend/components/assistant/AssistantChat'));
 
 const Dashboard = lazy(() => import('../../frontend/pages/Dashboard'));
 const Trading = lazy(() => import('../../frontend/pages/Trading'));
@@ -80,7 +81,9 @@ function AuthenticatedApp() {
                     </Routes>
                   </Suspense>
                 </AppLayout>
-                <AssistantChat />
+                <Suspense fallback={null}>
+                  <AssistantChat />
+                </Suspense>
               </>
             }
           />

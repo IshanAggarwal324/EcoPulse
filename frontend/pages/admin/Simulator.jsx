@@ -1,14 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
-import {
   Gauge,
   RefreshCw,
   Activity,
@@ -31,10 +22,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { adminApi } from '../../utils/api';
 import { canMutate } from '../../utils/adminNav';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
+import SimulatorPreviewChart from '../../components/admin/SimulatorPreviewChart';
 import { SOURCE_TYPE_LABELS } from '../../utils/adminFormat';
 import { timeAgo } from '../../utils/adminFormat';
 
-const POLL_MS = 8000;
+const POLL_MS = 15000;
 const SOURCE_TYPES = Object.keys(SOURCE_TYPE_LABELS);
 const FAILURE_MODE_OPTIONS = [
   ['offline', 'Offline'],
@@ -119,11 +112,7 @@ const Simulator = () => {
     };
   }, [loadConfig]);
 
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(loadStatusAndReadings, POLL_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, loadStatusAndReadings]);
+  useVisibilityPolling(loadStatusAndReadings, POLL_MS, autoRefresh);
 
   // Load node options for the failure-mode node targeter.
   useEffect(() => {
@@ -424,37 +413,7 @@ const Simulator = () => {
             </select>
           </div>
           <div className="h-[220px]">
-            {preview.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={preview} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="simPreviewGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.5} />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis
-                    dataKey="hour"
-                    tick={{ fill: '#64748b', fontSize: 11 }}
-                    tickFormatter={(h) => `${h}h`}
-                    interval={2}
-                  />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} domain={[0, 'auto']} />
-                  <Tooltip
-                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 12, fontSize: 12 }}
-                    labelStyle={{ color: '#94a3b8' }}
-                    labelFormatter={(h) => `${h}:00`}
-                    formatter={(v) => [Number(v).toFixed(2), 'factor']}
-                  />
-                  <Area type="monotone" dataKey="factor" stroke="#10b981" strokeWidth={2} fill="url(#simPreviewGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                No preview data
-              </div>
-            )}
+            <SimulatorPreviewChart data={preview} />
           </div>
         </div>
       </div>

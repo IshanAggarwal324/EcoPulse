@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { logClientError } from "./clientLogger";
 
 const isProd = import.meta.env.PROD;
 const envChainId = import.meta.env.VITE_CHAIN_ID;
@@ -104,7 +105,7 @@ export const getCarbonCreditBalance = async (address) => {
     const balance = await contract.balanceOf(address);
     return ethers.formatEther(balance);
   } catch (error) {
-    console.error("Error fetching balance:", error);
+    logClientError("blockchain", error, { operation: "getCarbonCreditBalance" });
     return "0";
   }
 };
@@ -195,6 +196,8 @@ export const cancelListing = async (listingId) =>
     return tx.wait();
   });
 
+// TODO(L7): Replace O(n) on-chain listing scan with a GraphQL indexer (The Graph).
+// See P2P_Trading_Production_Readiness.md §2 — Event Indexing.
 export const fetchAllListings = async () => {
   const provider = getProvider();
   if (!provider) return [];
@@ -228,7 +231,7 @@ export const fetchAllListings = async () => {
 
     return activeListings;
   } catch (err) {
-    console.error("Error fetching listings:", err);
+    logClientError("blockchain", err, { operation: "fetchAllListings" });
     return [];
   }
 };

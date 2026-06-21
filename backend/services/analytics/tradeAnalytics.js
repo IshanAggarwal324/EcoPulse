@@ -172,43 +172,77 @@ const getWalletFlowHistory = async (walletAddress, since) => {
     ...(since ? { blockTimestamp: { $gte: since } } : {}),
   };
 
-  const trades = await Trade.find(match).sort({ blockTimestamp: 1 }).lean();
-  const dayMap = new Map();
+  const historyCap = parseInt(process.env.WALLET_FLOW_HISTORY_CAP || '90', 10);
+  const safeCap = Number.isFinite(historyCap) && historyCap > 0 ? historyCap : 90;
 
-  let creditsReceived = 0;
-  let creditsSpent = 0;
-  let saleCount = 0;
-  let purchaseCount = 0;
+  const [statsRows, historyRows] = await Promise.all([
+    Trade.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          creditsReceived: {
+            $sum: {
+              $cond: [{ $eq: ['$seller', wallet] }, { $toDouble: '$price' }, 0],
+            },
+          },
+          creditsSpent: {
+            $sum: {
+              $cond: [{ $eq: ['$buyer', wallet] }, { $toDouble: '$price' }, 0],
+            },
+          },
+          saleCount: {
+            $sum: {
+              $cond: [{ $eq: ['$seller', wallet] }, 1, 0],
+            },
+          },
+          purchaseCount: {
+            $sum: {
+              $cond: [{ $eq: ['$buyer', wallet] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
+    Trade.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$blockTimestamp' } },
+          received: {
+            $sum: {
+              $cond: [{ $eq: ['$seller', wallet] }, { $toDouble: '$price' }, 0],
+            },
+          },
+          spent: {
+            $sum: {
+              $cond: [{ $eq: ['$buyer', wallet] }, { $toDouble: '$price' }, 0],
+            },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
+      { $limit: safeCap },
+    ]),
+  ]);
 
-  trades.forEach((trade) => {
-    const price = parsePrice(trade.price);
-    const day = trade.blockTimestamp
-      ? new Date(trade.blockTimestamp).toISOString().slice(0, 10)
-      : 'unknown';
+  const stats = statsRows[0] || {};
+  const creditsReceived = stats.creditsReceived || 0;
+  const creditsSpent = stats.creditsSpent || 0;
+  const saleCount = stats.saleCount || 0;
+  const purchaseCount = stats.purchaseCount || 0;
 
-    if (!dayMap.has(day)) {
-      dayMap.set(day, { date: day, received: 0, spent: 0, net: 0 });
-    }
-    const entry = dayMap.get(day);
-
-    if (trade.seller === wallet) {
-      creditsReceived += price;
-      entry.received += price;
-      saleCount += 1;
-    }
-    if (trade.buyer === wallet) {
-      creditsSpent += price;
-      entry.spent += price;
-      purchaseCount += 1;
-    }
-    entry.net = entry.received - entry.spent;
-  });
-
-  const history = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   let cumulativeNet = 0;
-  const historyWithCumulative = history.map((row) => {
-    cumulativeNet += row.net;
-    return { ...row, cumulativeNet };
+  const historyWithCumulative = historyRows.map((row) => {
+    const net = (row.received || 0) - (row.spent || 0);
+    cumulativeNet += net;
+    return {
+      date: row._id,
+      received: row.received || 0,
+      spent: row.spent || 0,
+      net,
+      cumulativeNet,
+    };
   });
 
   return {

@@ -1,7 +1,1 @@
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-def read_root():
-    return {"Hello": "FastAPI"}
+"""EcoPulse uses per-service entrypoints — see ai_service/main.py and genai-service/main.py."""

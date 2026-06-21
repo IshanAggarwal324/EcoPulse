@@ -6,7 +6,8 @@ const parseCorsOrigin = () => {
     }
     return configured;
   }
-  return process.env.NODE_ENV === 'production' ? false : '*';
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.FRONTEND_URL || 'http://localhost:5173';
 };
 
 const getSocketServerOptions = () => ({

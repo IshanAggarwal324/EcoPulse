@@ -55,7 +55,8 @@ const errorHandler = (err, req, res, next) => {
   const logPrefix = requestId ? `[Error][${requestId}]` : '[Error]';
 
   if (statusCode >= 500) {
-    console.error(`${logPrefix} ${normalized.message}`, isProduction ? err.stack : '');
+    console.error(`${logPrefix} ${normalized.message}`);
+    if (err?.stack) console.error(err.stack);
   } else {
     console.error(`${logPrefix} ${normalized.message}`);
   }

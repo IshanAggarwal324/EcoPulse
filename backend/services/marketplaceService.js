@@ -177,15 +177,16 @@ const getOrderById = async (listingId) => {
     return null;
   }
 
-  const listedEvent = await getListedEvent(listing.id);
-  const purchasedEvent = await Trade.findOne({
+  const tradeEvents = await Trade.find({
     listingId: Number(listing.id),
-    eventType: 'purchased',
-  }).lean();
-  const cancelledEvent = await Trade.findOne({
-    listingId: Number(listing.id),
-    eventType: 'cancelled',
-  }).lean();
+    eventType: { $in: ['listed', 'purchased', 'cancelled'] },
+  })
+    .sort({ blockNumber: -1 })
+    .lean();
+
+  const listedEvent = tradeEvents.find((event) => event.eventType === 'listed');
+  const purchasedEvent = tradeEvents.find((event) => event.eventType === 'purchased');
+  const cancelledEvent = tradeEvents.find((event) => event.eventType === 'cancelled');
 
   const energyAmount = Number(listing.energyAmount) || 0;
   const price = parsePrice(listing.price);

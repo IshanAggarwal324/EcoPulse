@@ -38,6 +38,12 @@ export function configureApiAuth(handlers) {
 
 const DEFAULT_TIMEOUT_MS = 20000;
 
+function getCsrfTokenFromCookie() {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function parseResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   const raw = await response.text().catch(() => '');
@@ -57,10 +63,18 @@ export async function fetchApi(path, options = {}) {
   const url = `${API_BASE}${path}`;
   const skipAuth = options.skipAuth === true;
 
-  const buildHeaders = () => ({
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  });
+  const buildHeaders = () => {
+    const method = String(options.method || 'GET').toUpperCase();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    };
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const csrf = getCsrfTokenFromCookie();
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+    }
+    return headers;
+  };
 
   const execute = async (isRetry = false) => {
     const controller = new AbortController();

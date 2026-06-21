@@ -17,9 +17,10 @@ import SectionTitle from '../../components/ui/SectionTitle';
 import PageLoader from '../../components/ui/PageLoader';
 import { useToast } from '../../context/ToastContext';
 import { adminApi } from '../../utils/api';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { timeAgo, formatDateTime } from '../../utils/adminFormat';
 
-const POLL_MS = 30000;
+const POLL_MS = 45000;
 
 const STATUS_TONE = {
   up: {
@@ -138,11 +139,7 @@ const Health = () => {
     };
   }, [loadHealth]);
 
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(loadHealth, POLL_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, loadHealth]);
+  useVisibilityPolling(loadHealth, POLL_MS, autoRefresh);
 
   if (loading && !health) {
     return (

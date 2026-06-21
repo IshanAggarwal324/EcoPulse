@@ -1,14 +1,19 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import { getProvider } from '../utils/blockchain';
 import { useWalletState, useWalletActions } from '../context/WalletContext';
+import { logClientError, logClientWarn } from '../utils/clientLogger';
+
+const BLOCK_POLL_MS = parseInt(import.meta.env.VITE_BLOCK_POLL_MS || '15000', 10);
 
 const BlockchainStatus = memo(function BlockchainStatus() {
   const { account, chainId, isCorrectNetwork, expectedChainId } = useWalletState();
   const { ensureNetwork } = useWalletActions();
   const [blockNumber, setBlockNumber] = useState(null);
+  const intervalRef = useRef(null);
 
   useEffect(() => {
     const fetchBlock = async () => {
+      if (document.hidden) return;
       try {
         const provider = getProvider();
         if (provider) {
@@ -16,18 +21,43 @@ const BlockchainStatus = memo(function BlockchainStatus() {
           setBlockNumber(block.toString());
         }
       } catch (err) {
-        console.warn('Block fetch failed:', err.message);
+        logClientWarn('BlockchainStatus', 'Block fetch failed', { message: err.message });
+      }
+    };
+
+    const stop = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    const start = () => {
+      stop();
+      if (!account) return;
+      fetchBlock();
+      intervalRef.current = setInterval(fetchBlock, BLOCK_POLL_MS);
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        start();
       }
     };
 
     if (account) {
-      fetchBlock();
-      const interval = setInterval(fetchBlock, 5000);
-      return () => clearInterval(interval);
+      start();
+      document.addEventListener('visibilitychange', onVisibility);
+    } else {
+      setBlockNumber(null);
     }
 
-    setBlockNumber(null);
-    return undefined;
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [account, chainId]);
 
   return (
@@ -60,7 +90,7 @@ const BlockchainStatus = memo(function BlockchainStatus() {
               </div>
               <button
                 type="button"
-                onClick={() => ensureNetwork().catch(console.error)}
+                onClick={() => ensureNetwork().catch((err) => logClientError('BlockchainStatus', err))}
                 className="touch-target w-full text-sm bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 font-medium px-3 py-2 rounded-xl transition-colors"
               >
                 Switch to Expected Network

@@ -20,11 +20,14 @@ import {
   getLastWalletAccount,
   hadWalletSession,
 } from '../utils/walletStorage';
+import { logClientError } from '../utils/clientLogger';
 
 const WalletStateContext = createContext(null);
 const WalletActionsContext = createContext(null);
 
-const PROVIDER_POLL_MS = 500;
+// TODO(L7): Wagmi / RainbowKit for WalletConnect + hardware wallet support.
+// See P2P_Trading_Production_Readiness.md §2 — Enhanced Wallet Connection.
+const PROVIDER_POLL_MS = 2000;
 const RECONNECT_DEBOUNCE_MS = 300;
 
 export const WalletProvider = ({ children }) => {
@@ -84,7 +87,7 @@ export const WalletProvider = ({ children }) => {
       setStatus(hadWalletSession() ? 'disconnected' : 'disconnected');
       return false;
     } catch (err) {
-      console.error('Wallet sync failed:', err);
+      logClientError('WalletContext', err, { phase: 'syncFromProvider' });
       if (mountedRef.current) {
         setError(err.message || 'Failed to sync wallet');
       }

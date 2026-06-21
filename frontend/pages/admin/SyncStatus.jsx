@@ -18,9 +18,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { adminApi } from '../../utils/api';
 import { canMutate } from '../../utils/adminNav';
+import { useVisibilityPolling } from '../../hooks/useVisibilityPolling';
 import { timeAgo, formatDateTime } from '../../utils/adminFormat';
 
-const POLL_MS = 15000;
+const POLL_MS = 25000;
 
 const SyncStatus = () => {
   const { user: currentUser } = useAuth();
@@ -61,11 +62,7 @@ const SyncStatus = () => {
     };
   }, [loadStatus]);
 
-  useEffect(() => {
-    if (!autoRefresh) return undefined;
-    const id = setInterval(loadStatus, POLL_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, loadStatus]);
+  useVisibilityPolling(loadStatus, POLL_MS, autoRefresh);
 
   const handleForceSync = async () => {
     setForceLoading(true);
