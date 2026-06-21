@@ -53,7 +53,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install Hardhat dependencies
-        run: npm ci
+        run: npm install
       - name: Run contract tests
         run: npm run test:contracts
 
