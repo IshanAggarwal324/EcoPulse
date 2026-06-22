@@ -70,6 +70,7 @@ const startServer = async () => {
       return callback(new Error('CORS blocked for this origin'));
     },
     credentials: true,
+    exposedHeaders: ['X-CSRF-Token'],
   };
 
   app.use(cors(corsOptions));

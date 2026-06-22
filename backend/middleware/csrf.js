@@ -4,6 +4,8 @@ const ApiError = require('../utils/apiError');
 const CSRF_COOKIE = 'csrfToken';
 const CSRF_HEADER = 'x-csrf-token';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const isProduction = process.env.NODE_ENV === 'production';
+const csrfSameSite = isProduction ? 'none' : 'lax';
 
 const getCookieValue = (cookieHeader, key) => {
   if (!cookieHeader) return null;
@@ -39,12 +41,14 @@ const issueCsrfToken = (req, res, next) => {
     token = crypto.randomBytes(32).toString('hex');
     res.cookie(CSRF_COOKIE, token, {
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProduction,
+      sameSite: csrfSameSite,
       path: '/',
       maxAge: 24 * 60 * 60 * 1000,
     });
   }
+  // Expose the token to cross-origin SPA clients that cannot read API-domain cookies.
+  res.setHeader('X-CSRF-Token', token);
   next();
 };
 

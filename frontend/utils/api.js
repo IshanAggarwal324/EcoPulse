@@ -37,11 +37,35 @@ export function configureApiAuth(handlers) {
 }
 
 const DEFAULT_TIMEOUT_MS = 20000;
+let csrfTokenCache = null;
 
 function getCsrfTokenFromCookie() {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|;\s*)csrfToken=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function cacheCsrfTokenFromResponse(response) {
+  const token = response?.headers?.get?.('x-csrf-token');
+  if (token) {
+    csrfTokenCache = token;
+  }
+}
+
+async function ensureCsrfToken() {
+  if (csrfTokenCache) return csrfTokenCache;
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/captcha-config`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    cacheCsrfTokenFromResponse(response);
+  } catch {
+    // Best-effort bootstrap: normal request path will still run and report errors.
+  }
+
+  return csrfTokenCache;
 }
 
 async function parseResponse(response) {
@@ -62,15 +86,15 @@ async function parseResponse(response) {
 export async function fetchApi(path, options = {}) {
   const url = `${API_BASE}${path}`;
   const skipAuth = options.skipAuth === true;
+  const method = String(options.method || 'GET').toUpperCase();
 
-  const buildHeaders = () => {
-    const method = String(options.method || 'GET').toUpperCase();
+  const buildHeaders = (csrfToken) => {
     const headers = {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     };
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-      const csrf = getCsrfTokenFromCookie();
+      const csrf = csrfToken || csrfTokenCache || getCsrfTokenFromCookie();
       if (csrf) headers['X-CSRF-Token'] = csrf;
     }
     return headers;
@@ -83,13 +107,19 @@ export async function fetchApi(path, options = {}) {
 
     let response;
     try {
+      let csrfToken = null;
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+        csrfToken = await ensureCsrfToken();
+      }
+
       response = await fetch(url, {
         ...options,
-        headers: buildHeaders(),
+        headers: buildHeaders(csrfToken),
         body: options.body,
         signal: controller.signal,
         credentials: 'include',
       });
+      cacheCsrfTokenFromResponse(response);
     } catch (error) {
       const isTimeout = error?.name === 'AbortError';
       throw new ApiError(
