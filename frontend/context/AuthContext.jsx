@@ -1,7 +1,7 @@
 import React, {
   createContext, useState, useContext, useEffect, useCallback, useRef, useMemo,
 } from 'react';
-import { API_BASE } from '../utils/api';
+import { API_BASE, authApi, ApiError } from '../utils/api';
 
 const AuthContext = createContext(null);
 
@@ -148,77 +148,32 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (updates) => {
     try {
-      const response = await fetch(`${API_URL}/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-
-      if (response.status === 401 && data.code === 'TOKEN_EXPIRED') {
-        const newToken = await refreshSession();
-        if (newToken) {
-          const retry = await fetch(`${API_URL}/auth/profile`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(updates),
-            credentials: 'include',
-          });
-          const retryData = await retry.json();
-          if (!retry.ok) {
-            return { success: false, message: retryData.message, errors: retryData.errors };
-          }
-          setUser(retryData.data.user);
-          return { success: true, message: retryData.message };
-        }
-      }
-
-      if (!response.ok) {
-        return { success: false, message: data.message, errors: data.errors };
-      }
-
+      const data = await authApi.updateProfile(updates);
       setUser(data.data.user);
       return { success: true, message: data.message };
     } catch (error) {
-      return { success: false, message: error.message };
+      if (error instanceof ApiError) {
+        return { success: false, message: error.message, errors: error.details?.errors };
+      }
+      return { success: false, message: error.message || 'Network error' };
     }
   };
 
   const updatePassword = async ({ currentPassword, newPassword }) => {
     try {
-      const response = await fetch(`${API_URL}/auth/password`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ currentPassword, newPassword }),
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        return { success: false, message: data.message, errors: data.errors };
-      }
-
+      const data = await authApi.updatePassword({ currentPassword, newPassword });
       return { success: true, message: data.message };
     } catch (error) {
-      return { success: false, message: error.message };
+      if (error instanceof ApiError) {
+        return { success: false, message: error.message, errors: error.details?.errors };
+      }
+      return { success: false, message: error.message || 'Network error' };
     }
   };
 
   const logout = async () => {
     try {
-      await fetch(`${API_URL}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await authApi.logout();
     } catch {
       // Best-effort server logout.
     } finally {

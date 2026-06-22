@@ -176,6 +176,7 @@ export const authApi = {
   getCaptchaConfig: () => fetchApi('/auth/captcha-config', { skipAuth: true }),
   updateProfile: (body) => fetchApi('/auth/profile', { method: 'PUT', body: JSON.stringify(body) }),
   updatePassword: (body) => fetchApi('/auth/password', { method: 'PUT', body: JSON.stringify(body) }),
+  logout: () => fetchApi('/auth/logout', { method: 'POST' }),
   verifyEmail: (token) =>
     fetchApi('/auth/verify-email', {
       method: 'POST',
