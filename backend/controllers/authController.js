@@ -497,12 +497,19 @@ const resendVerification = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email }).select('+isEmailVerified +emailVerificationToken');
 
   if (!user) {
-    // Avoid enumeration — respond generically.
-    return res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+    return res.status(200).json({
+      success: false,
+      status: 'user_not_found',
+      message: 'Unable to find the account for email verification.',
+    });
   }
 
   if (user.isEmailVerified) {
-    return res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+    return res.status(200).json({
+      success: true,
+      status: 'already_verified',
+      message: 'Your email address is already verified.',
+    });
   }
 
   const { rawToken, hashed, expires } = User.generateEmailVerificationToken();
@@ -510,22 +517,42 @@ const resendVerification = asyncHandler(async (req, res) => {
   user.emailVerificationExpires = expires;
   await user.save();
 
-  try {
-    const { isConfigured: emailConfigured, sendEmail, buildVerificationEmailBody, buildVerificationUrl } =
-      require('../services/emailService');
-    if (emailConfigured()) {
-      const verificationUrl = buildVerificationUrl(rawToken);
-      await sendEmail({
-        to: user.email,
-        subject: 'Verify Your EcoPulse Account',
-        html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
-      });
-    }
-  } catch (emailErr) {
-    console.warn('Resend verification email failed:', emailErr.message);
+  const {
+    isConfigured: emailConfigured,
+    sendEmail,
+    buildVerificationEmailBody,
+    buildVerificationUrl,
+  } = require('../services/emailService');
+
+  if (!emailConfigured()) {
+    return res.status(200).json({
+      success: false,
+      status: 'not_configured',
+      message: 'Email delivery is not configured right now. Please contact support.',
+    });
   }
 
-  res.status(200).json({ success: true, message: 'If the email exists and is unverified, a verification link has been sent.' });
+  try {
+    const verificationUrl = buildVerificationUrl(rawToken);
+    await sendEmail({
+      to: user.email,
+      subject: 'Verify Your EcoPulse Account',
+      html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+    });
+  } catch (emailErr) {
+    console.warn('Resend verification email failed:', emailErr.message);
+    return res.status(200).json({
+      success: false,
+      status: 'send_failed',
+      message: 'Verification email could not be sent. Please try again later.',
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    status: 'sent',
+    message: 'Verification email sent. Check your inbox.',
+  });
 });
 
 const getCaptchaConfig = asyncHandler(async (req, res) => {

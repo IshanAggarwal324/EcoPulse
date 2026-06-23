@@ -47,10 +47,11 @@ async def get_forecast(
             request.use_dummy_data,
             request.node_id,
         )
-    elif request.use_dummy_data and forecast_service.allow_model_free_dummy:
+    elif forecast_service.allow_model_free_dummy:
         logger.warning(
-            "Model unavailable; serving heuristic fallback forecast (node=%s)",
+            "Model unavailable; serving heuristic fallback forecast (node=%s, requested_dummy=%s)",
             request.node_id or "aggregate",
+            request.use_dummy_data,
         )
         results = await forecast_service.predict_without_model(
             request.days_to_predict,
@@ -90,8 +91,11 @@ async def get_batch_forecast(
             request.days_to_predict,
             request.use_dummy_data,
         )
-    elif request.use_dummy_data and forecast_service.allow_model_free_dummy:
-        logger.warning("Model unavailable; serving heuristic batch fallback forecast")
+    elif forecast_service.allow_model_free_dummy:
+        logger.warning(
+            "Model unavailable; serving heuristic batch fallback forecast (requested_dummy=%s)",
+            request.use_dummy_data,
+        )
         forecasts, _errors = await forecast_service.predict_batch_without_model(
             request.node_ids,
             request.days_to_predict,

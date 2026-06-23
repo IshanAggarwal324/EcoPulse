@@ -16,8 +16,19 @@ const EmailVerificationBanner = () => {
   const handleResend = async () => {
     setSending(true);
     try {
-      await authApi.resendVerification();
-      toast.success('Verification email sent. Check your inbox.');
+      const result = await authApi.resendVerification();
+      const status = result?.status;
+      const message = result?.message || 'Verification email request completed.';
+
+      if (status === 'sent') {
+        toast.success(message);
+      } else if (status === 'already_verified') {
+        toast.info(message);
+      } else if (status === 'not_configured' || status === 'send_failed') {
+        toast.error(message);
+      } else {
+        toast.info(message);
+      }
     } catch (error) {
       toast.error(error.message || 'Failed to send verification email.');
     } finally {
