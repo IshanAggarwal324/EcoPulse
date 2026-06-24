@@ -6,12 +6,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.dependencies import get_model_store
+from app.dependencies import get_anomaly_store, get_model_store
 from app.handlers.exceptions import register_exception_handlers
 from app.internal_auth import internal_auth_response
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
-from app.routers import forecast, health
+from app.routers import anomaly, forecast, health
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,12 @@ async def lifespan(app: FastAPI):
     setup_logging(settings)
     store = get_model_store()
     store.load()
+    # Anomaly model is optional on startup (non-fatal if not yet trained).
+    try:
+        anomaly_store = get_anomaly_store()
+        anomaly_store.load()
+    except Exception:  # pragma: no cover - defensive, must not block boot
+        logger.warning("Anomaly model could not be loaded on startup")
     yield
 
 
@@ -73,5 +79,6 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(forecast.router)
+    app.include_router(anomaly.router)
 
     return app

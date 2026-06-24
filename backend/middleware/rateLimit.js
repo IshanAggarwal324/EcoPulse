@@ -120,6 +120,14 @@ function createForecastRateLimiter() {
   });
 }
 
+function createAnomalyRateLimiter() {
+  return createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: parseInt(process.env.ANOMALY_RATE_LIMIT_MAX || '30', 10),
+    message: 'Anomaly rate limit exceeded. Please try again later.',
+  });
+}
+
 function createProfileRateLimiter() {
   return createRateLimiter({
     windowMs: 15 * 60 * 1000,
@@ -151,6 +159,7 @@ module.exports = {
   createAdminRateLimiter,
   createAuthRateLimiter,
   createForecastRateLimiter,
+  createAnomalyRateLimiter,
   createProfileRateLimiter,
   createPreviewRateLimiter,
   createApiRateLimiter,

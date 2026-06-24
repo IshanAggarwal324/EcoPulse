@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Bell, Save, AlertCircle } from 'lucide-react';
+import { User, Lock, Bell, Save, AlertCircle, Activity } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import FormField from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { anomalyApi } from '../utils/api';
 import {
   validateName,
   validateWalletAddress,
@@ -36,6 +37,10 @@ const Settings = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
 
+  const [anomalies, setAnomalies] = useState([]);
+  const [anomaliesLoading, setAnomaliesLoading] = useState(false);
+  const [anomaliesError, setAnomaliesError] = useState('');
+
   useEffect(() => {
     if (user) {
       setProfile({
@@ -47,6 +52,36 @@ const Settings = () => {
       });
     }
   }, [user]);
+
+  // Module 4.1 — ML meter-anomaly feed. Only loaded when the user has opted
+  // into grid alerts. Failures are non-fatal (shown inline, never crash the page).
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAnomalies() {
+      if (!user || !profile.gridAlerts) {
+        setAnomalies([]);
+        return;
+      }
+      setAnomaliesLoading(true);
+      setAnomaliesError('');
+      try {
+        const data = await anomalyApi.list({ days: 14 });
+        if (cancelled) return;
+        const rows = Array.isArray(data.flagged)
+          ? data.flagged
+          : (data.results || []).flatMap((r) => r.flagged || []);
+        setAnomalies(rows.slice(0, 20));
+      } catch (err) {
+        if (!cancelled) setAnomaliesError(err?.message || 'Unable to load anomaly alerts');
+      } finally {
+        if (!cancelled) setAnomaliesLoading(false);
+      }
+    }
+    loadAnomalies();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, profile.gridAlerts]);
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
@@ -224,6 +259,57 @@ const Settings = () => {
           </button>
         </form>
       </section>
+
+      {profile.gridAlerts && (
+        <section className="content-card">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
+            <div className="p-1.5 bg-rose-500/10 rounded-lg"><Activity className="text-rose-400" size={18} /></div>
+            Grid anomaly alerts
+          </h3>
+
+          {anomaliesLoading && (
+            <p className="text-sm text-slate-400">Scanning your meters for anomalies…</p>
+          )}
+          {anomaliesError && (
+            <div className="flex items-center gap-2 text-sm text-rose-300">
+              <AlertCircle size={16} /> {anomaliesError}
+            </div>
+          )}
+          {!anomaliesLoading && !anomaliesError && anomalies.length === 0 && (
+            <p className="text-sm text-slate-400">
+              No anomalies detected in the last 14 days. Your meters look healthy.
+            </p>
+          )}
+          {anomalies.length > 0 && (
+            <ul className="space-y-2">
+              {anomalies.map((a, i) => {
+                const score = typeof a.anomaly_score === 'number' ? Math.round(a.anomaly_score * 100) : null;
+                const codes = Array.isArray(a.reason_codes) ? a.reason_codes : [];
+                return (
+                  <li
+                    key={i}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-white capitalize">
+                        {codes[0]?.replace(/_/g, ' ') || 'meter anomaly'}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {a.timestamp ? new Date(a.timestamp).toLocaleString() : ''}
+                      </p>
+                    </div>
+                    {score !== null && (
+                      <span className="shrink-0 rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-semibold text-rose-300">
+                        {score}%
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="content-card">
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">

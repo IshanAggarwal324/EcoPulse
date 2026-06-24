@@ -1,5 +1,6 @@
 const EnergyReadingHourly = require('../models/EnergyReadingHourly');
 const EnergyReading = require('../models/EnergyReading');
+const AnomalyEvent = require('../models/AnomalyEvent');
 const { getOwnedNodes } = require('../utils/nodeOwnership');
 const { parsePeriod, resolveSinceDate } = require('../utils/periodHelpers');
 
@@ -257,6 +258,32 @@ async function _dailySeries(nodeIds, since) {
 }
 
 /**
+ * Best-effort ML anomaly enrichment (Module 4.1.7). Pulls recent persisted
+ * AnomalyEvent docs for the user's nodes and surfaces display-safe summaries
+ * into the assistant context. Fail-safe: never throws into the retriever.
+ */
+async function _recentMlAnomalies(ownedIds, nodeMap, since, limit = 8) {
+  if (!ownedIds || !ownedIds.length) return [];
+  try {
+    const query = { nodeId: { $in: ownedIds }, dismissedAt: null };
+    if (since) query.timestamp = { $gte: since };
+    const docs = await AnomalyEvent.find(query)
+      .sort({ score: -1, timestamp: -1 })
+      .limit(limit)
+      .lean();
+    return docs.map((d) => ({
+      nodeName: (nodeMap.get(String(d.nodeId)) || {}).name || 'Node',
+      timestamp: d.timestamp,
+      reasonCode: d.reasonCode,
+      score: typeof d.score === 'number' ? Math.round(d.score * 100) / 100 : null,
+    }));
+  } catch (err) {
+    console.error('ML anomaly retrieval failed:', err.message);
+    return [];
+  }
+}
+
+/**
  * 3.2.4 — Bill / usage analysis: current vs prior period consumption, top
  * consuming nodes, and anomaly flags for sudden spikes.
  */
@@ -288,13 +315,18 @@ async function retrieveBillAnalysis(userId, period) {
     const labeledPrior = _labelNodes(prevPerNode, nodeMap);
 
     const analysis = computeBillAnalysis(cur, prev, labeledCurrent, labeledPrior);
+    const mlAnomalies = await _recentMlAnomalies(ownedIds, nodeMap, currentSince);
 
     return {
       retrieved_data: {
         period: parsed ? parsed.label : `Last ${hours}h`,
         ...analysis,
+        mlAnomalies,
       },
-      sources: [{ type: 'bill', label: 'Bill analysis', endpoint: 'energyreadings_hourly' }],
+      sources: [
+        { type: 'bill', label: 'Bill analysis', endpoint: 'energyreadings_hourly' },
+        { type: 'anomaly', label: 'Grid anomaly alerts', endpoint: 'anomalyevents' },
+      ],
     };
   });
 }

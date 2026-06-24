@@ -242,6 +242,18 @@ export const forecastApi = {
   },
 };
 
+export const anomalyApi = {
+  // Scans the caller's nodes (or a specific node) for meter anomalies.
+  list: (options = {}) => {
+    const params = new URLSearchParams({ days: String(options.days || 14) });
+    if (options.nodeId) params.set('nodeId', options.nodeId);
+    if (options.allNodes) params.set('allNodes', 'true');
+    if (options.persist === false) params.set('persist', 'false');
+    if (options.since) params.set('since', options.since);
+    return fetchApi(`/anomaly?${params}`);
+  },
+};
+
 export const pricingApi = {
   getCurve: (params = {}) => {
     const query = new URLSearchParams(params).toString();

@@ -20,6 +20,7 @@ router.use('/auth', require('./auth'));
 router.use('/nodes', ...guardedUser, apiRateLimit, require('./nodes'));
 router.use('/readings', ...guardedUser, apiRateLimit, require('./readings'));
 router.use('/forecast', ...guardedUser, require('./forecast'));
+router.use('/anomaly', ...guardedUser, require('./anomaly'));
 router.use('/analytics', ...guardedUser, apiRateLimit, require('./analytics'));
 router.use('/trades', ...guardedUser, apiRateLimit, require('./trades'));
 router.use('/marketplace', ...guardedUser, apiRateLimit, require('./marketplace'));

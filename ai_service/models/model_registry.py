@@ -9,6 +9,18 @@ import joblib
 
 DEFAULT_REGISTRY_DIR = os.getenv("ECOPULSE_MODEL_REGISTRY_DIR", "models/registry")
 DEFAULT_MODEL_NAME = os.getenv("ECOPULSE_MODEL_NAME", "lstm_energy_forecast")
+ANOMALY_MODEL_NAME = os.getenv("ECOPULSE_ANOMALY_MODEL_NAME", "meter_anomaly_detector")
+
+
+def _assert_safe_component(value: str, label: str) -> str:
+    """Reject registry path components that could escape the registry root
+    (e.g. '..', '/' or '\\'). Registry names/versions originate from env and
+    trusted callers, but defence-in-depth prevents path traversal on load."""
+    if not value or not isinstance(value, str):
+        raise ValueError(f"Invalid {label}: empty")
+    if value in (".", "..") or "/" in value or "\\" in value or "\x00" in value:
+        raise ValueError(f"Invalid {label}: must be a single path-safe segment")
+    return value
 
 
 def _utc_version() -> str:
@@ -138,4 +150,108 @@ def load_bundle(
         metadata = {"model_name": model_name, "version": resolved}
 
     return model, scaler, metadata
+
+
+# ---------------------------------------------------------------------------
+# Anomaly model bundles (joblib-serialized, framework-agnostic)
+#
+# The LSTM bundle above is Keras-specific (model.save / load_model). The
+# anomaly detector is a scikit-learn object, so it needs its own save/load
+# pair that serializes the estimator and its feature_config via joblib.
+# joblib uses pickle internally — only load artifacts from this trusted,
+# write-controlled registry directory, never from user-supplied paths.
+# ---------------------------------------------------------------------------
+
+
+def save_anomaly_bundle(
+    *,
+    model,
+    feature_config: Dict[str, Any],
+    training_meta: Dict[str, Any],
+    registry_dir: str = DEFAULT_REGISTRY_DIR,
+    model_name: str = ANOMALY_MODEL_NAME,
+    version: Optional[str] = None,
+) -> str:
+    """
+    Saves a versioned anomaly bundle:
+      - model.joblib         (the fitted sklearn estimator)
+      - feature_config.joblib (calibration params, feature list, thresholds)
+      - metadata.json
+    Updates <model_name>/LATEST. Returns the version string.
+    """
+    _assert_safe_component(model_name, "model_name")
+    version = _assert_safe_component(version or _utc_version(), "version")
+    model_root = os.path.join(registry_dir, model_name)
+    version_dir = get_model_version_dir(
+        registry_dir=registry_dir, model_name=model_name, version=version
+    )
+    _safe_mkdir(version_dir)
+
+    model_path = os.path.join(version_dir, "model.joblib")
+    config_path = os.path.join(version_dir, "feature_config.joblib")
+    meta_path = os.path.join(version_dir, "metadata.json")
+
+    joblib.dump(model, model_path)
+    joblib.dump(feature_config, config_path)
+
+    metadata = {
+        "model_name": model_name,
+        "version": version,
+        "framework": "sklearn",
+        "saved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "artifacts": {
+            "model_path": model_path,
+            "feature_config_path": config_path,
+        },
+        "feature_config": feature_config,
+        "training": training_meta,
+    }
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2, sort_keys=True)
+
+    set_latest(model_root, version)
+    return version
+
+
+def load_anomaly_bundle(
+    *,
+    registry_dir: str = DEFAULT_REGISTRY_DIR,
+    model_name: str = ANOMALY_MODEL_NAME,
+    version: Optional[str] = None,
+) -> Tuple[Any, Dict[str, Any], Dict[str, Any]]:
+    """
+    Loads the anomaly model + feature_config + metadata.
+    If version is None, resolves via LATEST. Raises FileNotFoundError when no
+    version is registered.
+    """
+    _assert_safe_component(model_name, "model_name")
+    model_root = os.path.join(registry_dir, model_name)
+    resolved = version or get_latest(model_root)
+    if not resolved:
+        raise FileNotFoundError(f"No anomaly model version found for '{model_name}'")
+    _assert_safe_component(resolved, "version")
+
+    version_dir = get_model_version_dir(
+        registry_dir=registry_dir, model_name=model_name, version=resolved
+    )
+    model_path = os.path.join(version_dir, "model.joblib")
+    config_path = os.path.join(version_dir, "feature_config.joblib")
+    meta_path = os.path.join(version_dir, "metadata.json")
+
+    model = joblib.load(model_path)
+    feature_config: Dict[str, Any] = {}
+    try:
+        feature_config = joblib.load(config_path) or {}
+    except FileNotFoundError:
+        feature_config = {}
+
+    metadata: Dict[str, Any] = {}
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+    except FileNotFoundError:
+        metadata = {"model_name": model_name, "version": resolved}
+
+    return model, feature_config, metadata
 

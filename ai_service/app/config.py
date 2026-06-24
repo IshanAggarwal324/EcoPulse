@@ -26,6 +26,14 @@ class Settings:
     look_back_days: int = 30
     history_days: int = 60
 
+    anomaly_registry_model_name: str = "meter_anomaly_detector"
+    anomaly_registry_version: Optional[str] = None
+    anomaly_feature_window: int = 7
+    anomaly_score_threshold: float = 0.7
+    anomaly_zscore_cap: float = 3.0
+    anomaly_contamination: float = 0.05
+    anomaly_max_results: int = 500
+
     mongo_uri: str = "mongodb://localhost:27017"
     port: int = 8000
     host: str = "127.0.0.1"
@@ -67,4 +75,13 @@ def get_settings() -> Settings:
         log_file=os.getenv("LOG_FILE", "app.log"),
         look_back_days=int(os.getenv("LOOK_BACK_DAYS", "30")),
         history_days=int(os.getenv("HISTORY_DAYS", "60")),
+        anomaly_registry_model_name=os.getenv(
+            "ECOPULSE_ANOMALY_MODEL_NAME", "meter_anomaly_detector"
+        ),
+        anomaly_registry_version=os.getenv("ECOPULSE_ANOMALY_MODEL_VERSION") or None,
+        anomaly_feature_window=int(os.getenv("ANOMALY_FEATURE_WINDOW", "7")),
+        anomaly_score_threshold=float(os.getenv("ANOMALY_SCORE_THRESHOLD", "0.7")),
+        anomaly_zscore_cap=float(os.getenv("ANOMALY_ZSCORE_CAP", "3.0")),
+        anomaly_contamination=float(os.getenv("ANOMALY_CONTAMINATION", "0.05")),
+        anomaly_max_results=int(os.getenv("ANOMALY_MAX_RESULTS", "500")),
     )

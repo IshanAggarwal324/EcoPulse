@@ -60,3 +60,49 @@ class BatchForecastResponse(BaseModel):
     forecasts: List[NodeForecast]
     model_status: str
     model_version: Optional[str] = None
+
+
+class AnomalyScoreRequest(BaseModel):
+    node_id: Optional[str] = Field(default=None, max_length=128)
+    window_days: int = Field(default=7, ge=1, le=90)
+
+
+class AnomalyBatchRequest(BaseModel):
+    node_ids: List[str] = Field(..., min_length=1, max_length=50)
+    window_days: int = Field(default=7, ge=1, le=90)
+
+    @field_validator("node_ids")
+    @classmethod
+    def validate_node_ids(cls, v):
+        cleaned = []
+        for nid in v:
+            nid = (nid or "").strip()
+            if not nid or len(nid) > 128:
+                raise ValueError("Each node_id must be between 1 and 128 characters")
+            cleaned.append(nid)
+        return cleaned
+
+
+class AnomalyFlaggedReading(BaseModel):
+    timestamp: datetime
+    generation: float
+    consumption: float
+    anomaly_score: float = Field(ge=0.0, le=1.0)
+    is_anomaly: bool
+    reason_codes: List[str] = []
+
+
+class AnomalyScoreResponse(BaseModel):
+    node_id: Optional[str] = None
+    window_days: int
+    model_status: str
+    model_version: Optional[str] = None
+    total_readings: int
+    flagged_count: int
+    flagged: List[AnomalyFlaggedReading] = []
+
+
+class AnomalyBatchResponse(BaseModel):
+    results: List[AnomalyScoreResponse]
+    model_status: str
+    model_version: Optional[str] = None
