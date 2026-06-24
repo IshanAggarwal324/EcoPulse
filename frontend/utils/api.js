@@ -238,6 +238,8 @@ export const forecastApi = {
     if (options.nodeIds?.length) params.set('nodeIds', options.nodeIds.join(','));
     if (options.allNodes) params.set('allNodes', 'true');
     if (options.useDummy) params.set('useDummy', 'true');
+    if (options.horizon) params.set('horizon', String(options.horizon));
+    if (options.modelScope) params.set('modelScope', options.modelScope);
     return fetchApi(`/forecast?${params}`);
   },
 };

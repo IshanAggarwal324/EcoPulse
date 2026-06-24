@@ -4,7 +4,7 @@ import SectionTitle from '../components/ui/SectionTitle';
 import { forecastSummary } from '../utils/forecastSummary';
 
 const ForecastChart = lazy(() => import('../components/ui/ForecastChart'));
-import { TrendingUp, AlertCircle, Network, GitCompare, Sparkles } from 'lucide-react';
+import { TrendingUp, AlertCircle, Network, GitCompare, Sparkles, Cpu, Globe } from 'lucide-react';
 import { forecastApi, nodesApi, pricingApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { Loader2 } from 'lucide-react';
@@ -15,6 +15,9 @@ const VIEW_MODES = {
   SINGLE: 'single',
   COMPARE: 'compare',
 };
+
+// Module 4.3.8 — native multi-horizon toggle (single forward pass per horizon).
+const HORIZON_OPTIONS = [7, 14, 30];
 
 const ForecastSummaryCards = ({ predictions }) => {
   const { avgGeneration, avgConsumption, avgConfidence } = forecastSummary(predictions);
@@ -50,6 +53,7 @@ const Forecasts = () => {
   const [nodes, setNodes] = useState([]);
   const [viewMode, setViewMode] = useState(VIEW_MODES.AGGREGATE);
   const [selectedNodeId, setSelectedNodeId] = useState('');
+  const [horizon, setHorizon] = useState(7);
   const [forecastData, setForecastData] = useState([]);
   const [nodeForecasts, setNodeForecasts] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -80,7 +84,7 @@ const Forecasts = () => {
   const fetchForecasts = useCallback(async () => {
     const fetchWithModelFallback = async (options = {}) => {
       try {
-        return await forecastApi.get(7, options);
+        return await forecastApi.get(horizon, { ...options, horizon });
       } catch (err) {
         if (err instanceof ApiError) {
           const detailsText = JSON.stringify(err.details || {});
@@ -90,7 +94,7 @@ const Forecasts = () => {
             || /error communicating with ai service/i.test(err.message || '');
 
           if (shouldFallback) {
-            const fallbackData = await forecastApi.get(7, { ...options, useDummy: true });
+            const fallbackData = await forecastApi.get(horizon, { ...options, useDummy: true, horizon });
             if (!fallbackNotifiedRef.current) {
               toast.info('AI model unavailable — showing forecast from fallback mode');
               fallbackNotifiedRef.current = true;
@@ -142,7 +146,7 @@ const Forecasts = () => {
     } finally {
       setLoading(false);
     }
-  }, [viewMode, selectedNodeId, nodes.length, toast]);
+  }, [viewMode, selectedNodeId, nodes.length, horizon, toast]);
 
   useEffect(() => {
     fetchForecasts();
@@ -185,7 +189,7 @@ const Forecasts = () => {
     <div className="page-section">
       <SectionTitle
         title="AI Forecasts"
-        subtitle="7-day predictions per node or across your full energy network."
+        subtitle="Per-node or network-wide forecasts with native multi-horizon output (7/14/30-day)."
       />
 
       <div className="content-card">
@@ -195,6 +199,24 @@ const Forecasts = () => {
               <TrendingUp className="text-purple-400" size={18} />
             </div>
             {chartTitle}
+            {/* Module 4.3.8 — per-node vs global model indicator */}
+            {meta?.modelScope && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-normal ml-2 px-2 py-0.5 rounded-full border"
+                title={
+                  meta.modelScope === 'per_node'
+                    ? 'Forecast served by a dedicated per-node model'
+                    : 'Forecast served by the shared global model'
+                }
+                style={{
+                  borderColor: meta.modelScope === 'per_node' ? 'rgba(16,185,129,0.4)' : 'rgba(100,116,139,0.4)',
+                  color: meta.modelScope === 'per_node' ? '#34d399' : '#94a3b8',
+                }}
+              >
+                {meta.modelScope === 'per_node' ? <Cpu size={11} /> : <Globe size={11} />}
+                {meta.modelScope === 'per_node' ? 'per-node' : 'global'}
+              </span>
+            )}
             {meta && (
               <span className="text-xs font-normal text-slate-500 ml-2">
                 ({meta.useDummyData ? 'demo data' : 'live data'})
@@ -259,6 +281,25 @@ const Forecasts = () => {
                 )}
               </select>
             )}
+
+            {/* Module 4.3.8 — native multi-horizon toggle (7 / 14 / 30 days) */}
+            <div className="flex rounded-xl border border-slate-600/40 overflow-hidden">
+              {HORIZON_OPTIONS.map((h) => (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setHorizon(h)}
+                  className={`px-3 py-2 text-xs sm:text-sm transition-colors ${
+                    horizon === h
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-slate-900/60 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
+                  }`}
+                  aria-pressed={horizon === h}
+                >
+                  {h}d
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -290,7 +331,22 @@ const Forecasts = () => {
                   key={entry.nodeId}
                   className="bg-slate-900/30 border border-slate-700/30 rounded-xl p-4"
                 >
-                  <h4 className="text-sm font-semibold text-white mb-3">{entry.nodeName}</h4>
+                  <h4 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                    {entry.nodeName}
+                    {entry.modelScope && (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-normal px-1.5 py-0.5 rounded-full border"
+                        style={{
+                          borderColor:
+                            entry.modelScope === 'per_node' ? 'rgba(16,185,129,0.4)' : 'rgba(100,116,139,0.4)',
+                          color: entry.modelScope === 'per_node' ? '#34d399' : '#94a3b8',
+                        }}
+                      >
+                        {entry.modelScope === 'per_node' ? <Cpu size={10} /> : <Globe size={10} />}
+                        {entry.modelScope === 'per_node' ? 'per-node' : 'global'}
+                      </span>
+                    )}
+                  </h4>
                   <Suspense
                     fallback={
                       <div className="h-48 flex items-center justify-center text-slate-600 text-sm">

@@ -229,10 +229,18 @@ async function getMarketDepthKw() {
 /**
  * Fetch the LSTM forecast curve from the AI service for a node (or aggregate).
  * Uses the same POST /forecast/ contract as forecastController.
+ *
+ * Module 4.3.7 — requests the native multi-horizon output (single forward pass)
+ * when a horizon is requested, instead of relying on the legacy recursive
+ * daily roll-forward interpolation. ``modelScope`` selects per-node weights.
  */
-async function fetchForecastCurve({ nodeId = null, days = 7 } = {}) {
+async function fetchForecastCurve({ nodeId = null, days = 7, horizon = null, modelScope = null } = {}) {
   const body = { days_to_predict: days, use_dummy_data: false };
   if (nodeId) body.node_id = nodeId;
+  // Prefer native multi-horizon output when the requested window aligns with a
+  // supported horizon; this yields a single-pass forecast (no recursion).
+  if (horizon) body.horizon = horizon;
+  if (nodeId && modelScope) body.model_scope = modelScope;
 
   let response;
   try {
@@ -249,7 +257,13 @@ async function fetchForecastCurve({ nodeId = null, days = 7 } = {}) {
 
   const data = await response.json();
   const predictions = Array.isArray(data.predictions) ? data.predictions : [];
-  return { predictions, available: true, modelStatus: data.model_status || null };
+  return {
+    predictions,
+    available: true,
+    modelStatus: data.model_status || null,
+    modelScope: data.model_scope || null,
+    horizon: data.horizon || null,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +276,8 @@ function normalizePrediction(pred) {
     forecastGen: pred.predicted_generation ?? pred.generation ?? null,
     forecastCon: pred.predicted_consumption ?? pred.consumption ?? null,
     confidence: pred.confidence ?? null,
+    // Module 4.3.6 — native multi-horizon step index (1-based), when present.
+    horizonStep: pred.horizon_step ?? null,
   };
 }
 
@@ -347,10 +363,17 @@ async function getPricingCurve({ nodeId = null, hours = 24, bypassCache = false 
     if (cached) return { ...cached, cached: true };
   }
 
+  // Module 4.3.7 — request the native multi-horizon output when the day window
+  // aligns with a supported horizon (single forward pass, no recursion).
+  const NATIVE_HORIZONS = new Set([7, 14, 30]);
+  const nativeHorizon = NATIVE_HORIZONS.has(days) ? days : null;
+  // Per-node weights give a tighter node-level price; only meaningful for nodes.
+  const modelScope = nodeId ? 'per_node' : null;
+
   const [historicalAvgUnitPrice, marketDepth, forecast] = await Promise.all([
     getHistoricalAvgUnitPrice(),
     getMarketDepth(),
-    fetchForecastCurve({ nodeId, days }),
+    fetchForecastCurve({ nodeId, days, horizon: nativeHorizon, modelScope }),
   ]);
 
   const listedEnergyKw = marketDepth.totalEnergyKw;
@@ -381,6 +404,8 @@ async function getPricingCurve({ nodeId = null, hours = 24, bypassCache = false 
       computedAt: marketDepth.computedAt,
     },
     forecastAvailable: forecast.available,
+    forecastScope: forecast.modelScope || null,
+    forecastHorizon: forecast.horizon || null,
     modelStatus: forecast.modelStatus || null,
     bounds: {
       floorCc: config.getPriceFloorCc(),

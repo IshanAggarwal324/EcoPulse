@@ -35,6 +35,12 @@ const buildInternalHeaders = () => ({
 const MIN_FORECAST_DAYS = 1;
 const MAX_FORECAST_DAYS = 90;
 
+// Module 4.3.6 — allowed native multi-horizon output sizes (must mirror the
+// AI service allow-list). Restricting here rejects oversized horizons at the
+// edge instead of letting them reach model inference.
+const ALLOWED_FORECAST_HORIZONS = new Set([1, 7, 14, 30]);
+const VALID_MODEL_SCOPES = new Set(['global', 'per_node']);
+
 const parseForecastDays = (raw) => {
   const parsed = parseInt(raw || '7', 10);
   if (!Number.isFinite(parsed) || parsed < MIN_FORECAST_DAYS || parsed > MAX_FORECAST_DAYS) {
@@ -45,6 +51,32 @@ const parseForecastDays = (raw) => {
     );
   }
   return parsed;
+};
+
+const parseForecastHorizon = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || !ALLOWED_FORECAST_HORIZONS.has(parsed)) {
+    throw new ApiError(
+      `horizon must be one of ${[...ALLOWED_FORECAST_HORIZONS].sort((a, b) => a - b).join(', ')}`,
+      400,
+      'INVALID_FORECAST_HORIZON',
+    );
+  }
+  return parsed;
+};
+
+const parseModelScope = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const value = String(raw).trim().toLowerCase();
+  if (!VALID_MODEL_SCOPES.has(value)) {
+    throw new ApiError(
+      `modelScope must be one of ${[...VALID_MODEL_SCOPES].join(', ')}`,
+      400,
+      'INVALID_MODEL_SCOPE',
+    );
+  }
+  return value;
 };
 
 async function callAiForecast(body) {
@@ -123,7 +155,7 @@ async function resolveBatchNodeIds(req, { allNodes, nodeIdsParam }) {
   return assertNodesOwnership(req.user._id, parsed);
 }
 
-async function runBatchForecast({ nodeIds, daysToPredict, forceDummy }) {
+async function runBatchForecast({ nodeIds, daysToPredict, forceDummy, horizon, modelScope }) {
   if (!nodeIds.length) {
     throw new ApiError('No energy nodes available for forecast', 403, 'NO_NODES');
   }
@@ -142,13 +174,17 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy }) {
 
   const useDummyData = forceDummy || await shouldUseDummyDataForNodes(nodeIds);
 
+  const aiBody = {
+    days_to_predict: daysToPredict,
+    use_dummy_data: useDummyData,
+    node_ids: nodeIds,
+  };
+  if (horizon) aiBody.horizon = horizon;
+  if (modelScope) aiBody.model_scope = modelScope;
+
   let response;
   try {
-    response = await callAiBatchForecast({
-      days_to_predict: daysToPredict,
-      use_dummy_data: useDummyData,
-      node_ids: nodeIds,
-    });
+    response = await callAiBatchForecast(aiBody);
   } catch (error) {
     throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE', isProduction ? null : error.message);
   }
@@ -168,6 +204,8 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy }) {
     nodeId: entry.node_id,
     nodeName: nodeMap.get(entry.node_id),
     predictions: entry.predictions,
+    modelScope: entry.model_scope || null,
+    horizon: entry.horizon || null,
   }));
 
   return {
@@ -183,6 +221,9 @@ const getForecast = asyncHandler(async (req, res) => {
   const nodeId = req.query.nodeId;
   const nodeIdsParam = req.query.nodeIds;
   const allNodes = req.query.allNodes === 'true';
+  // Module 4.3.6 — native multi-horizon + per-node model resolution.
+  const horizon = parseForecastHorizon(req.query.horizon);
+  const modelScope = parseModelScope(req.query.modelScope);
   const privileged = isPrivileged(req.user);
 
   let nodeIds = parseNodeIdsParam(nodeIdsParam);
@@ -194,6 +235,8 @@ const getForecast = asyncHandler(async (req, res) => {
       nodeIds,
       daysToPredict,
       forceDummy,
+      horizon,
+      modelScope,
     });
 
     return res.status(200).json({
@@ -203,6 +246,8 @@ const getForecast = asyncHandler(async (req, res) => {
       meta: {
         useDummyData,
         daysToPredict,
+        horizon,
+        modelScope,
         nodeCount: forecasts.length,
         mode: 'multi',
       },
@@ -224,13 +269,17 @@ const getForecast = asyncHandler(async (req, res) => {
 
     const useDummyData = await shouldUseDummyData(forceDummy, nodeId);
 
+    const aiBody = {
+      days_to_predict: daysToPredict,
+      use_dummy_data: useDummyData,
+      node_id: nodeId,
+    };
+    if (horizon) aiBody.horizon = horizon;
+    if (modelScope) aiBody.model_scope = modelScope;
+
     let response;
     try {
-      response = await callAiForecast({
-        days_to_predict: daysToPredict,
-        use_dummy_data: useDummyData,
-        node_id: nodeId,
-      });
+      response = await callAiForecast(aiBody);
     } catch (error) {
       return res.status(503).json({
         success: false,
@@ -258,6 +307,8 @@ const getForecast = asyncHandler(async (req, res) => {
       meta: {
         useDummyData,
         daysToPredict,
+        horizon,
+        modelScope,
         nodeId,
         nodeName: node.name,
         mode: 'single',
@@ -271,6 +322,8 @@ const getForecast = asyncHandler(async (req, res) => {
       nodeIds: ownedNodeIds,
       daysToPredict,
       forceDummy,
+      horizon,
+      modelScope,
     });
 
     const predictions = mergeForecastPredictions(forecasts);
@@ -282,6 +335,8 @@ const getForecast = asyncHandler(async (req, res) => {
       meta: {
         useDummyData,
         daysToPredict,
+        horizon,
+        modelScope,
         nodeCount: forecasts.length,
         mode: 'aggregate',
         scopedToUser: true,
@@ -291,12 +346,16 @@ const getForecast = asyncHandler(async (req, res) => {
 
   const useDummyData = await shouldUseDummyData(forceDummy);
 
+  const aggregateAiBody = {
+    days_to_predict: daysToPredict,
+    use_dummy_data: useDummyData,
+  };
+  if (horizon) aggregateAiBody.horizon = horizon;
+  if (modelScope) aggregateAiBody.model_scope = modelScope;
+
   let response;
   try {
-    response = await callAiForecast({
-      days_to_predict: daysToPredict,
-      use_dummy_data: useDummyData,
-    });
+    response = await callAiForecast(aggregateAiBody);
   } catch (error) {
     return res.status(503).json({
       success: false,
@@ -322,6 +381,8 @@ const getForecast = asyncHandler(async (req, res) => {
     meta: {
       useDummyData,
       daysToPredict,
+      horizon,
+      modelScope,
       mode: 'aggregate',
     },
   });

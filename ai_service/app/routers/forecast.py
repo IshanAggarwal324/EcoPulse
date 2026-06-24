@@ -88,18 +88,22 @@ async def get_forecast(
     model_status = MODEL_STATUS
     try:
         if served_version is not None:
-            results = await forecast_service.predict(
+            results, ctx = await forecast_service.predict(
                 request.days_to_predict,
                 request.use_dummy_data,
                 request.node_id,
                 served_version,
+                horizon=request.horizon,
+                model_scope=request.model_scope,
             )
         elif _ensure_model_loaded(model_store):
-            results = await forecast_service.predict(
+            results, ctx = await forecast_service.predict(
                 request.days_to_predict,
                 request.use_dummy_data,
                 request.node_id,
                 None,
+                horizon=request.horizon,
+                model_scope=request.model_scope,
             )
         elif forecast_service.allow_model_free_dummy:
             logger.warning(
@@ -113,6 +117,7 @@ async def get_forecast(
                 request.node_id,
             )
             model_status = FALLBACK_STATUS
+            ctx = None
         else:
             raise ModelUnavailableError()
     except ModelUnavailableError:
@@ -124,6 +129,7 @@ async def get_forecast(
                 request.node_id,
             )
             model_status = FALLBACK_STATUS
+            ctx = None
         else:
             raise
 
@@ -131,8 +137,10 @@ async def get_forecast(
     response_payload = {
         "predictions": results,
         "model_status": model_status,
-        "model_version": resolved_version,
+        "model_version": (ctx.version if ctx else None) or resolved_version,
         "node_id": request.node_id,
+        "model_scope": ctx.scope if ctx else None,
+        "horizon": ctx.horizon if ctx else None,
     }
     forecast_cache.set_cached("forecast", cache_payload, response_payload)
 
@@ -201,6 +209,8 @@ async def get_batch_forecast(
             request.node_ids,
             request.days_to_predict,
             request.use_dummy_data,
+            horizon=request.horizon,
+            model_scope=request.model_scope,
         )
     elif forecast_service.allow_model_free_dummy:
         logger.warning(
@@ -220,6 +230,7 @@ async def get_batch_forecast(
         "forecasts": forecasts,
         "model_status": model_status,
         "model_version": model_store.resolved_version(None),
+        "horizon": request.horizon,
     }
     forecast_cache.set_cached("batch", cache_payload, response_payload)
     return BatchForecastResponse(**response_payload)

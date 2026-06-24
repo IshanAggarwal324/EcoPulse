@@ -5,6 +5,36 @@ import re
 
 _VERSION_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 
+# Module 4.3 — allowed native multi-horizon output sizes. Restricting the set
+# prevents DoS (arbitrarily large Dense output) and matches trained models.
+ALLOWED_FORECAST_HORIZONS = {1, 7, 14, 30}
+_VALID_MODEL_SCOPES = {"global", "per_node"}
+
+
+def _validate_horizon(v):
+    if v is None:
+        return None
+    try:
+        h = int(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"horizon must be an integer, got {v!r}")
+    if h not in ALLOWED_FORECAST_HORIZONS:
+        raise ValueError(
+            f"horizon {h} is not allowed; must be one of {sorted(ALLOWED_FORECAST_HORIZONS)}"
+        )
+    return h
+
+
+def _validate_model_scope(v):
+    if v is None:
+        return None
+    v = str(v).strip().lower()
+    if not v:
+        return None
+    if v not in _VALID_MODEL_SCOPES:
+        raise ValueError(f"model_scope must be one of {sorted(_VALID_MODEL_SCOPES)}")
+    return v
+
 
 class ErrorResponse(BaseModel):
     success: bool = False
@@ -22,6 +52,9 @@ class ForecastRequest(BaseModel):
     use_dummy_data: bool = False
     model_version: Optional[str] = None
     node_id: Optional[str] = Field(default=None, max_length=128)
+    # Module 4.3.6 — native multi-horizon + per-node model resolution.
+    horizon: Optional[int] = None
+    model_scope: Optional[str] = None
 
     @field_validator("model_version")
     @classmethod
@@ -35,10 +68,33 @@ class ForecastRequest(BaseModel):
             raise ValueError("model_version must be alphanumeric, underscore or hyphen (max 64 chars)")
         return v
 
+    @field_validator("horizon")
+    @classmethod
+    def validate_horizon(cls, v):
+        return _validate_horizon(v)
+
+    @field_validator("model_scope")
+    @classmethod
+    def validate_model_scope(cls, v):
+        return _validate_model_scope(v)
+
 class BatchForecastRequest(BaseModel):
     days_to_predict: int = Field(default=7, ge=1, le=90)
     use_dummy_data: bool = False
     node_ids: List[str] = Field(..., min_length=1, max_length=50)
+    # Module 4.3.6 — native multi-horizon + per-node model resolution.
+    horizon: Optional[int] = None
+    model_scope: Optional[str] = None
+
+    @field_validator("horizon")
+    @classmethod
+    def validate_horizon(cls, v):
+        return _validate_horizon(v)
+
+    @field_validator("model_scope")
+    @classmethod
+    def validate_model_scope(cls, v):
+        return _validate_model_scope(v)
 
     @field_validator("node_ids")
     @classmethod
@@ -60,21 +116,33 @@ class ForecastResult(BaseModel):
     consumption_lower: float
     consumption_upper: float
     confidence: float
+    # Module 4.3.6 — 1-indexed step within a native multi-horizon vector.
+    # None for legacy single-step / recursive forecasts.
+    horizon_step: Optional[int] = None
 
 class NodeForecast(BaseModel):
     node_id: str
     predictions: List[ForecastResult]
+    # Module 4.3.6 — which model served this node and at what native horizon.
+    model_scope: Optional[str] = None
+    horizon: Optional[int] = None
+    model_version: Optional[str] = None
 
 class ForecastResponse(BaseModel):
     predictions: List[ForecastResult]
     model_status: str
     model_version: Optional[str] = None
     node_id: Optional[str] = None
+    # Module 4.3.6
+    model_scope: Optional[str] = None
+    horizon: Optional[int] = None
 
 class BatchForecastResponse(BaseModel):
     forecasts: List[NodeForecast]
     model_status: str
     model_version: Optional[str] = None
+    # Module 4.3.6
+    horizon: Optional[int] = None
 
 
 class AnomalyScoreRequest(BaseModel):

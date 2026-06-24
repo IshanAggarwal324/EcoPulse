@@ -123,7 +123,7 @@ async def schedule_shadow_log(
     Swallows all errors — shadow logging must never affect the live response.
     """
     try:
-        champion_predictions = await forecast_service.predict(
+        champion_predictions, _ctx = await forecast_service.predict(
             days_to_predict, use_dummy_data, node_id, None
         )
         await ab.log_comparison(
