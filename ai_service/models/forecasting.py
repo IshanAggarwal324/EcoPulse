@@ -18,18 +18,25 @@ def _keras():
         ) from e
 
 
-def build_model(input_shape: tuple) -> Any:
+def build_model(input_shape: tuple, horizon: int = 1) -> Any:
     """
-    Builds the LSTM forecasting model.
+    Builds the LSTM forecasting model (Module 4.3.2).
+
+    For horizon == 1 the output is Dense(2) (generation, consumption).
+    For horizon  > 1 the output is Dense(horizon*2): a flattened vector of
+    generation+consumption for each of the next ``horizon`` steps, predicted in
+    a single forward pass (no recursive roll-forward).
     """
+    if horizon < 1:
+        raise ValueError("horizon must be >= 1")
     Sequential, LSTM, Dense, Dropout = _keras()
     model = Sequential()
     model.add(LSTM(50, return_sequences=True, input_shape=input_shape))
     model.add(Dropout(0.2))
     model.add(LSTM(50, return_sequences=False))
     model.add(Dropout(0.2))
-    model.add(Dense(2)) # Predicting 2 values: generation and consumption
-    
+    model.add(Dense(horizon * 2))  # gen + consumption per forecast step
+
     model.compile(optimizer='adam', loss='mse')
     return model
 
@@ -81,4 +88,38 @@ def predict_future(model, current_sequence: np.ndarray, days_to_predict: int, sc
     # Inverse transform predictions
     predictions = np.array(predictions)
     predictions_unscaled = scaler.inverse_transform(predictions)
-    return predictions_unscaled
+    # Sanitize: clip negatives and replace non-finite values (production guard)
+    predictions_unscaled = np.nan_to_num(predictions_unscaled, nan=0.0, posinf=0.0, neginf=0.0)
+    return np.clip(predictions_unscaled, 0.0, None)
+
+
+def predict_multi_horizon(
+    model,
+    current_sequence: np.ndarray,
+    horizon: int,
+    scaler,
+) -> np.ndarray:
+    """
+    Single forward pass producing the next ``horizon`` steps (Module 4.3.2).
+
+    Replaces the recursive ``predict_future`` roll-forward for multi-horizon
+    models. Returns an array of shape (horizon, 2) in the original (unscaled)
+    units of [generation, consumption] per step.
+
+    Output is sanitized (non-finite -> 0, negatives clipped to 0) because
+    forecast values feed the pricing engine and must never be NaN/negative.
+    """
+    if horizon < 1:
+        raise ValueError("horizon must be >= 1")
+    raw = model.predict(current_sequence, verbose=0)          # (1, horizon*2)
+    flat = np.asarray(raw[0], dtype=float)                    # (horizon*2,)
+    expected = horizon * 2
+    if flat.shape[0] != expected:
+        raise ValueError(
+            f"model output width {flat.shape[0]} != horizon*2 ({expected}); "
+            "model was likely trained with a different horizon"
+        )
+    steps = flat.reshape(horizon, 2)                          # (horizon, 2)
+    unscaled = scaler.inverse_transform(steps)
+    unscaled = np.nan_to_num(unscaled, nan=0.0, posinf=0.0, neginf=0.0)
+    return np.clip(unscaled, 0.0, None)

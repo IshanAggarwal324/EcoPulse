@@ -259,3 +259,53 @@ async def get_data_volume_summary(days: int = 365) -> dict:
         "min_date": min_date,
         "max_date": max_date,
     }
+
+
+async def list_nodes_with_history(min_days: int = 60) -> list[dict]:
+    """Module 4.3.4 — enumerate nodes with at least ``min_days`` of history.
+
+    Groups readings by ``nodeId`` and computes the per-node date span. Returns a
+    list of ``{"node_id": str, "date_span_days": int, "total_readings": int}``
+    sorted by date span descending. Nodes with no/invalid nodeId are excluded.
+    """
+    if min_days < 1:
+        raise ValueError("min_days must be >= 1")
+
+    pipeline = [
+        {"$match": {"nodeId": {"$exists": True, "$ne": None}}},
+        {
+            "$group": {
+                "_id": "$nodeId",
+                "total": {"$sum": 1},
+                "min_date": {"$min": "$timestamp"},
+                "max_date": {"$max": "$timestamp"},
+            }
+        },
+    ]
+    docs = await readings_collection.aggregate(pipeline).to_list(length=None)
+
+    out: list[dict] = []
+    for d in docs:
+        node_oid = d.get("_id")
+        if node_oid is None:
+            continue
+        try:
+            node_id = str(node_oid)
+        except Exception:
+            continue
+        min_date = d.get("min_date")
+        max_date = d.get("max_date")
+        span = 0
+        if min_date and max_date:
+            try:
+                span = (max_date - min_date).days + 1
+            except TypeError:
+                span = 0
+        if span >= min_days:
+            out.append({
+                "node_id": node_id,
+                "date_span_days": int(span),
+                "total_readings": int(d.get("total", 0)),
+            })
+    out.sort(key=lambda r: r["date_span_days"], reverse=True)
+    return out

@@ -28,6 +28,32 @@ def _clamp_alpha(raw: str, default: float = 0.1) -> float:
     return min(0.5, max(0.01, value))
 
 
+def _clamp_int(raw: str, low: int, high: int, default: int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return min(high, max(low, value))
+
+
+def _parse_horizons(raw: str) -> tuple[int, ...]:
+    """Parse a comma list of positive integer horizons (1..365), deduped/sorted."""
+    out: list[int] = []
+    seen: set[int] = set()
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            value = int(part)
+        except ValueError:
+            continue
+        if 1 <= value <= 365 and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return tuple(sorted(out)) or (1, 7, 14, 30)
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EcoPulse AI Service"
@@ -72,6 +98,13 @@ class Settings:
     ab_champion_version: Optional[str] = None
     ab_challenger_version: Optional[str] = None
     ab_traffic_pct: float = 0.0
+
+    # Module 4.3 — per-node multi-horizon forecasting.
+    forecast_horizons: tuple[int, ...] = (1, 7, 14, 30)
+    default_horizon: int = 30
+    node_min_history_days: int = 60
+    node_max_train_per_run: int = 50
+    per_node_training_enabled: bool = False
 
     @property
     def model_path(self) -> str:
@@ -126,4 +159,9 @@ def get_settings() -> Settings:
         ab_champion_version=os.getenv("ECOPULSE_AB_CHAMPION") or None,
         ab_challenger_version=os.getenv("ECOPULSE_AB_CHALLENGER") or None,
         ab_traffic_pct=_clamp_pct(os.getenv("ECOPULSE_AB_TRAFFIC_PCT", "0")),
+        forecast_horizons=_parse_horizons(os.getenv("ECOPULSE_FORECAST_HORIZONS", "1,7,14,30")),
+        default_horizon=_clamp_int(os.getenv("ECOPULSE_DEFAULT_HORIZON", "30"), 1, 365),
+        node_min_history_days=_clamp_int(os.getenv("ECOPULSE_NODE_MIN_HISTORY_DAYS", "60"), 1, 3650),
+        node_max_train_per_run=_clamp_int(os.getenv("ECOPULSE_NODE_MAX_TRAIN_PER_RUN", "50"), 1, 1000),
+        per_node_training_enabled=os.getenv("ECOPULSE_PER_NODE_TRAIN", "").lower() in ("1", "true", "yes"),
     )

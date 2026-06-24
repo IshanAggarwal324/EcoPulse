@@ -80,19 +80,28 @@ def make_supervised(
     horizon: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Converts scaled time-series to supervised windows.
+    Converts scaled time-series to supervised windows (Module 4.3.1).
+
     X: (samples, look_back, features)
-    y: (samples, features) for horizon=1
+    y for horizon == 1: (samples, features)        # backward compatible
+    y for horizon  > 1: (samples, horizon*features)  # flattened vector target
+
+    Each window predicts the next ``horizon`` steps directly (no recursion).
     """
     if look_back <= 0:
         raise ValueError("look_back must be > 0")
-    if horizon != 1:
-        raise ValueError("Only horizon=1 is supported currently")
+    if horizon < 1:
+        raise ValueError("horizon must be >= 1")
 
+    n_features = scaled_values.shape[1]
     X, y = [], []
-    for i in range(len(scaled_values) - look_back):
+    for i in range(len(scaled_values) - look_back - horizon + 1):
         X.append(scaled_values[i:(i + look_back), :])
-        y.append(scaled_values[i + look_back, :])
+        window = scaled_values[(i + look_back):(i + look_back + horizon), :]
+        if horizon == 1:
+            y.append(window[0, :])
+        else:
+            y.append(window.reshape(-1))
     return np.array(X), np.array(y)
 
 
@@ -102,6 +111,7 @@ def preprocess_data(
     *,
     scaler: Optional[MinMaxScaler] = None,
     fit_scaler: bool = True,
+    horizon: int = 1,
 ) -> Tuple[np.ndarray, np.ndarray, MinMaxScaler]:
     """
     Preprocesses the dataframe for LSTM training.
@@ -111,7 +121,8 @@ def preprocess_data(
     """
     clean = _ensure_daily_index(df)
     if clean.empty:
-        return np.empty((0, look_back, 2)), np.empty((0, 2)), MinMaxScaler(feature_range=(0, 1))
+        y_cols = 2 if horizon == 1 else horizon * 2
+        return np.empty((0, look_back, 2)), np.empty((0, y_cols)), MinMaxScaler(feature_range=(0, 1))
 
     used_scaler = scaler or MinMaxScaler(feature_range=(0, 1))
     if fit_scaler:
@@ -119,8 +130,20 @@ def preprocess_data(
     else:
         scaled_data = used_scaler.transform(clean.values)
 
-    X, y = make_supervised(scaled_data, look_back=look_back, horizon=1)
+    X, y = make_supervised(scaled_data, look_back=look_back, horizon=horizon)
     return X, y, used_scaler
+
+
+def assert_valid_horizon(horizon: int, allowed: Sequence[int] = (1, 7, 14, 30)) -> int:
+    """Validate that ``horizon`` is in the allow-list (guards against DoS via
+    arbitrarily large output dimensions in Dense(horizon*2))."""
+    try:
+        h = int(horizon)
+    except (TypeError, ValueError):
+        raise ValueError(f"horizon must be an integer, got {horizon!r}")
+    if h not in allowed:
+        raise ValueError(f"horizon {h} not allowed; must be one of {sorted(allowed)}")
+    return h
 
 
 def prepare_for_prediction(
@@ -142,6 +165,7 @@ def build_training_matrices(
     look_back: int = 30,
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
+    horizon: int = 1,
 ) -> Tuple[Dict[str, np.ndarray], MinMaxScaler, Dict[str, Any]]:
     """
     Leakage-safe preprocessing for model training.
@@ -150,6 +174,8 @@ def build_training_matrices(
       - scaler: fitted only on training slice
       - meta: details to persist alongside the model
     """
+    if horizon < 1:
+        raise ValueError("horizon must be >= 1")
     clean = _ensure_daily_index(df)
     train_df, val_df, test_df = time_split(clean, train_ratio=train_ratio, val_ratio=val_ratio)
 
@@ -158,12 +184,14 @@ def build_training_matrices(
     val_scaled = scaler.transform(val_df.values) if not val_df.empty else np.empty((0, 2))
     test_scaled = scaler.transform(test_df.values) if not test_df.empty else np.empty((0, 2))
 
-    X_train, y_train = make_supervised(train_scaled, look_back=look_back)
-    X_val, y_val = (np.empty((0, look_back, 2)), np.empty((0, 2))) if val_df.empty else make_supervised(val_scaled, look_back=look_back)
-    X_test, y_test = (np.empty((0, look_back, 2)), np.empty((0, 2))) if test_df.empty else make_supervised(test_scaled, look_back=look_back)
+    y_cols = 2 if horizon == 1 else horizon * 2
+    X_train, y_train = make_supervised(train_scaled, look_back=look_back, horizon=horizon)
+    X_val, y_val = (np.empty((0, look_back, 2)), np.empty((0, y_cols))) if val_df.empty else make_supervised(val_scaled, look_back=look_back, horizon=horizon)
+    X_test, y_test = (np.empty((0, look_back, 2)), np.empty((0, y_cols))) if test_df.empty else make_supervised(test_scaled, look_back=look_back, horizon=horizon)
 
     meta = {
         "look_back": look_back,
+        "horizon": horizon,
         "features": ["generation", "consumption"],
         "train_ratio": train_ratio,
         "val_ratio": val_ratio,

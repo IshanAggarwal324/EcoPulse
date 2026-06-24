@@ -102,3 +102,75 @@ def aggregate_mape(metrics: Optional[Dict[str, Any]]) -> Optional[float]:
         return (float(g) + float(c)) / 2.0
     except (TypeError, ValueError):
         return None
+
+
+def evaluate_multi_horizon_holdout(
+    model,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    scaler,
+    *,
+    horizon: int,
+    alpha: float = 0.1,
+) -> Dict[str, Any]:
+    """Holdout metrics for a multi-horizon (direct vector) model (Module 4.3).
+
+    ``y_test`` is the flattened (samples, horizon*2) target. Returns per-step
+    MAPE/RMSE plus per-step conformal margins so inference can build widening
+    confidence bands. Falls back to ``{"n_samples": 0}`` on shape mismatch.
+    """
+    if horizon < 1:
+        raise ValueError("horizon must be >= 1")
+    if X_test is None or y_test is None or len(X_test) == 0 or len(y_test) == 0:
+        return {"n_samples": 0}
+
+    expected = horizon * 2
+    preds_scaled = model.predict(X_test, verbose=0)
+    preds_flat = np.asarray(preds_scaled, dtype=float)
+    actual_flat = np.asarray(y_test, dtype=float)
+    if preds_flat.ndim != 2 or preds_flat.shape[1] != expected or actual_flat.shape != preds_flat.shape:
+        return {"n_samples": 0}
+
+    n = preds_flat.shape[0]
+    preds = preds_flat.reshape(n, horizon, 2)
+    actual = actual_flat.reshape(n, horizon, 2)
+    preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
+    actual = np.nan_to_num(actual, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Inverse-transform in (n*horizon, 2) batches (scaler is 2-column).
+    preds_u = scaler.inverse_transform(preds.reshape(-1, 2)).reshape(n, horizon, 2)
+    actual_u = scaler.inverse_transform(actual.reshape(-1, 2)).reshape(n, horizon, 2)
+    preds_u = np.nan_to_num(preds_u, nan=0.0, posinf=0.0, neginf=0.0)
+    actual_u = np.nan_to_num(actual_u, nan=0.0, posinf=0.0, neginf=0.0)
+
+    alpha = min(0.5, max(0.01, float(alpha)))
+    q = 1.0 - alpha
+    steps = []
+    for h in range(horizon):
+        gen_err = np.abs(preds_u[:, h, 0] - actual_u[:, h, 0])
+        cons_err = np.abs(preds_u[:, h, 1] - actual_u[:, h, 1])
+        steps.append({
+            "step": h + 1,
+            "mape_generation": _safe_mape(actual_u[:, h, 0], preds_u[:, h, 0]),
+            "mape_consumption": _safe_mape(actual_u[:, h, 1], preds_u[:, h, 1]),
+            "rmse_generation": _rmse(actual_u[:, h, 0], preds_u[:, h, 0]),
+            "rmse_consumption": _rmse(actual_u[:, h, 1], preds_u[:, h, 1]),
+            "conformal": {
+                "alpha": alpha,
+                "generation_margin": _finite_quantile(gen_err, q),
+                "consumption_margin": _finite_quantile(cons_err, q),
+                "generation_coverage": float(np.mean(gen_err <= _finite_quantile(gen_err, q))),
+                "consumption_coverage": float(np.mean(cons_err <= _finite_quantile(cons_err, q))),
+            },
+        })
+
+    gen_all = np.mean([s["mape_generation"] for s in steps])
+    cons_all = np.mean([s["mape_consumption"] for s in steps])
+    return {
+        "n_samples": int(n),
+        "horizon": horizon,
+        "alpha": alpha,
+        "mape_generation": float(gen_all),
+        "mape_consumption": float(cons_all),
+        "per_step": steps,
+    }

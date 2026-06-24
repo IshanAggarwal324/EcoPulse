@@ -166,9 +166,24 @@ async def run_retrain(
     )
 
 
+async def _maybe_run_per_node(settings: Settings) -> None:
+    """Module 4.3.4 — optional per-node batch step. Failures are isolated and
+    never affect the global retrain outcome."""
+    try:
+        from train_node import run_per_node_training
+        await run_per_node_training(settings=settings)
+    except Exception as exc:  # pragma: no cover - best-effort, logged only
+        logger.error("Per-node training batch failed: %s", exc)
+
+
 async def main() -> None:
+    settings = get_settings()
     force = os.getenv("ECOPULSE_RETRAIN_FORCE", "").lower() in ("1", "true", "yes")
-    report = await run_retrain(force=force)
+    report = await run_retrain(force=force, settings=settings)
+    # Module 4.3.4 — per-node batch runs as a best-effort step after the global
+    # retrain. Its failures are isolated and never invalidate the report above.
+    if settings.per_node_training_enabled:
+        await _maybe_run_per_node(settings)
     print(asdict(report))  # noqa: T201 - CLI output for cron log scraping
 
 
