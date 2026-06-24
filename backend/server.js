@@ -148,6 +148,7 @@ const startServer = async () => {
       if (shuttingDown) return;
       try {
         await blockchainSyncService.syncBlockchainTrades();
+        await blockchainSyncService.syncEscrowEvents();
         await socketBroadcastService.flushAnalytics('full');
       } catch (err) {
         logger.warn('background blockchain sync skipped', { err, component: 'blockchain-sync' });
@@ -165,6 +166,7 @@ const startServer = async () => {
 
     stopBackgroundSync();
     blockchainSyncService.stopListeningToBlockchainEvents();
+    blockchainSyncService.stopListeningToEscrowEvents();
     simulatorManager.stop();
     mqttIngestionService.stop();
     rollupWorker.stop();
@@ -215,6 +217,7 @@ const startServer = async () => {
     server.headersTimeout = 35000;
     startBackgroundSync();
     blockchainSyncService.listenToBlockchainEvents();
+    blockchainSyncService.listenToEscrowEvents();
     // Start the embedded grid simulator when SIMULATOR_EMBEDDED=true.
     simulatorManager.startIfEnabled();
     // Start the MQTT ingestion service when MQTT_INGESTION_ENABLED=true.

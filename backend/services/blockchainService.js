@@ -8,6 +8,8 @@ const rpcUrl = getRpcUrl();
 const privateKey = process.env.PRIVATE_KEY || "";
 const carbonCreditAddress = process.env.CARBON_CREDIT_ADDRESS;
 const energyTradingAddress = process.env.ENERGY_TRADING_ADDRESS;
+const energyEscrowAddress = process.env.ENERGY_ESCROW_ADDRESS;
+const disputeResolutionAddress = process.env.DISPUTE_RESOLUTION_ADDRESS;
 
 // Provide a provider; signer wallet is created lazily only for write operations.
 const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -22,6 +24,8 @@ const getSignerWallet = () => {
 
 const CARBON_CREDIT_ABI_FALLBACK = require('../constants/carbonCreditAbi');
 const ENERGY_TRADING_ABI_FALLBACK = require('../constants/energyTradingAbi');
+const ENERGY_ESCROW_ABI_FALLBACK = require('../constants/energyEscrowAbi');
+const DISPUTE_RESOLUTION_ABI_FALLBACK = require('../constants/disputeResolutionAbi');
 
 const loadArtifactAbi = (relativePath, fallback) => {
   try {
@@ -37,6 +41,8 @@ const loadArtifactAbi = (relativePath, fallback) => {
 
 let carbonCreditAbi = null;
 let energyTradingAbi = null;
+let energyEscrowAbi = null;
+let disputeResolutionAbi = null;
 
 const getCarbonCreditAbi = () => {
   if (!carbonCreditAbi) {
@@ -58,6 +64,26 @@ const getEnergyTradingAbi = () => {
   return energyTradingAbi;
 };
 
+const getEnergyEscrowAbi = () => {
+  if (!energyEscrowAbi) {
+    energyEscrowAbi = loadArtifactAbi(
+      'artifacts/contracts/EnergyEscrow.sol/EnergyEscrow.json',
+      ENERGY_ESCROW_ABI_FALLBACK,
+    );
+  }
+  return energyEscrowAbi;
+};
+
+const getDisputeResolutionAbi = () => {
+  if (!disputeResolutionAbi) {
+    disputeResolutionAbi = loadArtifactAbi(
+      'artifacts/contracts/DisputeResolution.sol/DisputeResolution.json',
+      DISPUTE_RESOLUTION_ABI_FALLBACK,
+    );
+  }
+  return disputeResolutionAbi;
+};
+
 class BlockchainService {
   static getCarbonCreditContract() {
     if (!carbonCreditAddress) throw new Error("CARBON_CREDIT_ADDRESS not configured in .env");
@@ -72,6 +98,30 @@ class BlockchainService {
   static getEnergyTradingContractReadOnly() {
     if (!energyTradingAddress) throw new Error("ENERGY_TRADING_ADDRESS not configured in .env");
     return new ethers.Contract(energyTradingAddress, getEnergyTradingAbi(), provider);
+  }
+
+  static getEnergyEscrowContractReadOnly() {
+    if (!energyEscrowAddress) throw new Error("ENERGY_ESCROW_ADDRESS not configured in .env");
+    return new ethers.Contract(energyEscrowAddress, getEnergyEscrowAbi(), provider);
+  }
+
+  static getEnergyEscrowContract() {
+    if (!energyEscrowAddress) throw new Error("ENERGY_ESCROW_ADDRESS not configured in .env");
+    return new ethers.Contract(energyEscrowAddress, getEnergyEscrowAbi(), getSignerWallet());
+  }
+
+  static getDisputeResolutionContractReadOnly() {
+    if (!disputeResolutionAddress) throw new Error("DISPUTE_RESOLUTION_ADDRESS not configured in .env");
+    return new ethers.Contract(disputeResolutionAddress, getDisputeResolutionAbi(), provider);
+  }
+
+  static getDisputeResolutionContract() {
+    if (!disputeResolutionAddress) throw new Error("DISPUTE_RESOLUTION_ADDRESS not configured in .env");
+    return new ethers.Contract(disputeResolutionAddress, getDisputeResolutionAbi(), getSignerWallet());
+  }
+
+  static getEscrowAddresses() {
+    return { energyEscrowAddress, disputeResolutionAddress };
   }
 
   static async getActiveListings() {

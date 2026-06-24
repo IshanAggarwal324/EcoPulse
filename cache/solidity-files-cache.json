@@ -758,6 +758,162 @@
       "artifacts": [
         "Ownable2Step"
       ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\EnergyEscrow.sol": {
+      "lastModificationDate": 1782503380163,
+      "contentHash": "892b541584282f788feb1b0f3238b2b0",
+      "sourceName": "contracts/EnergyEscrow.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol",
+        "@openzeppelin/contracts/access/Ownable2Step.sol",
+        "./interfaces/IDisputeResolution.sol",
+        "./interfaces/IEnergyEscrow.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "EnergyEscrow"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\interfaces\\IDisputeResolution.sol": {
+      "lastModificationDate": 1782503325144,
+      "contentHash": "325a0dd4bbfa2640e796f0d82bfa7dff",
+      "sourceName": "contracts/interfaces/IDisputeResolution.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "IDisputeResolution"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\interfaces\\IEnergyEscrow.sol": {
+      "lastModificationDate": 1782503334806,
+      "contentHash": "85ae3f0362dd3214c38af019af140e60",
+      "sourceName": "contracts/interfaces/IEnergyEscrow.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "IEnergyEscrow"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\DisputeResolution.sol": {
+      "lastModificationDate": 1782503528564,
+      "contentHash": "4f0f140b325a7bf893c38401a180da72",
+      "sourceName": "contracts/DisputeResolution.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/access/AccessControl.sol",
+        "./interfaces/IDisputeResolution.sol",
+        "./interfaces/IEnergyEscrow.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "DisputeResolution"
+      ]
     }
   }
 }

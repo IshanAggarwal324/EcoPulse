@@ -17,6 +17,7 @@ const MarketplaceOrderCard = ({
   loading,
   isCorrectNetwork,
   onPurchase,
+  onPurchaseEscrow,
   onCancel,
 }) => {
   const isOwner =
@@ -73,14 +74,27 @@ const MarketplaceOrderCard = ({
               Cancel order
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => onPurchase(order.listingId, order.price)}
-              disabled={loading || !isCorrectNetwork || !account}
-              className="touch-target bg-blue-600/80 hover:bg-blue-500/80 disabled:bg-slate-700/50 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 w-full sm:w-auto"
-            >
-              Buy now
-            </button>
+            <div className="flex flex-col gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => onPurchase(order.listingId, order.price)}
+                disabled={loading || !isCorrectNetwork || !account}
+                className="touch-target bg-blue-600/80 hover:bg-blue-500/80 disabled:bg-slate-700/50 text-white px-4 py-2.5 rounded-xl font-medium transition-all duration-200 w-full sm:w-auto"
+              >
+                Buy now
+              </button>
+              {onPurchaseEscrow && (
+                <button
+                  type="button"
+                  onClick={() => onPurchaseEscrow(order)}
+                  disabled={loading || !isCorrectNetwork || !account}
+                  title="Lock funds in escrow — release after delivery, or dispute"
+                  className="touch-target bg-slate-700/60 hover:bg-slate-600/60 disabled:bg-slate-700/40 text-emerald-300 border border-emerald-500/20 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 w-full sm:w-auto"
+                >
+                  Buy via escrow
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

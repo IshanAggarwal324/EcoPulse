@@ -95,27 +95,107 @@ const etAbi = [
 
 const getCcAddress = () => import.meta.env.VITE_CARBON_CREDIT_ADDRESS;
 const getEtAddress = () => import.meta.env.VITE_ENERGY_TRADING_ADDRESS;
+const getEscrowAddress = () => import.meta.env.VITE_ENERGY_ESCROW_ADDRESS;
+const getDisputeAddress = () => import.meta.env.VITE_DISPUTE_RESOLUTION_ADDRESS;
 
-export const getCarbonCreditBalance = async (address) => {
+// Module 5.1 — EnergyEscrow conditional settlement ABI.
+const escrowAbi = [
+  "function createEscrow(uint256 listingId, address seller, uint256 amount)",
+  "function confirmDelivery(uint256 escrowId)",
+  "function release(uint256 escrowId)",
+  "function openDispute(uint256 escrowId, bytes32 evidenceHash)",
+  "function claimTimeoutRefund(uint256 escrowId)",
+  "function getEscrow(uint256) view returns (address buyer, address seller, uint256 amount, uint8 state, uint256 createdAt, uint256 deliveredAt)",
+  "function disputeWindow() view returns (uint256)",
+  "event EscrowCreated(uint256 indexed escrowId, uint256 indexed listingId, address indexed buyer, address seller, uint256 amount)",
+  "event EscrowReleased(uint256 indexed escrowId, address indexed seller, uint256 amount)",
+  "event DisputeOpened(uint256 indexed escrowId, uint256 indexed disputeId, bytes32 evidenceHash)",
+];
+
+export const ESCROW_STATES = ["funded", "delivered", "released", "disputed", "refunded"];
+
+export const getEscrow = async (escrowId) => {
   const provider = getProvider();
-  if (!provider) return "0";
-  const tokenAddress = getCcAddress();
+  const address = getEscrowAddress();
+  if (!provider || !address) return null;
   try {
-    const contract = new ethers.Contract(tokenAddress, ccAbi, provider);
-    const balance = await contract.balanceOf(address);
-    return ethers.formatEther(balance);
+    const contract = new ethers.Contract(address, escrowAbi, provider);
+    const e = await contract.getEscrow(escrowId);
+    const stateIndex = Number(e.state ?? e[3]);
+    return {
+      buyer: e.buyer ?? e[0],
+      seller: e.seller ?? e[1],
+      amount: (e.amount ?? e[2]).toString(),
+      state: ESCROW_STATES[stateIndex] ?? "unknown",
+      createdAt: Number(e.createdAt ?? e[4]) * 1000,
+      deliveredAt: Number(e.deliveredAt ?? e[5] ?? 0) * 1000 || null,
+    };
   } catch (error) {
-    logClientError("blockchain", error, { operation: "getCarbonCreditBalance" });
-    return "0";
+    logClientError("blockchain", error, { operation: "getEscrow" });
+    return null;
   }
 };
 
-export const getTokenAllowance = async (owner) => {
-  const provider = getProvider();
-  if (!provider) return 0n;
-  const contract = new ethers.Contract(getCcAddress(), ccAbi, provider);
-  return contract.allowance(owner, getEtAddress());
-};
+/**
+ * Fund an escrow for a marketplace listing instead of an instant purchase.
+ * The buyer must approve the escrow contract to spend `amount` CC first.
+ * @param {number|string} listingId EnergyTrading listing reference.
+ * @param {string} seller Seller wallet address.
+ * @param {string} amount CC amount in ether (string), e.g. "100".
+ */
+export const createEscrow = async (listingId, seller, amount) =>
+  executeSignedTx(async (signer) => {
+    if (!ethers.isAddress(seller)) throw new Error("Invalid seller address");
+    const amountWei = ethers.parseEther(String(amount));
+    const escrowAddr = getEscrowAddress();
+    // Approve the escrow contract to pull the funds.
+    const cc = new ethers.Contract(getCcAddress(), ccAbi, signer);
+    const owner = await signer.getAddress();
+    const current = await cc.allowance(owner, escrowAddr);
+    if (current < amountWei) {
+      const approveTx = await cc.approve(escrowAddr, amountWei);
+      await approveTx.wait();
+    }
+    const escrow = new ethers.Contract(escrowAddr, escrowAbi, signer);
+    const tx = await escrow.createEscrow(listingId, seller, amountWei);
+    return tx.wait();
+  });
+
+export const confirmDelivery = async (escrowId) =>
+  executeSignedTx(async (signer) => {
+    const escrow = new ethers.Contract(getEscrowAddress(), escrowAbi, signer);
+    const tx = await escrow.confirmDelivery(escrowId);
+    return tx.wait();
+  });
+
+export const releaseEscrow = async (escrowId) =>
+  executeSignedTx(async (signer) => {
+    const escrow = new ethers.Contract(getEscrowAddress(), escrowAbi, signer);
+    const tx = await escrow.release(escrowId);
+    return tx.wait();
+  });
+
+export const claimTimeoutRefund = async (escrowId) =>
+  executeSignedTx(async (signer) => {
+    const escrow = new ethers.Contract(getEscrowAddress(), escrowAbi, signer);
+    const tx = await escrow.claimTimeoutRefund(escrowId);
+    return tx.wait();
+  });
+
+/**
+ * Open a dispute on-chain. `evidenceHash` should be a bytes32 (e.g. keccak256 of
+ * an off-chain evidence CID). If a plain string CID is passed it is hashed.
+ */
+export const openDispute = async (escrowId, evidence) =>
+  executeSignedTx(async (signer) => {
+    const escrow = new ethers.Contract(getEscrowAddress(), escrowAbi, signer);
+    const evidenceHash =
+      typeof evidence === "string" && evidence.startsWith("0x") && evidence.length === 66
+        ? evidence
+        : ethers.id(String(evidence ?? ""));
+    const tx = await escrow.openDispute(escrowId, evidenceHash);
+    return tx.wait();
+  });
 
 export const getMarketplaceAllowance = async (owner) => {
   const allowance = await getTokenAllowance(owner);

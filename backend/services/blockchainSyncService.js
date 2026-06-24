@@ -10,6 +10,7 @@ const { invalidateActiveListingsCache } = require('./listingCache');
 // TODO(L7): Off-chain signed order book to reduce listing gas costs.
 // See P2P_Trading_Production_Readiness.md §3 — Off-Chain Order Books.
 const SYNC_STATE_KEY = 'energy_trading';
+const ESCROW_SYNC_STATE_KEY = 'energy_escrow';
 const DEFAULT_SYNC_CHUNK_SIZE = 500;
 let isSyncing = false;
 let lastSyncDebug = {
@@ -708,11 +709,260 @@ const listenToBlockchainEvents = () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Module 5.1 — Escrow / Dispute event indexing
+//
+// Mirrors on-chain escrow + dispute state into MongoDB. Uses the same chunked,
+// idempotent upsert pattern as the EnergyTrading sync above. Escrow mirror
+// records are keyed by (chainId, contractAddress, escrowId) and overwritten on
+// each state advance, so re-scans stay convergent.
+// ---------------------------------------------------------------------------
+
+const ESCROW_EVENT_NAMES = [
+  'EscrowCreated',
+  'DeliveryConfirmed',
+  'EscrowReleased',
+  'EscrowRefunded',
+  'EscrowSplit',
+  'DisputeOpened',
+];
+
+const ESCROW_STATE_BY_EVENT = {
+  EscrowCreated: 'funded',
+  DeliveryConfirmed: 'delivered',
+  EscrowReleased: 'released',
+  EscrowRefunded: 'refunded',
+  DisputeOpened: 'disputed',
+};
+
+let isEscrowSyncing = false;
+let escrowListenerContracts = [];
+
+const stopListeningToEscrowEvents = () => {
+  for (const c of escrowListenerContracts) {
+    try {
+      c.removeAllListeners();
+    } catch {}
+  }
+  escrowListenerContracts = [];
+};
+
+const indexEscrowLog = async (eventName, log, parsed, chainId, contractAddress, provider) => {
+  const escrowService = require('./escrowService');
+  const disputeService = require('./disputeService');
+  const args = parsed.args;
+  const getArg = (key, index) => (args?.[key] !== undefined ? args[key] : args?.[index]);
+  const blockTimestamp = await getBlockTimestamp(provider, log.blockNumber);
+  const escrowId = Number(getArg('escrowId', 0));
+  const state = ESCROW_STATE_BY_EVENT[eventName] || null;
+
+  if (eventName === 'EscrowCreated') {
+    await escrowService.upsertEscrowFromEvent({
+      escrowId,
+      listingId: Number(getArg('listingId', 1)),
+      buyer: String(getArg('buyer', 2)).toLowerCase(),
+      seller: String(getArg('seller', 3)).toLowerCase(),
+      amount: getArg('amount', 4).toString(),
+      amountEther: ethers.formatEther(getArg('amount', 4)),
+      state,
+      createdAt: blockTimestamp,
+      txHash: String(log.transactionHash || '').toLowerCase(),
+      blockNumber: log.blockNumber,
+      chainId,
+      contractAddress,
+    });
+  } else if (eventName === 'DisputeOpened') {
+    const disputeId = Number(getArg('disputeId', 1));
+    const evidenceHash = getArg('evidenceHash', 2);
+    // First record the dispute, then advance the escrow to disputed.
+    await disputeService.upsertDisputeFromEvent({
+      disputeId,
+      escrowId,
+      buyer: null,
+      seller: null,
+      amount: '0',
+      evidenceHash: evidenceHash && evidenceHash !== ethers.ZeroHash ? String(evidenceHash) : null,
+      resolved: false,
+      openedAt: blockTimestamp,
+      txHash: String(log.transactionHash || '').toLowerCase(),
+      blockNumber: log.blockNumber,
+      chainId,
+      contractAddress,
+    });
+    await escrowService.upsertEscrowFromEvent({
+      escrowId,
+      state,
+      disputeId,
+      txHash: String(log.transactionHash || '').toLowerCase(),
+      blockNumber: log.blockNumber,
+      chainId,
+      contractAddress,
+    });
+  } else if (state) {
+    // DeliveryConfirmed / Released / Refunded / Split — advance state.
+    await escrowService.upsertEscrowFromEvent({
+      escrowId,
+      state,
+      deliveredAt: eventName === 'DeliveryConfirmed' ? blockTimestamp : null,
+      txHash: String(log.transactionHash || '').toLowerCase(),
+      blockNumber: log.blockNumber,
+      chainId,
+      contractAddress,
+    });
+  }
+};
+
+const indexDisputeLog = async (eventName, log, parsed, chainId, contractAddress, provider) => {
+  if (eventName !== 'DisputeResolved') return;
+  const disputeService = require('./disputeService');
+  const escrowService = require('./escrowService');
+  const args = parsed.args;
+  const getArg = (key, index) => (args?.[key] !== undefined ? args[key] : args?.[index]);
+  const blockTimestamp = await getBlockTimestamp(provider, log.blockNumber);
+  const disputeId = Number(getArg('disputeId', 0));
+  const escrowId = Number(getArg('escrowId', 1));
+  const outcomeCode = Number(getArg('outcome', 2));
+  const buyerShareBps = Number(getArg('buyerShareBps', 3));
+  const arbiter = String(getArg('arbiter', 4)).toLowerCase();
+  const outcome = disputeService.OUTCOME_INDEX[outcomeCode] || null;
+
+  await disputeService.upsertDisputeFromEvent({
+    disputeId,
+    escrowId,
+    resolved: true,
+    outcome,
+    buyerShareBps,
+    resolvedBy: arbiter,
+    resolvedAt: blockTimestamp,
+    txHash: String(log.transactionHash || '').toLowerCase(),
+    blockNumber: log.blockNumber,
+    chainId,
+    contractAddress,
+  });
+  // Refresh the linked escrow mirror so the UI reflects the settlement.
+  try {
+    await escrowService.syncEscrowMirror(escrowId, { chainId, contractAddress: process.env.ENERGY_ESCROW_ADDRESS });
+  } catch (e) {
+    console.warn(`[EscrowSync] mirror refresh failed for escrow ${escrowId}:`, e.message);
+  }
+};
+
+const syncEscrowEvents = async () => {
+  if (isEscrowSyncing) return { skipped: true, message: 'Escrow sync already in progress' };
+  if (!process.env.ENERGY_ESCROW_ADDRESS || !process.env.DISPUTE_RESOLUTION_ADDRESS) {
+    return { skipped: true, message: 'Escrow/Dispute addresses not configured', indexed: 0 };
+  }
+
+  isEscrowSyncing = true;
+  let indexed = 0;
+  try {
+    const escrowContract = BlockchainService.getEnergyEscrowContractReadOnly();
+    const disputeContract = BlockchainService.getDisputeResolutionContractReadOnly();
+    const provider = escrowContract.runner.provider;
+    const network = await provider.getNetwork();
+    const chainId = Number(network.chainId);
+    const escrowAddress = process.env.ENERGY_ESCROW_ADDRESS.toLowerCase();
+    const disputeAddress = process.env.DISPUTE_RESOLUTION_ADDRESS.toLowerCase();
+
+    const state = await SyncState.findOneAndUpdate(
+      { key: ESCROW_SYNC_STATE_KEY },
+      { $setOnInsert: { key: ESCROW_SYNC_STATE_KEY, lastSyncedBlock: 0, chainId, contractAddress: escrowAddress } },
+      { upsert: true, new: true },
+    );
+
+    const toBlock = await provider.getBlockNumber();
+    const chunkSize = getSyncChunkSize();
+    let fromBlock = state.lastSyncedBlock > 0
+      ? Math.max(0, state.lastSyncedBlock - getConfirmationsBuffer() + 1)
+      : Math.max(0, toBlock - getLookbackBlocks() + 1);
+
+    if (toBlock < state.lastSyncedBlock && chainId === 31337) {
+      await SyncState.updateOne({ key: ESCROW_SYNC_STATE_KEY }, { $set: { lastSyncedBlock: 0 } });
+      fromBlock = 0;
+    }
+
+    const escrowFilters = ESCROW_EVENT_NAMES.map((name) => ({ name, filter: escrowContract.filters[name]?.() }));
+    const disputeFilters = [{ name: 'DisputeResolved', filter: disputeContract.filters.DisputeResolved?.() }];
+
+    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
+      const end = Math.min(start + chunkSize - 1, toBlock);
+
+      for (const { name, filter } of escrowFilters) {
+        if (!filter) continue;
+        const logs = await fetchLogsForRange(escrowContract, filter, start, end);
+        for (const log of logs) {
+          try {
+            const parsed = escrowContract.interface.parseLog(log);
+            await indexEscrowLog(name, log, parsed, chainId, escrowAddress, provider);
+            indexed += 1;
+          } catch (e) {
+            console.warn(`[EscrowSync] skipped ${name} log block ${log.blockNumber}:`, e.message);
+          }
+        }
+      }
+
+      for (const { name, filter } of disputeFilters) {
+        if (!filter) continue;
+        const logs = await fetchLogsForRange(disputeContract, filter, start, end);
+        for (const log of logs) {
+          try {
+            const parsed = disputeContract.interface.parseLog(log);
+            await indexDisputeLog(name, log, parsed, chainId, disputeAddress, provider);
+            indexed += 1;
+          } catch (e) {
+            console.warn(`[EscrowSync] skipped ${name} log block ${log.blockNumber}:`, e.message);
+          }
+        }
+      }
+
+      await SyncState.updateOne(
+        { key: ESCROW_SYNC_STATE_KEY },
+        { $set: { lastSyncedBlock: end, chainId, contractAddress: escrowAddress } },
+      );
+    }
+
+    return { indexed, fromBlock, toBlock, lastSyncedBlock: toBlock, syncedAt: new Date().toISOString() };
+  } catch (error) {
+    console.error('[EscrowSync] failed:', error.message);
+    return { skipped: true, message: error.message, indexed };
+  } finally {
+    isEscrowSyncing = false;
+  }
+};
+
+const listenToEscrowEvents = () => {
+  if (!process.env.ENERGY_ESCROW_ADDRESS || !process.env.DISPUTE_RESOLUTION_ADDRESS) {
+    console.warn('[EscrowSync] Escrow/Dispute addresses not configured for real-time listening.');
+    return;
+  }
+  try {
+    const escrowContract = BlockchainService.getEnergyEscrowContractReadOnly();
+    escrowListenerContracts.push(escrowContract);
+    ESCROW_EVENT_NAMES.forEach((name) => {
+      if (typeof escrowContract.filters[name] !== 'function') return;
+      escrowContract.on(name, async () => {
+        try {
+          await syncEscrowEvents();
+          socketBroadcastService.emitBlockchainEventWithAnalytics({ eventType: 'escrow_event', name });
+        } catch (err) {
+          console.error(`[EscrowSync] real-time ${name} handler error:`, err.message);
+        }
+      });
+    });
+    console.log('[EscrowSync] real-time escrow/dispute event listeners started.');
+  } catch (err) {
+    console.error('[EscrowSync] failed to start listeners:', err.message);
+  }
+};
+
 module.exports = {
   syncBlockchainTrades,
   getChainStatus,
   getLastSyncDebug: () => lastSyncDebug,
   listenToBlockchainEvents,
   stopListeningToBlockchainEvents,
+  syncEscrowEvents,
+  listenToEscrowEvents,
+  stopListeningToEscrowEvents,
 };
 

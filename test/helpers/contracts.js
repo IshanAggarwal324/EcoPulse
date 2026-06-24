@@ -32,9 +32,41 @@ async function deployEnergyTrading(carbonCreditAddress) {
   return energyTrading;
 }
 
+const DEFAULT_DISPUTE_WINDOW = 60n * 60n * 24n * 3n; // 3 days
+
+/**
+ * Deploy EnergyEscrow + DisputeResolution and wire them together. The escrow's
+ * dispute-resolution link is set after construction to break the circular
+ * constructor dependency (DisputeResolution needs the escrow address, the
+ * escrow needs the dispute address).
+ */
+async function deployEscrowSystem(
+  deployer,
+  carbonCreditAddress,
+  options = {},
+) {
+  const disputeWindow = options.disputeWindow ?? DEFAULT_DISPUTE_WINDOW;
+  const admin = options.admin ?? deployer.address;
+
+  const EnergyEscrow = await ethers.getContractFactory("EnergyEscrow");
+  const escrow = await EnergyEscrow.deploy(carbonCreditAddress, disputeWindow);
+  await escrow.waitForDeployment();
+  const escrowAddr = await escrow.getAddress();
+
+  const DisputeResolution = await ethers.getContractFactory("DisputeResolution");
+  const disputeResolution = await DisputeResolution.deploy(escrowAddr, admin);
+  await disputeResolution.waitForDeployment();
+
+  await escrow.setDisputeResolution(await disputeResolution.getAddress());
+
+  return { escrow, disputeResolution, escrowAddr };
+}
+
 module.exports = {
   DEFAULT_MAX_SUPPLY,
   DEFAULT_MAX_MINT_PER_TX,
+  DEFAULT_DISPUTE_WINDOW,
   deployCarbonCredit,
   deployEnergyTrading,
+  deployEscrowSystem,
 };

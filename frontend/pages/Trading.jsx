@@ -7,6 +7,7 @@ import {
   approveTokensIfNeeded,
   mintDevTokens,
   DEV_MINT_ENABLED,
+  createEscrow,
 } from '../utils/blockchain';
 import { marketplaceApi, tradesApi, analyticsApi, nodesApi, pricingApi } from '../utils/api';
 import { useSocketEvent, useSocketReconnect } from '../context/SocketContext';
@@ -415,6 +416,24 @@ const Trading = () => {
     }
   };
 
+  // Module 5.1 — conditional settlement: lock funds in escrow instead of an
+  // instant transfer. The buyer can later release, dispute, or claim a refund.
+  const handlePurchaseViaEscrow = async (order) => {
+    if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
+
+    setLoading(true);
+    try {
+      toast.info('Confirm escrow funding in MetaMask (approval + deposit)...');
+      const receipt = await createEscrow(order.listingId, order.seller, order.price);
+      toast.success('Funds locked in escrow. Confirm delivery before releasing.');
+      await afterChainTx(receipt);
+    } catch (err) {
+      toast.error(err.message || 'Escrow purchase failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCancel = async (id) => {
     if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
 
@@ -730,6 +749,7 @@ const Trading = () => {
                   loading={loading}
                   isCorrectNetwork={isCorrectNetwork}
                   onPurchase={handlePurchase}
+                  onPurchaseEscrow={handlePurchaseViaEscrow}
                   onCancel={handleCancel}
                 />
               ))}
