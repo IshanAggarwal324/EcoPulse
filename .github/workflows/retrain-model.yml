@@ -1,0 +1,52 @@
+name: Retrain Forecast Model
+
+# Module 4.2.2 — weekly scheduled retraining of the LSTM energy forecast.
+#
+# NOTE: In production this pipeline should run where the model registry and
+# MongoDB are reachable (e.g. a Kubernetes CronJob in the same cluster). This
+# workflow is provided as a portable alternative; it requires the runner to
+# have network access to MongoDB (MONGODB_URI) and produces the new bundle in
+# `models/registry`, uploaded as a workflow artifact. Wire a post-train upload
+# step (S3/GCS/registry store) if the registry is not on shared storage.
+
+on:
+  schedule:
+    # 03:00 UTC every Monday
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      force_promote:
+        description: 'Promote the candidate regardless of MAPE improvement'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  retrain:
+    name: Retrain + evaluate + (conditionally) promote
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai_service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run retrain scheduler
+        env:
+          NODE_ENV: production
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          ECOPULSE_USE_DUMMY: 'false'
+          ECOPULSE_RETRAIN_MIN_DAYS: '30'
+          ECOPULSE_RETRAIN_FORCE: ${{ github.event.inputs.force_promote }}
+        run: python -m jobs.retrain_scheduler
+
+      - name: Upload registry artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-registry-${{ github.run_id }}
+          path: ai_service/models/registry
+          if-no-files-found: warn

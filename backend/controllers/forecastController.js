@@ -65,6 +65,18 @@ async function callAiBatchForecast(body) {
   return response;
 }
 
+// Module 4.2.5 — confidence / calibration surface proxy.
+const VERSION_PARAM_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+async function callAiConfidence(modelVersion) {
+  const qs = modelVersion ? `?model_version=${encodeURIComponent(modelVersion)}` : '';
+  const response = await fetchWithTimeout(`${AI_SERVICE_URL}/forecast/confidence${qs}`, {
+    method: 'GET',
+    headers: buildInternalHeaders(),
+  });
+  return response;
+}
+
 async function shouldUseDummyData(forceDummy, nodeId = null) {
   if (forceDummy) return true;
   const query = nodeId ? { nodeId } : {};
@@ -315,6 +327,41 @@ const getForecast = asyncHandler(async (req, res) => {
   });
 });
 
+const getForecastConfidence = asyncHandler(async (req, res) => {
+  const modelVersion = req.query.model_version;
+
+  if (modelVersion !== undefined && modelVersion !== null && modelVersion !== '') {
+    if (!VERSION_PARAM_RE.test(String(modelVersion))) {
+      throw new ApiError(
+        'model_version must be alphanumeric, underscore or hyphen (max 64 chars)',
+        400,
+        'INVALID_MODEL_VERSION',
+      );
+    }
+  }
+
+  let response;
+  try {
+    response = await callAiConfidence(modelVersion || undefined);
+  } catch (error) {
+    throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE');
+  }
+
+  if (!response.ok) {
+    const details = await safeUpstreamErrorDetails(response);
+    throw new ApiError(
+      'Error communicating with AI service',
+      response.status,
+      'AI_UPSTREAM_ERROR',
+      details,
+    );
+  }
+
+  const data = await response.json();
+  return res.status(200).json({ success: true, data });
+});
+
 module.exports = {
   getForecast,
+  getForecastConfidence,
 };

@@ -1,10 +1,11 @@
 """Forecast service — orchestrates model inference and batch requests."""
 import asyncio
 import logging
+import math
 import os
 from datetime import datetime
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from app.config import Settings
 from app.exceptions import BatchForecastError, InsufficientDataError
@@ -33,8 +34,11 @@ class ForecastService:
         days_to_predict: int,
         use_dummy_data: bool,
         node_id: Optional[str] = None,
+        model_version: Optional[str] = None,
     ) -> list[ForecastResult]:
-        return await self._forecast_for_node(days_to_predict, use_dummy_data, node_id)
+        return await self._forecast_for_node(
+            days_to_predict, use_dummy_data, node_id, model_version
+        )
 
     async def predict_without_model(
         self,
@@ -124,14 +128,22 @@ class ForecastService:
         days_to_predict: int,
         use_dummy_data: bool,
         node_id: Optional[str] = None,
+        model_version: Optional[str] = None,
     ) -> list[ForecastResult]:
         label = node_id or "aggregate"
-        logger.info("Forecasting node=%s dummy=%s days=%s", label, use_dummy_data, days_to_predict)
+        logger.info(
+            "Forecasting node=%s dummy=%s days=%s version=%s",
+            label,
+            use_dummy_data,
+            days_to_predict,
+            model_version or "default",
+        )
+
+        # Resolve the specific version (or default). Raises ModelUnavailableError
+        # if the requested version does not exist.
+        model, scaler, metadata, _resolved = self._model_store.get_version(model_version)
 
         df = await self._load_history(use_dummy_data, node_id)
-
-        model = self._model_store.model
-        scaler = self._model_store.scaler
 
         sequence = prepare_for_prediction(
             df, scaler, look_back=self._settings.look_back_days
@@ -143,7 +155,8 @@ class ForecastService:
             days_to_predict,
             scaler,
         )
-        return self._format_predictions(raw_predictions, df.index[-1])
+        bands = (metadata or {}).get("metrics", {}).get("conformal")
+        return self._format_predictions(raw_predictions, df.index[-1], bands=bands)
 
     async def _load_history(self, use_dummy_data: bool, node_id: Optional[str]):
         label = node_id or "aggregate"
@@ -211,17 +224,28 @@ class ForecastService:
         return rows
 
     @staticmethod
-    def _format_predictions(predictions, last_date) -> list[ForecastResult]:
+    def _format_predictions(predictions, last_date, bands: Optional[dict[str, Any]] = None) -> list[ForecastResult]:
+        conformal = bool(bands) and "generation_margin" in (bands or {})
         results = []
         for i, pred in enumerate(predictions):
             pred_date = last_date + timedelta(days=i + 1)
             generation_value = float(pred[0])
             consumption_value = float(pred[1])
 
-            confidence = max(0.55, 0.92 - (i * 0.05))
-            uncertainty_pct = 1.0 - confidence
-            generation_margin = abs(generation_value) * uncertainty_pct
-            consumption_margin = abs(consumption_value) * uncertainty_pct
+            if conformal:
+                # Module 4.2.4 — calibrated conformal bands from training
+                # residuals. Uncertainty grows with horizon via sqrt scaling.
+                alpha = min(0.5, max(0.01, float(bands.get("alpha", 0.1))))
+                confidence = max(0.5, min(0.99, 1.0 - alpha))
+                horizon_scale = math.sqrt(i + 1)
+                generation_margin = abs(float(bands.get("generation_margin", 0.0))) * horizon_scale
+                consumption_margin = abs(float(bands.get("consumption_margin", 0.0))) * horizon_scale
+            else:
+                # Heuristic fallback when no conformal data is available.
+                confidence = max(0.55, 0.92 - (i * 0.05))
+                uncertainty_pct = 1.0 - confidence
+                generation_margin = abs(generation_value) * uncertainty_pct
+                consumption_margin = abs(consumption_value) * uncertainty_pct
 
             results.append(
                 ForecastResult(

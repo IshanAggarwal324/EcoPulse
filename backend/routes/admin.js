@@ -62,6 +62,9 @@ router.get('/simulator/preview', adminSimulatorController.getPreview);
 // Sub-module 1.1 — Device Registry & Authentication
 router.use('/devices', adminOnly, require('./devices'));
 
+// Module 4.2.7 — Model version lifecycle (versions, compare, drift, promote)
+router.use('/models', adminOnly, require('./admin/adminModels'));
+
 // Sub-module 1.2.7 — Ingestion observability (counters, dead-letters, MQTT status)
 router.get('/ingestion/health', adminIngestionController.getIngestionHealth);
 router.get('/ingestion/errors', adminOnly, adminIngestionController.listIngestionErrors);

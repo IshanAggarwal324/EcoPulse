@@ -41,6 +41,8 @@ readings_collection = db.energyreadings
 # legacy collection, using server-side downsampling for the LSTM window.
 ts_collection = db.energyreadings_ts
 hourly_collection = db.energyreadings_hourly
+# Module 4.2.6 — A/B model comparison log (predictions + later-joined actuals).
+modelcomparisons_collection = db.modelcomparisons
 
 # Whether the time-series read path is active. When true, the AI service reads
 # from the time-series collection (server-side $dateTrunc downsampling) and
@@ -204,3 +206,56 @@ async def get_historical_data(
     daily['timestamp'] = pd.to_datetime(daily['timestamp'])
     daily = daily[['timestamp', 'generation', 'consumption']].set_index('timestamp')
     return daily
+
+
+async def get_data_volume_summary(days: int = 365) -> dict:
+    """Data-volume gate input for the retrain pipeline (Module 4.2.2).
+
+    Aggregates the legacy readings collection into a summary of total readings,
+    distinct nodes and the date span covered. The span (max-min day) is a
+    conservative proxy for "days of history" — sufficient to gate retraining.
+    """
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+
+    pipeline = [
+        {"$match": {"timestamp": {"$gte": start_date, "$lte": end_date}}},
+        {
+            "$group": {
+                "_id": None,
+                "total": {"$sum": 1},
+                "nodes": {"$addToSet": "$nodeId"},
+                "min_date": {"$min": "$timestamp"},
+                "max_date": {"$max": "$timestamp"},
+            }
+        },
+    ]
+    doc = await readings_collection.aggregate(pipeline).to_list(length=1)
+
+    if not doc:
+        return {
+            "total_readings": 0,
+            "distinct_nodes": 0,
+            "date_span_days": 0,
+            "min_date": None,
+            "max_date": None,
+        }
+
+    d = doc[0]
+    nodes = [n for n in (d.get("nodes") or []) if n is not None]
+    min_date = d.get("min_date")
+    max_date = d.get("max_date")
+    date_span_days = 0
+    if min_date and max_date:
+        try:
+            date_span_days = (max_date - min_date).days + 1
+        except TypeError:
+            date_span_days = 0
+
+    return {
+        "total_readings": int(d.get("total", 0)),
+        "distinct_nodes": len(nodes),
+        "date_span_days": int(date_span_days),
+        "min_date": min_date,
+        "max_date": max_date,
+    }

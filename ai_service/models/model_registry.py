@@ -64,19 +64,22 @@ def save_bundle(
     scaler,
     preprocessing_meta: Dict[str, Any],
     training_meta: Dict[str, Any],
+    metrics: Optional[Dict[str, Any]] = None,
     registry_dir: str = DEFAULT_REGISTRY_DIR,
     model_name: str = DEFAULT_MODEL_NAME,
     version: Optional[str] = None,
+    promote: bool = True,
 ) -> str:
     """
     Saves a versioned bundle:
       - model.keras
       - scaler.joblib
       - metadata.json
-    Also updates <model_name>/LATEST.
+    Updates <model_name>/LATEST only when ``promote=True`` (default).
     Returns the version string.
     """
-    version = version or _utc_version()
+    _assert_safe_component(model_name, "model_name")
+    version = _assert_safe_component(version or _utc_version(), "version")
     model_root = os.path.join(registry_dir, model_name)
     version_dir = get_model_version_dir(
         registry_dir=registry_dir, model_name=model_name, version=version
@@ -100,13 +103,81 @@ def save_bundle(
         },
         "preprocessing": preprocessing_meta,
         "training": training_meta,
+        "metrics": metrics or {},
     }
 
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, sort_keys=True)
 
-    set_latest(model_root, version)
+    if promote:
+        set_latest(model_root, version)
     return version
+
+
+def read_metadata(
+    *,
+    registry_dir: str = DEFAULT_REGISTRY_DIR,
+    model_name: str = DEFAULT_MODEL_NAME,
+    version: str,
+) -> Dict[str, Any]:
+    """Read and return a version's metadata.json (raises FileNotFoundError)."""
+    _assert_safe_component(model_name, "model_name")
+    _assert_safe_component(version, "version")
+    version_dir = get_model_version_dir(
+        registry_dir=registry_dir, model_name=model_name, version=version
+    )
+    meta_path = os.path.join(version_dir, "metadata.json")
+    with open(meta_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def list_versions(
+    *,
+    registry_dir: str = DEFAULT_REGISTRY_DIR,
+    model_name: str = DEFAULT_MODEL_NAME,
+) -> list[Dict[str, Any]]:
+    """List every registered version with a lightweight summary.
+
+    Only ``metadata.json`` is read (no model deserialization) so this is safe
+    to call from request handlers. Version directories are validated before
+    being read to prevent traversal.
+    """
+    _assert_safe_component(model_name, "model_name")
+    model_root = os.path.join(registry_dir, model_name)
+    if not os.path.isdir(model_root):
+        return []
+
+    summaries: list[Dict[str, Any]] = []
+    for entry in os.listdir(model_root):
+        entry_path = os.path.join(model_root, entry)
+        if not os.path.isdir(entry_path):
+            continue
+        try:
+            _assert_safe_component(entry, "version")
+        except ValueError:
+            continue
+        meta_path = os.path.join(entry_path, "metadata.json")
+        if not os.path.isfile(meta_path):
+            continue
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            continue
+        metrics = meta.get("metrics", {}) or {}
+        summaries.append(
+            {
+                "version": meta.get("version", entry),
+                "saved_at_utc": meta.get("saved_at_utc"),
+                "data_source": (meta.get("training", {}) or {}).get("data_source"),
+                "n_rows": (meta.get("preprocessing", {}) or {}).get("n_rows"),
+                "mape_generation": metrics.get("mape_generation"),
+                "mape_consumption": metrics.get("mape_consumption"),
+                "promoted": meta.get("version") == get_latest(model_root),
+            }
+        )
+    summaries.sort(key=lambda s: s.get("saved_at_utc") or "", reverse=True)
+    return summaries
 
 
 def load_bundle(
@@ -119,10 +190,12 @@ def load_bundle(
     Loads model + scaler + metadata.
     If version is None, tries LATEST.
     """
+    _assert_safe_component(model_name, "model_name")
     model_root = os.path.join(registry_dir, model_name)
     resolved = version or get_latest(model_root)
     if not resolved:
         raise FileNotFoundError(f"No model version found for '{model_name}'")
+    _assert_safe_component(resolved, "version")
 
     version_dir = get_model_version_dir(
         registry_dir=registry_dir, model_name=model_name, version=resolved

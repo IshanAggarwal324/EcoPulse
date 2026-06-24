@@ -10,6 +10,24 @@ def _parse_origins(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
+def _clamp_pct(raw: str, default: float = 0.0) -> float:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    if not (0.0 <= value <= 100.0):
+        return default
+    return value
+
+
+def _clamp_alpha(raw: str, default: float = 0.1) -> float:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    return min(0.5, max(0.01, value))
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "EcoPulse AI Service"
@@ -41,6 +59,19 @@ class Settings:
     internal_api_key: str = ""
     log_level: str = "INFO"
     log_file: str = "app.log"
+
+    # Module 4.2 — retrain pipeline, uncertainty calibration, A/B, drift.
+    conformal_alpha: float = 0.1
+    retrain_min_days: int = 30
+    retrain_min_nodes: int = 1
+    retrain_history_days: int = 365
+    retrain_mape_improvement: float = 0.02
+    drift_window_days: int = 14
+    drift_mape_threshold: float = 0.5
+    ab_enabled: bool = False
+    ab_champion_version: Optional[str] = None
+    ab_challenger_version: Optional[str] = None
+    ab_traffic_pct: float = 0.0
 
     @property
     def model_path(self) -> str:
@@ -84,4 +115,15 @@ def get_settings() -> Settings:
         anomaly_zscore_cap=float(os.getenv("ANOMALY_ZSCORE_CAP", "3.0")),
         anomaly_contamination=float(os.getenv("ANOMALY_CONTAMINATION", "0.05")),
         anomaly_max_results=int(os.getenv("ANOMALY_MAX_RESULTS", "500")),
+        conformal_alpha=_clamp_alpha(os.getenv("ECOPULSE_CONFORMAL_ALPHA", "0.1")),
+        retrain_min_days=int(os.getenv("ECOPULSE_RETRAIN_MIN_DAYS", "30")),
+        retrain_min_nodes=int(os.getenv("ECOPULSE_RETRAIN_MIN_NODES", "1")),
+        retrain_history_days=int(os.getenv("ECOPULSE_RETRAIN_HISTORY_DAYS", "365")),
+        retrain_mape_improvement=float(os.getenv("ECOPULSE_RETRAIN_MAPE_IMPROVEMENT", "0.02")),
+        drift_window_days=int(os.getenv("ECOPULSE_DRIFT_WINDOW_DAYS", "14")),
+        drift_mape_threshold=float(os.getenv("ECOPULSE_DRIFT_MAPE_THRESHOLD", "0.5")),
+        ab_enabled=os.getenv("ECOPULSE_AB_ENABLED", "").lower() in ("1", "true", "yes"),
+        ab_champion_version=os.getenv("ECOPULSE_AB_CHAMPION") or None,
+        ab_challenger_version=os.getenv("ECOPULSE_AB_CHALLENGER") or None,
+        ab_traffic_pct=_clamp_pct(os.getenv("ECOPULSE_AB_TRAFFIC_PCT", "0")),
     )
