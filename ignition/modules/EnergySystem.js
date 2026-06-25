@@ -10,6 +10,13 @@ module.exports = buildModule("EnergySystemModule", (m) => {
   // Module 5.1 — escrow dispute window (seconds). Bounds enforced on-chain [1h, 30d].
   const DISPUTE_WINDOW = m.getParameter("disputeWindow", "259200"); // 3 days
 
+  // Module 5.3 — carbon lifecycle (retirement registry + bridge). Opt out by
+  // setting enableCarbonLifecycle=false for a minimal (legacy) deployment.
+  const ENABLE_CARBON_LIFECYCLE = m.getParameter("enableCarbonLifecycle", true);
+  // Bridge throughput caps (raw, 18 decimals). 100k CC per tx, 1M CC / 24h.
+  const BRIDGE_MAX_PER_TX = m.getParameter("bridgeMaxPerTx", "100000000000000000000000");
+  const BRIDGE_DAILY_CAP = m.getParameter("bridgeDailyCap", "1000000000000000000000000");
+
   const carbonCredit = m.contract("CarbonCredit", [MAX_SUPPLY, MAX_MINT_PER_TX, ADMIN]);
 
   const energyTrading = m.contract("EnergyTrading", [carbonCredit]);
@@ -22,5 +29,26 @@ module.exports = buildModule("EnergySystemModule", (m) => {
 
   m.call(energyEscrow, "setDisputeResolution", [disputeResolution], { after: [disputeResolution] });
 
-  return { carbonCredit, energyTrading, energyEscrow, disputeResolution };
+  // Module 5.3.2 — retirement registry, linked back into the token.
+  let retirementRegistry = null;
+  let carbonCreditBridge = null;
+  if (ENABLE_CARBON_LIFECYCLE) {
+    retirementRegistry = m.contract("RetirementRegistry", [carbonCredit, ADMIN]);
+    m.call(carbonCredit, "setRetirementRegistry", [retirementRegistry], {
+      after: [retirementRegistry],
+    });
+
+    // Module 5.3.3 — bridge. Granted MINTER_ROLE so inbound mintFor() works.
+    carbonCreditBridge = m.contract("CarbonCreditBridge", [
+      carbonCredit,
+      BRIDGE_MAX_PER_TX,
+      BRIDGE_DAILY_CAP,
+      ADMIN,
+    ]);
+    m.call(carbonCredit, "grantMinter", [carbonCreditBridge], {
+      after: [carbonCreditBridge],
+    });
+  }
+
+  return { carbonCredit, energyTrading, energyEscrow, disputeResolution, retirementRegistry, carbonCreditBridge };
 });

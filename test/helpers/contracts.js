@@ -62,11 +62,57 @@ async function deployEscrowSystem(
   return { escrow, disputeResolution, escrowAddr };
 }
 
+/**
+ * Module 5.3.2 — deploy RetirementRegistry and link it into CarbonCredit so
+ * retire() records on-chain. The link step is optional (linkToToken:false).
+ */
+async function deployRetirementRegistry(deployer, carbonCreditAddress, options = {}) {
+  const admin = options.admin ?? deployer.address;
+  const RetirementRegistry = await ethers.getContractFactory("RetirementRegistry");
+  const registry = await RetirementRegistry.deploy(carbonCreditAddress, admin);
+  await registry.waitForDeployment();
+
+  if (options.linkToToken !== false) {
+    const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
+    await CarbonCredit.attach(carbonCreditAddress).setRetirementRegistry(
+      await registry.getAddress(),
+    );
+  }
+  return registry;
+}
+
+const DEFAULT_BRIDGE_MAX_PER_TX = ethers.parseEther("100000");
+const DEFAULT_BRIDGE_DAILY_CAP = ethers.parseEther("1000000");
+
+/**
+ * Module 5.3.3 — deploy CarbonCreditBridge. Optionally grants the bridge
+ * MINTER_ROLE on the token (needed for inbound mintFor).
+ */
+async function deployBridge(deployer, carbonCreditAddress, options = {}) {
+  const admin = options.admin ?? deployer.address;
+  const maxPerTx = options.maxPerTx ?? DEFAULT_BRIDGE_MAX_PER_TX;
+  const dailyCap = options.dailyCap ?? DEFAULT_BRIDGE_DAILY_CAP;
+
+  const CarbonCreditBridge = await ethers.getContractFactory("CarbonCreditBridge");
+  const bridge = await CarbonCreditBridge.deploy(carbonCreditAddress, maxPerTx, dailyCap, admin);
+  await bridge.waitForDeployment();
+
+  if (options.grantMinter !== false) {
+    const CarbonCredit = await ethers.getContractFactory("CarbonCredit");
+    await CarbonCredit.attach(carbonCreditAddress).grantMinter(await bridge.getAddress());
+  }
+  return bridge;
+}
+
 module.exports = {
   DEFAULT_MAX_SUPPLY,
   DEFAULT_MAX_MINT_PER_TX,
   DEFAULT_DISPUTE_WINDOW,
+  DEFAULT_BRIDGE_MAX_PER_TX,
+  DEFAULT_BRIDGE_DAILY_CAP,
   deployCarbonCredit,
   deployEnergyTrading,
   deployEscrowSystem,
+  deployRetirementRegistry,
+  deployBridge,
 };

@@ -10,6 +10,8 @@ const carbonCreditAddress = process.env.CARBON_CREDIT_ADDRESS;
 const energyTradingAddress = process.env.ENERGY_TRADING_ADDRESS;
 const energyEscrowAddress = process.env.ENERGY_ESCROW_ADDRESS;
 const disputeResolutionAddress = process.env.DISPUTE_RESOLUTION_ADDRESS;
+const carbonCreditBridgeAddress = process.env.CARBON_CREDIT_BRIDGE_ADDRESS;
+const retirementRegistryAddress = process.env.RETIREMENT_REGISTRY_ADDRESS;
 
 // Provide a provider; signer wallet is created lazily only for write operations.
 const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -26,6 +28,8 @@ const CARBON_CREDIT_ABI_FALLBACK = require('../constants/carbonCreditAbi');
 const ENERGY_TRADING_ABI_FALLBACK = require('../constants/energyTradingAbi');
 const ENERGY_ESCROW_ABI_FALLBACK = require('../constants/energyEscrowAbi');
 const DISPUTE_RESOLUTION_ABI_FALLBACK = require('../constants/disputeResolutionAbi');
+const CARBON_CREDIT_BRIDGE_ABI_FALLBACK = require('../constants/carbonCreditBridgeAbi');
+const RETIREMENT_REGISTRY_ABI_FALLBACK = require('../constants/retirementRegistryAbi');
 
 const loadArtifactAbi = (relativePath, fallback) => {
   try {
@@ -43,6 +47,8 @@ let carbonCreditAbi = null;
 let energyTradingAbi = null;
 let energyEscrowAbi = null;
 let disputeResolutionAbi = null;
+let carbonCreditBridgeAbi = null;
+let retirementRegistryAbi = null;
 
 const getCarbonCreditAbi = () => {
   if (!carbonCreditAbi) {
@@ -84,10 +90,35 @@ const getDisputeResolutionAbi = () => {
   return disputeResolutionAbi;
 };
 
+const getCarbonCreditBridgeAbi = () => {
+  if (!carbonCreditBridgeAbi) {
+    carbonCreditBridgeAbi = loadArtifactAbi(
+      'artifacts/contracts/CarbonCreditBridge.sol/CarbonCreditBridge.json',
+      CARBON_CREDIT_BRIDGE_ABI_FALLBACK,
+    );
+  }
+  return carbonCreditBridgeAbi;
+};
+
+const getRetirementRegistryAbi = () => {
+  if (!retirementRegistryAbi) {
+    retirementRegistryAbi = loadArtifactAbi(
+      'artifacts/contracts/RetirementRegistry.sol/RetirementRegistry.json',
+      RETIREMENT_REGISTRY_ABI_FALLBACK,
+    );
+  }
+  return retirementRegistryAbi;
+};
+
 class BlockchainService {
   static getCarbonCreditContract() {
     if (!carbonCreditAddress) throw new Error("CARBON_CREDIT_ADDRESS not configured in .env");
     return new ethers.Contract(carbonCreditAddress, getCarbonCreditAbi(), getSignerWallet());
+  }
+
+  static getCarbonCreditContractReadOnly() {
+    if (!carbonCreditAddress) throw new Error("CARBON_CREDIT_ADDRESS not configured in .env");
+    return new ethers.Contract(carbonCreditAddress, getCarbonCreditAbi(), provider);
   }
 
   static getEnergyTradingContract() {
@@ -122,6 +153,43 @@ class BlockchainService {
 
   static getEscrowAddresses() {
     return { energyEscrowAddress, disputeResolutionAddress };
+  }
+
+  static getProvider() {
+    return provider;
+  }
+
+  // Module 5.3.3 / 5.3.4 — carbon lifecycle contracts.
+  static getCarbonCreditBridgeContractReadOnly() {
+    if (!carbonCreditBridgeAddress) {
+      throw new Error("CARBON_CREDIT_BRIDGE_ADDRESS not configured in .env");
+    }
+    return new ethers.Contract(carbonCreditBridgeAddress, getCarbonCreditBridgeAbi(), provider);
+  }
+
+  static getCarbonCreditBridgeContract() {
+    if (!carbonCreditBridgeAddress) {
+      throw new Error("CARBON_CREDIT_BRIDGE_ADDRESS not configured in .env");
+    }
+    return new ethers.Contract(carbonCreditBridgeAddress, getCarbonCreditBridgeAbi(), getSignerWallet());
+  }
+
+  static getRetirementRegistryContractReadOnly() {
+    if (!retirementRegistryAddress) {
+      throw new Error("RETIREMENT_REGISTRY_ADDRESS not configured in .env");
+    }
+    return new ethers.Contract(retirementRegistryAddress, getRetirementRegistryAbi(), provider);
+  }
+
+  static getRetirementRegistryContract() {
+    if (!retirementRegistryAddress) {
+      throw new Error("RETIREMENT_REGISTRY_ADDRESS not configured in .env");
+    }
+    return new ethers.Contract(retirementRegistryAddress, getRetirementRegistryAbi(), getSignerWallet());
+  }
+
+  static getBridgeAddresses() {
+    return { carbonCreditBridgeAddress, retirementRegistryAddress };
   }
 
   static async getActiveListings() {

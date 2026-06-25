@@ -15,7 +15,7 @@ import {
 import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 const CarbonBalanceChart = lazy(() => import('../components/ui/CarbonBalanceChart'));
-import { analyticsApi, ApiError } from '../utils/api';
+import { analyticsApi, carbonApi, ApiError } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
 import PageLoader from '../components/ui/PageLoader';
@@ -35,6 +35,7 @@ const Credits = () => {
   const [carbon, setCarbon] = useState(null);
   const [trades, setTrades] = useState(null);
   const [balanceAnalytics, setBalanceAnalytics] = useState(null);
+  const [carbonTotals, setCarbonTotals] = useState(null);
   const [periodDays, setPeriodDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -48,14 +49,16 @@ const Credits = () => {
       const params = { days: String(periodDays) };
       if (account) params.wallet = account;
 
-      const [summaryRes, balanceRes] = await Promise.all([
+      const [summaryRes, balanceRes, totalsRes] = await Promise.all([
         analyticsApi.getSummary(account ? { wallet: account } : {}),
         analyticsApi.getCarbonBalance(params),
+        carbonApi.getTotals().catch(() => null),
       ]);
 
       setCarbon(summaryRes.data.carbon);
       setTrades(summaryRes.data.trades);
       setBalanceAnalytics(balanceRes.data);
+      setCarbonTotals(totalsRes?.data || null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load carbon statistics');
     } finally {
@@ -154,6 +157,15 @@ const Credits = () => {
       value: (carbon?.estimatedGridCredits || 0).toLocaleString(),
       icon: <Award size={24} className="text-purple-400" />,
       trend: 'Platform aggregate',
+      positive: true,
+    },
+    {
+      label: 'Credits Retired',
+      value: carbonTotals?.totalRetired
+        ? `${parseAmount(carbonTotals.totalRetired).toLocaleString(undefined, { maximumFractionDigits: 0 })} CC`
+        : '—',
+      icon: <Award size={24} className="text-amber-400" />,
+      trend: carbonTotals?.totalRetirements != null ? `${carbonTotals.totalRetirements} retirements` : 'Permanently burned',
       positive: true,
     },
   ];

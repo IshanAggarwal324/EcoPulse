@@ -72,7 +72,12 @@ const ccAbi = [
   "function allowance(address owner, address spender) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
   "function mint(address to, uint256 amount) public",
+  "function retire(uint256 amount, string certificateUri) public returns (uint256)",
+  "function retireFrom(address account, uint256 amount, string certificateUri) public returns (uint256)",
+  "function totalRetired() view returns (uint256)",
+  "function retiredByAccount(address account) view returns (uint256)",
   "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Retired(address indexed account, uint256 amount, uint256 indexed retirementId, string certificateUri, address indexed initiator)",
 ];
 
 const LISTING_STATUS = {
@@ -97,6 +102,16 @@ const getCcAddress = () => import.meta.env.VITE_CARBON_CREDIT_ADDRESS;
 const getEtAddress = () => import.meta.env.VITE_ENERGY_TRADING_ADDRESS;
 const getEscrowAddress = () => import.meta.env.VITE_ENERGY_ESCROW_ADDRESS;
 const getDisputeAddress = () => import.meta.env.VITE_DISPUTE_RESOLUTION_ADDRESS;
+const getBridgeAddress = () => import.meta.env.VITE_CARBON_CREDIT_BRIDGE_ADDRESS;
+
+// Module 5.3.3 — CarbonCreditBridge client ABI (lock outbound).
+const bridgeAbi = [
+  "function lock(uint256 amount, uint256 targetChainId, address recipient)",
+  "function supportedChains(uint256) view returns (bool)",
+  "function maxPerTx() view returns (uint256)",
+  "function dailyRemaining() view returns (uint256)",
+  "event Locked(uint256 indexed lockId, address indexed sender, address recipient, uint256 amount, uint256 indexed targetChainId)",
+];
 
 // Module 5.1 — EnergyEscrow conditional settlement ABI.
 const escrowAbi = [
@@ -209,6 +224,63 @@ export const transferCarbonCredits = async (to, amount) =>
     }
     const contract = new ethers.Contract(getCcAddress(), ccAbi, signer);
     const tx = await contract.transfer(to, ethers.parseEther(amount.toString()));
+    return tx.wait();
+  });
+
+/**
+ * Module 5.3.1/5.3.8 — Retire (burn) the caller's own credits, issuing an
+ * on-chain retirement certificate. The holder signs; the backend only indexes
+ * the resulting tx, so no user keys ever leave the wallet.
+ * @param {number|string} amount CC to retire.
+ * @param {string} certificateUri Off-chain certificate URI (≤256 bytes).
+ */
+export const retireCredits = async (amount, certificateUri = "") =>
+  executeSignedTx(async (signer) => {
+    const uri = String(certificateUri ?? "");
+    if (Buffer.byteLength(uri, "utf8") > 256) {
+      throw new Error("Certificate URI must be 256 bytes or fewer");
+    }
+    const contract = new ethers.Contract(getCcAddress(), ccAbi, signer);
+    const tx = await contract.retire(ethers.parseEther(amount.toString()), uri);
+    return tx.wait();
+  });
+
+/** Read-only: cumulative CC retired by a wallet (or platform total). */
+export const getRetiredAmount = async (walletAddress) => {
+  const provider = getProvider();
+  const address = getCcAddress();
+  if (!provider || !address) return null;
+  try {
+    const contract = new ethers.Contract(address, ccAbi, provider);
+    const value = walletAddress
+      ? await contract.retiredByAccount(walletAddress)
+      : await contract.totalRetired();
+    return ethers.formatEther(value);
+  } catch (err) {
+    logClientError("blockchain", err, { operation: "getRetiredAmount" });
+    return null;
+  }
+};
+
+/**
+ * Module 5.3.3/5.3.8 — Initiate an outbound bridge lock (client signs). The
+ * caller must have approved the bridge contract to spend `amount` CC.
+ */
+export const initiateBridgeLock = async (amount, targetChainId, recipient) =>
+  executeSignedTx(async (signer) => {
+    if (!ethers.isAddress(recipient)) throw new Error("Invalid recipient address");
+    const bridgeAddr = getBridgeAddress();
+    if (!bridgeAddr) throw new Error("Bridge contract not configured");
+    const amountWei = ethers.parseEther(amount.toString());
+    const cc = new ethers.Contract(getCcAddress(), ccAbi, signer);
+    const owner = await signer.getAddress();
+    const current = await cc.allowance(owner, bridgeAddr);
+    if (current < amountWei) {
+      const approveTx = await cc.approve(bridgeAddr, amountWei);
+      await approveTx.wait();
+    }
+    const bridge = new ethers.Contract(bridgeAddr, bridgeAbi, signer);
+    const tx = await bridge.lock(amountWei, Number(targetChainId), recipient);
     return tx.wait();
   });
 

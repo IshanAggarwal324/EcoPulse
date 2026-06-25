@@ -203,6 +203,27 @@ export const analyticsApi = {
   syncBlockchain: () => fetchApi('/analytics/sync', { method: 'POST' }),
 };
 
+// Module 5.3.6 — carbon lifecycle (retirements, bridge, totals).
+export const carbonApi = {
+  getTotals: () => fetchApi('/carbon/totals'),
+  getBalance: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/carbon/balance${query ? `?${query}` : ''}`);
+  },
+  getRetirements: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/carbon/retirements${query ? `?${query}` : ''}`);
+  },
+  indexRetirement: (txHash) =>
+    fetchApi('/carbon/retirements', { method: 'POST', body: JSON.stringify({ txHash }) }),
+  getBridgeTransfers: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/carbon/bridge/transfers${query ? `?${query}` : ''}`);
+  },
+  indexBridge: (txHash) =>
+    fetchApi('/carbon/bridge/index', { method: 'POST', body: JSON.stringify({ txHash }) }),
+};
+
 export const marketplaceApi = {
   getOrders: (params = {}) => {
     const query = new URLSearchParams(params).toString();

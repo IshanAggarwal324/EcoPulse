@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\CarbonCredit.sol": {
-      "lastModificationDate": 1782050791114,
-      "contentHash": "7f69451d7ab76e784822a35d1bc03420",
+      "lastModificationDate": 1782550302978,
+      "contentHash": "42413a56e1a314da286fb4a8cae14980",
       "sourceName": "contracts/CarbonCredit.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -31,7 +31,9 @@
       },
       "imports": [
         "@openzeppelin/contracts/token/ERC20/ERC20.sol",
-        "@openzeppelin/contracts/access/AccessControl.sol"
+        "@openzeppelin/contracts/access/AccessControl.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "./interfaces/IRetirementRegistry.sol"
       ],
       "versionPragmas": [
         "^0.8.28"
@@ -913,6 +915,124 @@
       ],
       "artifacts": [
         "DisputeResolution"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\interfaces\\IRetirementRegistry.sol": {
+      "lastModificationDate": 1782550201201,
+      "contentHash": "c7bbdfd3bc058abde7557fc2976c56cb",
+      "sourceName": "contracts/interfaces/IRetirementRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "IRetirementRegistry"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\CarbonCreditBridge.sol": {
+      "lastModificationDate": 1782556250186,
+      "contentHash": "37bca6061ea0837cb897bfd9e8444852",
+      "sourceName": "contracts/CarbonCreditBridge.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/utils/Pausable.sol",
+        "@openzeppelin/contracts/access/AccessControl.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "CarbonCreditBridge",
+        "IBridgeToken"
+      ]
+    },
+    "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\RetirementRegistry.sol": {
+      "lastModificationDate": 1782550217025,
+      "contentHash": "54fea54940e4c961b9062cf5efa89ec2",
+      "sourceName": "contracts/RetirementRegistry.sol",
+      "solcConfig": {
+        "version": "0.8.28",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/access/AccessControl.sol",
+        "./interfaces/IRetirementRegistry.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.28"
+      ],
+      "artifacts": [
+        "RetirementRegistry"
       ]
     }
   }

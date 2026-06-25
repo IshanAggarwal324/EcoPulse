@@ -30,11 +30,12 @@ import { useWallet } from '../context/WalletContext';
 import {
   getMarketplaceAllowance,
   mintDevTokens,
+  retireCredits,
   subscribeCarbonCreditTransfers,
   transferCarbonCredits,
   DEV_MINT_ENABLED,
 } from '../utils/blockchain';
-import { analyticsApi, tradesApi } from '../utils/api';
+import { analyticsApi, tradesApi, carbonApi } from '../utils/api';
 import { validateWalletAddress, isAddressChecksumAmbiguous } from '../utils/validation';
 
 const formatAddress = (address) => {
@@ -65,6 +66,14 @@ const CarbonTransactions = () => {
   const [formError, setFormError] = useState('');
   const [recipientPasted, setRecipientPasted] = useState(false);
   const [pendingTransfer, setPendingTransfer] = useState(null);
+
+  // Module 5.3.8 — retirement flow.
+  const [retireAmount, setRetireAmount] = useState('');
+  const [retireUri, setRetireUri] = useState('');
+  const [retireError, setRetireError] = useState('');
+  const [retiring, setRetiring] = useState(false);
+  const [retirements, setRetirements] = useState([]);
+  const [retirementsLoading, setRetirementsLoading] = useState(false);
 
   const {
     account,
@@ -114,13 +123,27 @@ const CarbonTransactions = () => {
     }
   }, [filter, periodDays, listingId, minPrice, maxPrice, toast]);
 
+  const loadRetirements = useCallback(async (wallet) => {
+    setRetirementsLoading(true);
+    try {
+      const params = wallet ? { wallet } : {};
+      const res = await carbonApi.getRetirements({ ...params, limit: 50 });
+      setRetirements(res.data?.data || []);
+    } catch (err) {
+      // Non-fatal — retirements are supplementary context.
+    } finally {
+      setRetirementsLoading(false);
+    }
+  }, []);
+
   const refreshAll = useCallback(async (syncFirst = false) => {
     await Promise.all([
       refreshBalance(),
       loadAllowance(account),
       loadHistory(account, syncFirst),
+      loadRetirements(account),
     ]);
-  }, [account, refreshBalance, loadAllowance, loadHistory]);
+  }, [account, refreshBalance, loadAllowance, loadHistory, loadRetirements]);
 
   useEffect(() => {
     refreshAll(Boolean(account));
@@ -238,6 +261,45 @@ const CarbonTransactions = () => {
       toast.success('Blockchain data synced');
     } catch (err) {
       toast.error(err.message || 'Sync failed');
+    }
+  };
+
+  const handleRetire = async (e) => {
+    e.preventDefault();
+    setRetireError('');
+    if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
+
+    const retireAmt = parseAmount(retireAmount);
+    if (retireAmt <= 0) {
+      setRetireError('Enter a valid amount greater than zero');
+      return;
+    }
+    if (retireAmt > parseAmount(balance)) {
+      setRetireError('Amount exceeds your CC balance');
+      return;
+    }
+
+    setRetiring(true);
+    toast.info('Confirm retirement in MetaMask...');
+    try {
+      const receipt = await retireCredits(retireAmt, retireUri.trim());
+      if (receipt?.hash) {
+        toast.info(`Retired on chain — indexing ${receipt.hash.slice(0, 10)}...`);
+        try {
+          await carbonApi.indexRetirement(receipt.hash);
+        } catch (indexErr) {
+          toast.error(indexErr.message || 'Retired on chain, but indexing failed — it will appear after the next sync');
+        }
+      }
+      toast.success(`${retireAmt.toFixed(2)} CC retired`);
+      setRetireAmount('');
+      setRetireUri('');
+      await refreshAll(true);
+    } catch (err) {
+      toast.error(err.message || 'Retirement failed');
+      setRetireError(err.message || 'Retirement failed');
+    } finally {
+      setRetiring(false);
     }
   };
 
@@ -384,6 +446,42 @@ const CarbonTransactions = () => {
               {transferLoading ? 'Sending...' : 'Send Carbon Credits'}
             </button>
           </form>
+
+          <div className="pt-5 border-t border-slate-700/30">
+            <h4 className="text-base font-semibold text-white mb-1">Retire credits</h4>
+            <p className="text-sm text-slate-500 mb-3">
+              Permanently burn CC to claim a retirement certificate. This cannot be undone.
+            </p>
+            <form onSubmit={handleRetire} className="space-y-3">
+              <FormField
+                id="retireAmount"
+                label="Amount to retire (CC)"
+                type="number"
+                value={retireAmount}
+                onChange={(e) => setRetireAmount(e.target.value)}
+                placeholder="e.g. 10"
+                required
+                disabled={!account || !isCorrectNetwork || retiring}
+                error={retireError}
+                hint={`Available: ${parseAmount(balance).toFixed(2)} CC`}
+              />
+              <FormField
+                id="retireUri"
+                label="Certificate URI (optional)"
+                value={retireUri}
+                onChange={(e) => setRetireUri(e.target.value)}
+                placeholder="ipfs://… or https://…"
+                disabled={!account || !isCorrectNetwork || retiring}
+              />
+              <button
+                type="submit"
+                disabled={retiring || !account || !isCorrectNetwork}
+                className="touch-target w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all duration-200 shadow-lg shadow-amber-500/15"
+              >
+                {retiring ? 'Retiring...' : 'Retire Carbon Credits'}
+              </button>
+            </form>
+          </div>
 
           <div className="pt-4 border-t border-slate-700/30 space-y-3">
             <div className="bg-slate-900/40 p-3.5 rounded-xl border border-slate-700/30 text-sm">
@@ -555,6 +653,56 @@ const CarbonTransactions = () => {
           )}
         </div>
       </div>
+
+      {retirements.length > 0 && (
+        <div className="content-card animate-fade-in-up">
+          <div className="flex items-center justify-between gap-3 mb-5">
+            <div>
+              <h3 className="text-lg font-bold text-white">Retirement certificates</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Credits you have permanently retired, indexed from chain.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto -mx-2 px-2">
+            <table className="w-full text-sm text-left min-w-[560px]">
+              <thead>
+                <tr className="text-slate-500 border-b border-slate-700/40">
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">ID</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Amount</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Certificate</th>
+                  <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Tx hash</th>
+                  <th className="py-3 font-medium text-xs uppercase tracking-wider">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retirements.map((r) => (
+                  <tr key={`${r.retirementId}`} className="border-b border-slate-700/20 text-slate-200">
+                    <td className="py-3 pr-4 font-mono">#{r.retirementId}</td>
+                    <td className="py-3 pr-4 font-mono text-emerald-400">
+                      {parseAmount(r.amountEther ?? r.amount).toFixed(2)} CC
+                    </td>
+                    <td className="py-3 pr-4 text-xs max-w-[220px] truncate text-slate-400" title={r.certificateUri}>
+                      {r.certificateUri || '—'}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => copyTxHash(r.txHash)}
+                        className="inline-flex items-center gap-1 font-mono text-xs text-slate-500 hover:text-emerald-400 transition-colors"
+                      >
+                        {formatAddress(r.txHash)}
+                        <Copy size={12} />
+                      </button>
+                    </td>
+                    <td className="py-3 text-slate-500 text-xs">{formatDate(r.blockTimestamp)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {selectedTx && (
         <div className="content-card animate-fade-in-up">

@@ -18,6 +18,7 @@ const { getHealth } = require('./services/healthService');
 const { logger } = require('./utils/logger');
 const v1Routes = require('./routes/v1');
 const blockchainSyncService = require('./services/blockchainSyncService');
+const bridgeService = require('./services/bridgeService');
 const socketBroadcastService = require('./services/socketBroadcastService');
 const simulatorManager = require('./services/simulatorManager');
 const mqttIngestionService = require('./services/mqtt/mqttIngestionService');
@@ -225,6 +226,8 @@ const startServer = async () => {
     startBackgroundSync();
     blockchainSyncService.listenToBlockchainEvents();
     blockchainSyncService.listenToEscrowEvents();
+    // Module 5.3.4 — carbon bridge real-time indexing (no-op if bridge unconfigured).
+    bridgeService.listenToBridgeEvents();
     // Start the embedded grid simulator when SIMULATOR_EMBEDDED=true.
     simulatorManager.startIfEnabled();
     // Start the MQTT ingestion service when MQTT_INGESTION_ENABLED=true.
