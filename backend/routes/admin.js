@@ -95,4 +95,9 @@ router.post('/assistant/reindex', adminOnly, adminAssistantController.reindexAss
 // Sub-module 3.4.2 — aggregated assistant chat analytics
 router.get('/assistant/analytics', adminAssistantController.getAssistantAnalytics);
 
+// Module 5.2.6 — settlement verification admin surface
+const settlementController = require('../controllers/settlementController');
+router.get('/settlements/mismatches', settlementController.listMismatches);
+router.post('/settlements/reconcile', adminOnly, settlementController.triggerReconcile);
+
 module.exports = router;

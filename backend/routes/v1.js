@@ -26,6 +26,7 @@ router.use('/trades', ...guardedUser, apiRateLimit, require('./trades'));
 router.use('/marketplace', ...guardedUser, apiRateLimit, require('./marketplace'));
 router.use('/escrow', ...guardedUser, require('./escrow'));
 router.use('/disputes', ...guardedUser, require('./disputes'));
+router.use('/settlements', ...guardedUser, apiRateLimit, require('./settlements'));
 router.use('/pricing', ...guardedUser, require('./pricing'));
 router.use('/trading', ...guardedUser, require('./autoPolicy'));
 router.use('/assistant', ...guardedUser, require('./assistant'));

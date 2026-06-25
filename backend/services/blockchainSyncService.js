@@ -330,7 +330,7 @@ const parseEventTrade = async (eventName, log, args, provider, chainId, contract
     contractAddress,
   };
 
-  if (eventName === 'EnergyListed') {
+  if (eventName === 'EnergyListed' || eventName === 'EnergyListedWithExpiry') {
     return {
       ...base,
       listingId: Number(getArg('listingId', 0)),
@@ -359,6 +359,18 @@ const parseEventTrade = async (eventName, log, args, provider, chainId, contract
       ...base,
       listingId: Number(getArg('listingId', 0)),
       eventType: 'cancelled',
+      seller: String(getArg('seller', 1)).toLowerCase(),
+      buyer: null,
+      energyAmount: 0,
+      price: '0',
+    };
+  }
+
+  if (eventName === 'ListingExpired') {
+    return {
+      ...base,
+      listingId: Number(getArg('listingId', 0)),
+      eventType: 'expired',
       seller: String(getArg('seller', 1)).toLowerCase(),
       buyer: null,
       energyAmount: 0,
@@ -487,8 +499,10 @@ const syncBlockchainTrades = async () => {
 
     const filters = [
       { name: 'EnergyListed', filter: contract.filters.EnergyListed() },
+      { name: 'EnergyListedWithExpiry', filter: contract.filters.EnergyListedWithExpiry?.() },
       { name: 'EnergyPurchased', filter: contract.filters.EnergyPurchased() },
       { name: 'ListingCancelled', filter: contract.filters.ListingCancelled() },
+      { name: 'ListingExpired', filter: contract.filters.ListingExpired?.() },
     ];
 
     const interChunkDelayMs = getInterChunkDelayMs();
@@ -701,6 +715,23 @@ const listenToBlockchainEvents = () => {
         });
       } catch (err) {
         console.error('[Sync] Error processing real-time ListingCancelled event:', err.message);
+      }
+    });
+
+    contract.on('ListingExpired', async (listingId, seller) => {
+      const listingIdNum = Number(listingId);
+      console.log(`[Sync] Real-time event detected: ListingExpired (listingId: ${listingIdNum}, seller: ${seller})`);
+      try {
+        const syncResult = await syncBlockchainTrades();
+        console.log('[Sync] Event synced to MongoDB:', syncResult);
+
+        socketBroadcastService.emitBlockchainEventWithAnalytics({
+          eventType: 'expired',
+          listingId: listingIdNum,
+          seller,
+        });
+      } catch (err) {
+        console.error('[Sync] Error processing real-time ListingExpired event:', err.message);
       }
     });
 

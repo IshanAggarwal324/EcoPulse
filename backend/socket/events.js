@@ -8,6 +8,8 @@ const SOCKET_EVENTS = {
     ANALYTICS_UPDATE: 'analyticsUpdate',
     BLOCKCHAIN_EVENT: 'blockchainEvent',
     NOTIFICATION: 'notification',
+    SETTLEMENT_VERIFIED: 'settlementVerified',
+    SETTLEMENT_MISMATCH: 'settlementMismatch',
   },
 };
 

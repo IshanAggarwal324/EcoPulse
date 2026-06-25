@@ -25,6 +25,7 @@ const timeseriesSetup = require('./services/timeseries/timeseriesSetup');
 const rollupWorker = require('./workers/rollupWorker');
 const publicGridPoller = require('./workers/publicGridPoller');
 const autoListingMatcher = require('./workers/autoListingMatcher');
+const reconciliationWorker = require('./workers/reconciliationWorker');
 const { isTimeseriesEnabled } = require('./config/timeseries');
 const { initSocket, closeSocket } = require('./socket');
 
@@ -149,6 +150,11 @@ const startServer = async () => {
       try {
         await blockchainSyncService.syncBlockchainTrades();
         await blockchainSyncService.syncEscrowEvents();
+        // Module 5.2.5 — reconcile settlements after a sync. Best-effort; the
+        // dedicated worker also runs on its own schedule.
+        reconciliationWorker.tick().catch((e) => {
+          logger.warn('post-sync reconciliation skipped', { err: e, component: 'reconciliation' });
+        });
         await socketBroadcastService.flushAnalytics('full');
       } catch (err) {
         logger.warn('background blockchain sync skipped', { err, component: 'blockchain-sync' });
@@ -172,6 +178,7 @@ const startServer = async () => {
     rollupWorker.stop();
     publicGridPoller.stop();
     autoListingMatcher.stop();
+    reconciliationWorker.stop();
 
     const forceExitTimer = setTimeout(() => {
       logger.error('shutdown forced exit', { timeoutMs: SHUTDOWN_TIMEOUT_MS, component: 'shutdown' });
@@ -244,6 +251,10 @@ const startServer = async () => {
     // AUTO_TRADING_ENABLED=true. The per-tick gate re-reads the admin kill
     // switch, so a runtime pause takes effect without a restart.
     autoListingMatcher.start();
+
+    // Module 5.2.5 — settlement reconciliation worker. Backfills + reconciles
+    // Settlement records against meter telemetry on a schedule.
+    reconciliationWorker.start();
   });
 };
 

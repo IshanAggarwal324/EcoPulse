@@ -7,7 +7,7 @@ const tradeSchema = new mongoose.Schema({
   },
   eventType: {
     type: String,
-    enum: ['listed', 'purchased', 'cancelled'],
+    enum: ['listed', 'purchased', 'cancelled', 'expired'],
     required: true,
   },
   seller: {
