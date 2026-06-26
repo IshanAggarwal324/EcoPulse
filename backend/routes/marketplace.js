@@ -10,6 +10,13 @@ const {
 } = require('../controllers/marketplaceController');
 const { protect } = require('../middleware/auth');
 const { createBuyOrderRateLimiter } = require('../middleware/rateLimit');
+const {
+  getMarketplaceTrades,
+  getMarketTape,
+  getAggregatedTrades,
+  getMarketplaceTradeByTxHash,
+  getExpiredListings,
+} = require('../controllers/marketplaceTradeHistoryController');
 
 const router = express.Router();
 
@@ -28,5 +35,14 @@ router.delete('/orderbook/buy-orders/:id', protect, cancelBuyOrder);
 // Existing sell-listing endpoints.
 router.get('/orders', protect, getOrders);
 router.get('/orders/:listingId', protect, getOrderById);
+
+// Trade history (Module 6.2) — marketplace-native trade surface over the shared
+// trade history service. Static segments are registered before the :txHash param
+// route so they are not shadowed.
+router.get('/trades', protect, getMarketplaceTrades);
+router.get('/trades/recent', protect, getMarketTape);
+router.get('/trades/aggregate', protect, getAggregatedTrades);
+router.get('/trades/:txHash', protect, getMarketplaceTradeByTxHash);
+router.get('/listings/expired', protect, getExpiredListings);
 
 module.exports = router;

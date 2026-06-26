@@ -1,7 +1,7 @@
 const Trade = require('../models/Trade');
-const { asEnum } = require('../utils/validators');
+const { asEnum, WALLET_REGEX } = require('../utils/validators');
 
-const TRADE_EVENT_TYPES = ['listed', 'purchased', 'cancelled'];
+const TRADE_EVENT_TYPES = ['listed', 'purchased', 'cancelled', 'expired'];
 
 const normalizeWallet = (wallet) => (wallet ? String(wallet).toLowerCase() : null);
 
@@ -14,6 +14,8 @@ const buildTradeQuery = ({
   wallet = null,
   eventType = null,
   listingId = null,
+  seller = null,
+  buyer = null,
   sinceDays = null,
   since = null,
   minPrice = null,
@@ -21,11 +23,21 @@ const buildTradeQuery = ({
 }) => {
   const conditions = [];
   const normalizedWallet = normalizeWallet(wallet);
+  const normalizedSeller = normalizeWallet(seller);
+  const normalizedBuyer = normalizeWallet(buyer);
 
   if (normalizedWallet) {
     conditions.push({
       $or: [{ seller: normalizedWallet }, { buyer: normalizedWallet }],
     });
+  }
+
+  if (normalizedSeller) {
+    conditions.push({ seller: normalizedSeller });
+  }
+
+  if (normalizedBuyer) {
+    conditions.push({ buyer: normalizedBuyer });
   }
 
   if (eventType) {
@@ -84,6 +96,7 @@ const getTradeSummary = async (params = {}) => {
     listed: 0,
     purchased: 0,
     cancelled: 0,
+    expired: 0,
     totalVolumeCc: 0,
     totalEnergyTraded: 0,
     creditsReceived: 0,
@@ -100,6 +113,7 @@ const getTradeSummary = async (params = {}) => {
       summary.totalEnergyTraded += row.energy || 0;
     }
     if (row._id === 'cancelled') summary.cancelled = row.count;
+    if (row._id === 'expired') summary.expired = row.count;
   });
 
   if (normalizedWallet) {
@@ -156,10 +170,36 @@ const getTradeByTxHash = async (txHash) => {
   return trades;
 };
 
+const anonymizeWallet = (wallet) => {
+  if (!wallet || typeof wallet !== 'string') return null;
+  const w = wallet.toLowerCase();
+  if (!WALLET_REGEX.test(w)) return null;
+  return `${w.slice(0, 6)}…${w.slice(-4)}`;
+};
+
+const getRecentTrades = async ({ eventType = 'purchased', limit = 25, sinceDays = null } = {}) => {
+  const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const query = { eventType: asEnum(eventType, TRADE_EVENT_TYPES) || 'purchased' };
+  if (sinceDays) {
+    const days = Number(sinceDays);
+    if (Number.isFinite(days) && days > 0) {
+      query.blockTimestamp = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
+    }
+  }
+  const trades = await Trade.find(query)
+    .sort({ blockTimestamp: -1, blockNumber: -1, logIndex: -1 })
+    .limit(safeLimit)
+    .lean();
+
+  return trades;
+};
+
 module.exports = {
   buildTradeQuery,
   getTradeHistory,
   getTradeSummary,
   getTradeByTxHash,
+  getRecentTrades,
+  anonymizeWallet,
   TRADE_EVENT_TYPES,
 };
