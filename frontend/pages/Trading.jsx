@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchAllListings,
   listEnergy,
@@ -46,9 +46,47 @@ const formatDate = (value) => {
   return new Date(value).toLocaleString();
 };
 
+const DepthSide = ({ title, levels, barClass, textClass, valueKey }) => {
+  const safe = Array.isArray(levels) ? levels : [];
+  const maxEnergy = safe.reduce((m, l) => Math.max(m, Number(l.energyKw) || 0), 0) || 1;
+  return (
+    <div>
+      <div className="flex justify-between text-slate-500 mb-1">
+        <span>{title}</span>
+        <span>price (CC/kWh) · energy (kWh)</span>
+      </div>
+      <div className="space-y-1">
+        {safe.length === 0 ? (
+          <p className="text-slate-600">No levels</p>
+        ) : (
+          safe.map((lvl, i) => {
+            const widthPct = Math.max(4, Math.round(((Number(lvl.energyKw) || 0) / maxEnergy) * 100));
+            return (
+              <div key={`${valueKey}-${i}`} className="relative rounded">
+                <div
+                  className={`absolute inset-y-0 right-0 ${barClass} rounded`}
+                  style={{ width: `${widthPct}%` }}
+                />
+                <div className="relative flex justify-between px-2 py-0.5">
+                  <span className={`font-medium ${textClass}`}>
+                    {Number(lvl[valueKey]).toFixed(4)}
+                  </span>
+                  <span className="text-slate-300">{(Number(lvl.energyKw) || 0).toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Trading = () => {
   const [orders, setOrders] = useState([]);
   const [orderSummary, setOrderSummary] = useState(null);
+  const [depth, setDepth] = useState(null);
+  const [depthLoading, setDepthLoading] = useState(false);
   const [history, setHistory] = useState([]);
   const [apiSummary, setApiSummary] = useState(null);
   const [txFilter, setTxFilter] = useState('all');
@@ -175,6 +213,32 @@ const Trading = () => {
       setListingsLoading(false);
     }
   }, [account, sort, view]);
+
+  // Order-book depth ladder (Sub-module 6.1). Refreshed on mount and on the
+  // orderbookUpdate socket push (debounced — the sync pass can fire bursts).
+  const depthRefreshTimer = useRef(null);
+  const loadDepth = useCallback(async () => {
+    setDepthLoading(true);
+    try {
+      const response = await marketplaceApi.getOrderBookDepth({ buckets: 20 });
+      setDepth(response?.data || null);
+    } catch {
+      setDepth(null);
+    } finally {
+      setDepthLoading(false);
+    }
+  }, []);
+
+  const scheduleDepthRefresh = useCallback(() => {
+    if (depthRefreshTimer.current) clearTimeout(depthRefreshTimer.current);
+    depthRefreshTimer.current = setTimeout(() => {
+      loadDepth();
+    }, 600);
+  }, [loadDepth]);
+
+  useEffect(() => {
+    loadDepth();
+  }, [loadDepth]);
 
   const loadHistory = useCallback(async (wallet, syncFirst = false) => {
     setHistoryLoading(true);
@@ -329,6 +393,12 @@ const Trading = () => {
     } else if (data.eventType === 'cancelled') {
       toast.info(`Order #${data.listingId} cancelled`);
     }
+  });
+
+  useSocketEvent(SOCKET_EVENTS.SERVER.ORDERBOOK_UPDATE, () => {
+    // Compact diff signal (Sub-module 6.1.4) — refetch the visible book + depth.
+    loadOrders();
+    scheduleDepthRefresh();
   });
 
   const requireWallet = async () => {
@@ -720,6 +790,60 @@ const Trading = () => {
               </select>
             </div>
           </div>
+
+          {depth && view === 'market' && (
+            <div className="mb-6 rounded-xl border border-slate-700/60 bg-slate-900/40 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-slate-200">Market depth</h4>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
+                  <span>
+                    Mid:{' '}
+                    <span className="text-slate-100 font-medium">
+                      {depth.midUnitPriceCc ? depth.midUnitPriceCc.toFixed(4) : '—'}
+                    </span>
+                  </span>
+                  <span>
+                    Spread:{' '}
+                    <span className="text-slate-100 font-medium">
+                      {depth.spreadCc != null ? depth.spreadCc.toFixed(4) : '—'}
+                    </span>
+                  </span>
+                  <span>
+                    Best ask:{' '}
+                    <span className="text-rose-300 font-medium">
+                      {depth.asks?.bestAskUnitPriceCc ? depth.asks.bestAskUnitPriceCc.toFixed(4) : '—'}
+                    </span>
+                  </span>
+                  <span>
+                    Best bid:{' '}
+                    <span className="text-emerald-300 font-medium">
+                      {depth.bids?.bestBidUnitPriceCc ? depth.bids.bestBidUnitPriceCc.toFixed(4) : '—'}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <DepthSide
+                  title="Asks (sell)"
+                  levels={(depth.asks?.levels || []).slice().reverse().slice(0, 8)}
+                  barClass="bg-rose-500/25"
+                  textClass="text-rose-300"
+                  valueKey="unitPriceCc"
+                />
+                <DepthSide
+                  title="Bids (buy)"
+                  levels={(depth.bids?.levels || []).slice(0, 8)}
+                  barClass="bg-emerald-500/25"
+                  textClass="text-emerald-300"
+                  valueKey="unitPriceCc"
+                />
+              </div>
+              {depthLoading && (
+                <p className="text-[10px] text-slate-500 mt-2">Refreshing depth…</p>
+              )}
+            </div>
+          )}
 
           {listingsLoading ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">

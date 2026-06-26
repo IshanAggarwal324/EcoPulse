@@ -100,6 +100,29 @@ const emitBlockchainEventWithAnalytics = (eventPayload) => {
   scheduleAnalyticsUpdate('full');
 };
 
+/**
+ * Push an order-book update (Sub-module 6.1.4). Payload is a compact diff
+ * signal — the reason + a short summary — NOT the full book. Clients refetch
+ * their visible page. Emits to authenticated clients only.
+ *
+ * @param {{ reason?: string, changedListingIds?: number[], summary?: object }} payload
+ */
+const emitOrderbookUpdate = (payload = {}) => {
+  if (!io) return;
+  const safe =
+    payload && typeof payload === 'object'
+      ? {
+          reason: typeof payload.reason === 'string' ? payload.reason : 'update',
+          changedListingIds: Array.isArray(payload.changedListingIds)
+            ? payload.changedListingIds.slice(0, 200).map((n) => Number(n)).filter((n) => Number.isFinite(n))
+            : [],
+          summary: payload.summary || null,
+          at: new Date().toISOString(),
+        }
+      : { reason: 'update', at: new Date().toISOString() };
+  emit(SOCKET_EVENTS.SERVER.ORDERBOOK_UPDATE, safe);
+};
+
 module.exports = {
   setIo,
   emitNewReading,
@@ -108,4 +131,5 @@ module.exports = {
   emitReadingAndAnalytics,
   emitBlockchainEvent,
   emitBlockchainEventWithAnalytics,
+  emitOrderbookUpdate,
 };

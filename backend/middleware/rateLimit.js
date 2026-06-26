@@ -136,6 +136,14 @@ function createProfileRateLimiter() {
   });
 }
 
+function createBuyOrderRateLimiter() {
+  return createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    maxRequests: parseInt(process.env.BUY_ORDER_RATE_LIMIT_MAX || '20', 10),
+    message: 'Buy-order rate limit exceeded. Please try again later.',
+  });
+}
+
 function createPreviewRateLimiter() {
   return createRateLimiter({
     windowMs: 15 * 60 * 1000,
@@ -161,6 +169,7 @@ module.exports = {
   createForecastRateLimiter,
   createAnomalyRateLimiter,
   createProfileRateLimiter,
+  createBuyOrderRateLimiter,
   createPreviewRateLimiter,
   createApiRateLimiter,
 };

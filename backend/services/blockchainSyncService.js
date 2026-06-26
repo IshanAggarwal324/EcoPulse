@@ -561,6 +561,22 @@ const syncBlockchainTrades = async () => {
     await invalidateActiveListingsCache().catch((err) => {
       logBackgroundError('blockchainSync.invalidateListingCache', err);
     });
+    // Sub-module 6.1.4/6.1.5 — push a compact "book changed" signal and clear
+    // the depth ladder cache so clients refetch fresh, non-stale levels.
+    try {
+      const marketplaceService = require('./marketplaceService');
+      marketplaceService.invalidateOrderBookDepthCache();
+    } catch (err) {
+      logBackgroundError('blockchainSync.invalidateDepthCache', err);
+    }
+    try {
+      socketBroadcastService.emitOrderbookUpdate({
+        reason: 'sync',
+        summary: { indexed, fromBlock, toBlock },
+      });
+    } catch (err) {
+      logBackgroundError('blockchainSync.orderbookBroadcast', err);
+    }
     return result;
   } catch (error) {
     console.error('[Sync] Blockchain trade sync failed:', error.message);

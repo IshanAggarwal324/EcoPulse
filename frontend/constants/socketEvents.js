@@ -8,5 +8,7 @@ export const SOCKET_EVENTS = {
     ANALYTICS_UPDATE: 'analyticsUpdate',
     BLOCKCHAIN_EVENT: 'blockchainEvent',
     NOTIFICATION: 'notification',
+    // Order book (Sub-module 6.1.4)
+    ORDERBOOK_UPDATE: 'orderbookUpdate',
   },
 };

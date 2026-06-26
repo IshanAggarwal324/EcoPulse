@@ -230,6 +230,26 @@ export const marketplaceApi = {
     return fetchApi(`/marketplace/orders${query ? `?${query}` : ''}`);
   },
   getOrder: (listingId) => fetchApi(`/marketplace/orders/${listingId}`),
+  // Order book (Sub-module 6.1)
+  getOrderBook: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/orderbook${query ? `?${query}` : ''}`);
+  },
+  getOrderBookDepth: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/orderbook/depth${query ? `?${query}` : ''}`);
+  },
+  getBuyOrders: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/orderbook/buy-orders${query ? `?${query}` : ''}`);
+  },
+  createBuyOrder: (body) =>
+    fetchApi('/marketplace/orderbook/buy-orders', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  cancelBuyOrder: (id) =>
+    fetchApi(`/marketplace/orderbook/buy-orders/${id}`, { method: 'DELETE' }),
 };
 
 export const tradesApi = {
