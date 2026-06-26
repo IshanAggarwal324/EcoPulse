@@ -281,6 +281,23 @@ async function persistVerification(result, { actor = null, req = null } = {}) {
     new: true,
   });
 
+  if (result.seller && update.verificationStatus) {
+    try {
+      const { recomputeReputation } = require('./reputationService');
+      recomputeReputation(result.seller).catch((e) =>
+        logBackgroundError('settlementVerification.reputationRefresh', e, {
+          seller: result.seller,
+          txHash: result.txHash,
+        }),
+      );
+    } catch (e) {
+      logBackgroundError('settlementVerification.reputationRefresh', e, {
+        seller: result.seller,
+        txHash: result.txHash,
+      });
+    }
+  }
+
   auditService
     .log({
       actor: actor || { _id: null, email: null, role: null },

@@ -212,9 +212,36 @@ export const openDispute = async (escrowId, evidence) =>
     return tx.wait();
   });
 
+export const getTokenAllowance = async (owner) => {
+  const provider = getProvider();
+  const address = getCcAddress();
+  if (!provider || !address) return 0n;
+  try {
+    const contract = new ethers.Contract(address, ccAbi, provider);
+    return contract.allowance(owner, getEtAddress());
+  } catch (err) {
+    logClientError("blockchain", err, { operation: "getTokenAllowance" });
+    return 0n;
+  }
+};
+
 export const getMarketplaceAllowance = async (owner) => {
   const allowance = await getTokenAllowance(owner);
   return ethers.formatEther(allowance);
+};
+
+export const getCarbonCreditBalance = async (walletAddress) => {
+  const provider = getProvider();
+  const address = getCcAddress();
+  if (!provider || !address || !walletAddress) return "0";
+  try {
+    const contract = new ethers.Contract(address, ccAbi, provider);
+    const value = await contract.balanceOf(walletAddress);
+    return ethers.formatEther(value);
+  } catch (err) {
+    logClientError("blockchain", err, { operation: "getCarbonCreditBalance" });
+    return "0";
+  }
 };
 
 export const transferCarbonCredits = async (to, amount) =>

@@ -9,7 +9,14 @@ const {
   cancelBuyOrder,
 } = require('../controllers/marketplaceController');
 const { protect } = require('../middleware/auth');
-const { createBuyOrderRateLimiter } = require('../middleware/rateLimit');
+const { createBuyOrderRateLimiter, createRatingRateLimiter } = require('../middleware/rateLimit');
+const { validateRatingBody } = require('../middleware/ratingGuards');
+const {
+  submitRating,
+  listRatings,
+  getReputationByWallet,
+  getNodeReputation,
+} = require('../controllers/reputationController');
 const {
   getMarketplaceTrades,
   getMarketTape,
@@ -44,5 +51,19 @@ router.get('/trades/recent', protect, getMarketTape);
 router.get('/trades/aggregate', protect, getAggregatedTrades);
 router.get('/trades/:txHash', protect, getMarketplaceTradeByTxHash);
 router.get('/listings/expired', protect, getExpiredListings);
+
+// Ratings & reputation (Module 6.3). Reputation reads are public-ish aggregate
+// views behind `protect`; rating writes carry a tighter rate limit and the
+// eligibility guard (verified-trade participation + self-rating block).
+router.get('/reputation/node/:nodeId', protect, getNodeReputation);
+router.get('/reputation/:wallet', protect, getReputationByWallet);
+router.get('/ratings', protect, listRatings);
+router.post(
+  '/ratings',
+  protect,
+  createRatingRateLimiter(),
+  validateRatingBody,
+  submitRating,
+);
 
 module.exports = router;

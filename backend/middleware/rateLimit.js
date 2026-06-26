@@ -160,6 +160,14 @@ function createApiRateLimiter() {
   });
 }
 
+function createRatingRateLimiter() {
+  return createRateLimiter({
+    windowMs: 60 * 60 * 1000,
+    maxRequests: parseInt(process.env.RATING_RATE_LIMIT_MAX || '10', 10),
+    message: 'Rating submission rate limit exceeded. Please try again later.',
+  });
+}
+
 module.exports = {
   createRateLimiter,
   createChatRateLimiter,
@@ -171,5 +179,6 @@ module.exports = {
   createProfileRateLimiter,
   createBuyOrderRateLimiter,
   createPreviewRateLimiter,
+  createRatingRateLimiter,
   createApiRateLimiter,
 };

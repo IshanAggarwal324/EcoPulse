@@ -2,6 +2,7 @@ const Trade = require('../models/Trade');
 const BlockchainService = require('./blockchainService');
 const { getCachedActiveListings } = require('./listingCache');
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
+const { attachReputationSnapshots } = require('./reputationService');
 
 // Order-book depth config (Sub-module 6.1). Defaults keep the ladder compact;
 // the cap prevents a client from forcing an O(n*buckets) blowup.
@@ -110,9 +111,10 @@ const getActiveOrders = async ({
   const safePage = Math.max(Number(page) || 1, 1);
   const skip = (safePage - 1) * safeLimit;
   const paginated = orders.slice(skip, skip + safeLimit);
+  const ordersWithReputation = await attachReputationSnapshots(paginated);
 
   return {
-    orders: paginated,
+    orders: ordersWithReputation,
     summary: {
       totalActive: orders.length,
       totalEnergy: orders.reduce((sum, o) => sum + o.energyAmount, 0),
@@ -206,7 +208,7 @@ const getOrderById = async (listingId) => {
   const energyAmount = Number(listing.energyAmount) || 0;
   const price = parsePrice(listing.price);
 
-  return {
+  const order = {
     listingId: listing.id,
     seller: listing.seller,
     energyAmount,
@@ -223,6 +225,8 @@ const getOrderById = async (listingId) => {
     txHash: listedEvent?.txHash || null,
     purchaseTxHash: purchasedEvent?.txHash || null,
   };
+  const [orderWithReputation] = await attachReputationSnapshots([order]);
+  return orderWithReputation;
 };
 
 /**

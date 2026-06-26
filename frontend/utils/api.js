@@ -250,6 +250,14 @@ export const marketplaceApi = {
     }),
   cancelBuyOrder: (id) =>
     fetchApi(`/marketplace/orderbook/buy-orders/${id}`, { method: 'DELETE' }),
+  submitRating: (body) =>
+    fetchApi('/marketplace/ratings', { method: 'POST', body: JSON.stringify(body) }),
+  listRatings: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/ratings${query ? `?${query}` : ''}`);
+  },
+  getReputation: (wallet) => fetchApi(`/marketplace/reputation/${wallet}`),
+  getNodeReputation: (nodeId) => fetchApi(`/marketplace/reputation/node/${nodeId}`),
 };
 
 export const tradesApi = {

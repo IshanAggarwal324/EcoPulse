@@ -1,5 +1,6 @@
 import React from 'react';
 import { Zap, Clock, Tag } from 'lucide-react';
+import ReputationBadge from './ReputationBadge';
 
 const formatAddress = (address) => {
   if (!address) return '—';
@@ -34,6 +35,7 @@ const MarketplaceOrderCard = ({
             <span className="text-xs px-2 py-1 bg-slate-700/30 text-slate-500 rounded-lg border border-slate-700/20">
               Active
             </span>
+            <ReputationBadge reputation={order.reputation} />
           </div>
 
           <div className="flex items-center gap-2 text-white font-semibold text-lg mb-1.5">

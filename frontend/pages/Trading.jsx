@@ -16,6 +16,7 @@ import SectionTitle from '../components/ui/SectionTitle';
 import SummaryCard from '../components/ui/SummaryCard';
 import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
 import EmptyState from '../components/ui/EmptyState';
+import RatingModal from '../components/ui/RatingModal';
 import TransactionSummary from '../components/ui/TransactionSummary';
 import TransactionFilters from '../components/ui/TransactionFilters';
 import {
@@ -26,7 +27,7 @@ import {
 } from '../utils/transactionUtils';
 import { useToast } from '../context/ToastContext';
 import { useWallet } from '../context/WalletContext';
-import { Loader2, Store, ListOrdered, Zap, Sparkles } from 'lucide-react';
+import { Loader2, Store, ListOrdered, Zap, Sparkles, Star } from 'lucide-react';
 
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },
@@ -120,6 +121,19 @@ const Trading = () => {
     ensureNetwork,
   } = useWallet();
   const toast = useToast();
+  const [ratingTarget, setRatingTarget] = useState(null);
+  const [ratedTrades, setRatedTrades] = useState(() => new Set());
+
+  const handleSubmitRating = async (body) => {
+    const res = await marketplaceApi.submitRating(body);
+    setRatedTrades((prev) => {
+      const next = new Set(prev);
+      next.add(body.tradeTxHash);
+      return next;
+    });
+    toast.success('Rating submitted. Thank you!');
+    return res;
+  };
 
   const loadOrders = useCallback(async () => {
     setListingsLoading(true);
@@ -942,6 +956,7 @@ const Trading = () => {
                   <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Parties</th>
                   <th className="py-3 pr-4 font-medium text-xs uppercase tracking-wider">Block</th>
                   <th className="py-3 font-medium text-xs uppercase tracking-wider">Time</th>
+                  <th className="py-3 pl-4 font-medium text-xs uppercase tracking-wider">Rate</th>
                 </tr>
               </thead>
               <tbody>
@@ -972,6 +987,34 @@ const Trading = () => {
                     </td>
                     <td className="py-3 pr-4 font-mono text-xs">{trade.blockNumber ?? '—'}</td>
                     <td className="py-3 text-slate-400 text-xs">{formatDate(trade.blockTimestamp)}</td>
+                    <td className="py-3 pl-4">
+                      {trade.eventType === 'purchased' &&
+                      trade.buyer &&
+                      account &&
+                      trade.buyer.toLowerCase() === account.toLowerCase() ? (
+                        ratedTrades.has(trade.txHash) ? (
+                          <span className="text-xs text-emerald-400/70 inline-flex items-center gap-1">
+                            <Star size={12} className="fill-emerald-400/70" />
+                            Rated
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRatingTarget({
+                                tradeTxHash: trade.txHash,
+                                ratedWallet: trade.seller,
+                                listingId: trade.listingId,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+                          >
+                            <Star size={12} />
+                            Rate seller
+                          </button>
+                        )
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -979,6 +1022,15 @@ const Trading = () => {
           </div>
         )}
       </div>
+
+      <RatingModal
+        open={!!ratingTarget}
+        onClose={() => setRatingTarget(null)}
+        onSubmit={handleSubmitRating}
+        tradeTxHash={ratingTarget?.tradeTxHash}
+        ratedWallet={ratingTarget?.ratedWallet}
+        listingId={ratingTarget?.listingId}
+      />
     </div>
   );
 };
