@@ -24,6 +24,11 @@ const {
   getMarketplaceTradeByTxHash,
   getExpiredListings,
 } = require('../controllers/marketplaceTradeHistoryController');
+const {
+  listMySettlements,
+  getMySettlement,
+  getSettlementForOrder,
+} = require('../controllers/marketplaceSettlementController');
 
 const router = express.Router();
 
@@ -65,5 +70,12 @@ router.post(
   validateRatingBody,
   submitRating,
 );
+
+// Module 6.4.3 — settlement status surface. Static segments registered before
+// the :tradeId param route so they are not shadowed. Every handler is hard-
+// scoped to the caller's wallet (buyer or seller) — no admin/unscoped path here.
+router.get('/settlements', protect, listMySettlements);
+router.get('/orders/:listingId/settlement', protect, getSettlementForOrder);
+router.get('/settlements/:tradeId', protect, getMySettlement);
 
 module.exports = router;

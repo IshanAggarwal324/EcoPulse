@@ -17,6 +17,7 @@ const adminIngestionController = require('../controllers/admin/adminIngestionCon
 const adminTimeseriesController = require('../controllers/admin/adminTimeseriesController');
 const adminMarketplaceController = require('../controllers/admin/adminMarketplaceController');
 const adminAssistantController = require('../controllers/admin/adminAssistantController');
+const adminSettlementController = require('../controllers/admin/adminSettlementController');
 
 router.use(authorize('admin', 'moderator'));
 router.use(createAdminRateLimiter());
@@ -99,5 +100,11 @@ router.get('/assistant/analytics', adminAssistantController.getAssistantAnalytic
 const settlementController = require('../controllers/settlementController');
 router.get('/settlements/mismatches', settlementController.listMismatches);
 router.post('/settlements/reconcile', adminOnly, settlementController.triggerReconcile);
+
+// Module 6.4.6 — settlement status admin surface. Queue reads are admin/mod;
+// the manual override is admin-only (state-machine + critical audit log).
+router.get('/settlements', adminSettlementController.listSettlementQueue);
+router.get('/settlements/disputes', adminSettlementController.listDisputes);
+router.post('/settlements/:id/override', adminOnly, adminSettlementController.overrideStatus);
 
 module.exports = router;

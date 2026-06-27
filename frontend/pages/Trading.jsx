@@ -17,6 +17,7 @@ import SummaryCard from '../components/ui/SummaryCard';
 import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
 import EmptyState from '../components/ui/EmptyState';
 import RatingModal from '../components/ui/RatingModal';
+import SettlementStatusTimeline from '../components/settlement/SettlementStatusTimeline';
 import TransactionSummary from '../components/ui/TransactionSummary';
 import TransactionFilters from '../components/ui/TransactionFilters';
 import {
@@ -122,6 +123,7 @@ const Trading = () => {
   } = useWallet();
   const toast = useToast();
   const [ratingTarget, setRatingTarget] = useState(null);
+  const [settlementTarget, setSettlementTarget] = useState(null);
   const [ratedTrades, setRatedTrades] = useState(() => new Set());
 
   const handleSubmitRating = async (body) => {
@@ -493,6 +495,7 @@ const Trading = () => {
       const receipt = await purchaseEnergy(id);
       toast.success('Order purchased successfully!');
       await afterChainTx(receipt);
+      setSettlementTarget({ txHash: receipt?.hash, listingId: id });
     } catch (err) {
       toast.error(err.message || 'Purchase failed');
     } finally {
@@ -511,6 +514,7 @@ const Trading = () => {
       const receipt = await createEscrow(order.listingId, order.seller, order.price);
       toast.success('Funds locked in escrow. Confirm delivery before releasing.');
       await afterChainTx(receipt);
+      setSettlementTarget({ txHash: receipt?.hash, listingId: order.listingId });
     } catch (err) {
       toast.error(err.message || 'Escrow purchase failed');
     } finally {
@@ -1031,6 +1035,14 @@ const Trading = () => {
         ratedWallet={ratingTarget?.ratedWallet}
         listingId={ratingTarget?.listingId}
       />
+
+      {settlementTarget && (
+        <SettlementStatusTimeline
+          txHash={settlementTarget.txHash}
+          listingId={settlementTarget.listingId}
+          onClose={() => setSettlementTarget(null)}
+        />
+      )}
     </div>
   );
 };

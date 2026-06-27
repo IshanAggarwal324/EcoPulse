@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const VALID_SEVERITIES = ['info', 'warn', 'critical'];
-const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator', 'device', 'auto_trading', 'notification'];
+const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator', 'device', 'auto_trading', 'notification', 'settlement'];
 
 const auditLogSchema = new mongoose.Schema(
   {

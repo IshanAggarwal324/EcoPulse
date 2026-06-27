@@ -260,6 +260,24 @@ export const marketplaceApi = {
   getNodeReputation: (nodeId) => fetchApi(`/marketplace/reputation/node/${nodeId}`),
 };
 
+// Module 6.4 — settlement status. `verify` triggers on-chain receipt
+// verification server-side (rate-limited); the read endpoints return the
+// lifecycle-enriched settlement for the caller (buyer/seller scoped).
+export const settlementsApi = {
+  verify: (txHash, listingId) =>
+    fetchApi('/settlements/verify', {
+      method: 'POST',
+      body: JSON.stringify({ txHash, listingId }),
+    }),
+  getById: (id) => fetchApi(`/settlements/${id}`),
+  listMine: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/marketplace/settlements${query ? `?${query}` : ''}`);
+  },
+  getMyByTradeId: (tradeId) => fetchApi(`/marketplace/settlements/${tradeId}`),
+  getForOrder: (listingId) => fetchApi(`/marketplace/orders/${listingId}/settlement`),
+};
+
 export const tradesApi = {
   getHistory: (params = {}) => {
     const query = new URLSearchParams(params).toString();

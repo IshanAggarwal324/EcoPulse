@@ -34,6 +34,15 @@ const settlementSchema = new mongoose.Schema(
       ref: 'Trade',
       default: null,
     },
+    // Module 6.4.5 — optional deterministic link to the escrow record for this
+    // purchase. Sparse so old records (pre-6.4) remain valid; the lifecycle
+    // service falls back to a (chain/contract/listing/buyer/seller) match when
+    // this is unset, so populating it is an optimization, not a requirement.
+    escrowRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Escrow',
+      default: null,
+    },
     seller: { type: String, lowercase: true, default: null },
     buyer: { type: String, lowercase: true, default: null },
     onChainStatus: { type: String, default: null },
@@ -74,8 +83,20 @@ settlementSchema.index({ seller: 1, createdAt: -1 });
 settlementSchema.index({ buyer: 1, createdAt: -1 });
 settlementSchema.index({ verificationStatus: 1, createdAt: -1 });
 settlementSchema.index({ mismatchFlags: 1 });
+// Module 6.4 — escrow linkage lookup (sparse: most legacy records have none).
+settlementSchema.index({ escrowRef: 1 }, { sparse: true });
 
 settlementSchema.statics.VERIFICATION_STATUSES = VERIFICATION_STATUSES;
 settlementSchema.statics.MISMATCH_FLAGS = MISMATCH_FLAGS;
+// Module 6.4.2 — unified display lifecycle (derived; not persisted).
+settlementSchema.statics.LIFECYCLE_STATUSES = [
+  'pending',
+  'on_chain_confirmed',
+  'readings_verified',
+  'released',
+  'disputed',
+  'refunded',
+  'mismatch',
+];
 
 module.exports = mongoose.model('Settlement', settlementSchema);
