@@ -160,8 +160,8 @@ def get_settings() -> Settings:
         ab_challenger_version=os.getenv("ECOPULSE_AB_CHALLENGER") or None,
         ab_traffic_pct=_clamp_pct(os.getenv("ECOPULSE_AB_TRAFFIC_PCT", "0")),
         forecast_horizons=_parse_horizons(os.getenv("ECOPULSE_FORECAST_HORIZONS", "1,7,14,30")),
-        default_horizon=_clamp_int(os.getenv("ECOPULSE_DEFAULT_HORIZON", "30"), 1, 365),
-        node_min_history_days=_clamp_int(os.getenv("ECOPULSE_NODE_MIN_HISTORY_DAYS", "60"), 1, 3650),
-        node_max_train_per_run=_clamp_int(os.getenv("ECOPULSE_NODE_MAX_TRAIN_PER_RUN", "50"), 1, 1000),
+        default_horizon=_clamp_int(os.getenv("ECOPULSE_DEFAULT_HORIZON", "30"), 1, 365, 30),
+        node_min_history_days=_clamp_int(os.getenv("ECOPULSE_NODE_MIN_HISTORY_DAYS", "60"), 1, 3650, 60),
+        node_max_train_per_run=_clamp_int(os.getenv("ECOPULSE_NODE_MAX_TRAIN_PER_RUN", "50"), 1, 1000, 50),
         per_node_training_enabled=os.getenv("ECOPULSE_PER_NODE_TRAIN", "").lower() in ("1", "true", "yes"),
     )
