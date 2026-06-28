@@ -48,7 +48,11 @@ const issueCsrfToken = (req, res, next) => {
     });
   }
   // Expose the token to cross-origin SPA clients that cannot read API-domain cookies.
-  res.setHeader('X-CSRF-Token', token);
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('X-CSRF-Token', token);
+  } else if (typeof res.set === 'function') {
+    res.set('X-CSRF-Token', token);
+  }
   next();
 };
 
