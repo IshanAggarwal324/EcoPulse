@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.handlers.exceptions import register_exception_handlers
 from app.internal_auth import internal_auth_response
+from app.logging_config import setup_logging
+from app.middleware import request_logging_middleware
 from app.routers import assistant, health, reports
 from app.services.doc_rag_service import DocRagService
 from app.services.llm_service import LlmService
@@ -29,10 +31,8 @@ def create_app() -> FastAPI:
             "INTERNAL_SERVICE_API_KEY is not set — non-health endpoints will reject requests until configured"
         )
 
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
-    )
+    # Module 7.3 — shared structured JSON logging (replaces inline basicConfig).
+    setup_logging(settings.log_level)
 
     app = FastAPI(
         title=settings.app_name,
@@ -42,6 +42,9 @@ def create_app() -> FastAPI:
         redoc_url=None if is_production else "/redoc",
         openapi_url=None if is_production else "/openapi.json",
     )
+
+    # Request logging first so access logs capture every request incl. auth/CORS.
+    app.middleware("http")(request_logging_middleware)
 
     app.add_middleware(
         CORSMiddleware,

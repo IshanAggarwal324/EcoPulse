@@ -1,5 +1,9 @@
 const { getGenaiServiceUrl } = require('../config/serviceUrls');
 const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
+const { logger } = require('../utils/logger');
+const { scrubMessage } = require('../utils/scrubLog');
+
+const TARGET_SERVICE = 'genai-service';
 
 const GENAI_SERVICE_URL = getGenaiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
@@ -26,6 +30,11 @@ const sanitizeDetails = (details) => {
 
 async function postToGenaiService(path, body) {
   const url = `${GENAI_SERVICE_URL}${path}`;
+  logger.debug('outbound request to genai-service', {
+    targetService: TARGET_SERVICE,
+    path,
+    method: 'POST',
+  });
   const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
@@ -47,6 +56,12 @@ async function sendGenaiRequest(fn, retries = MAX_RETRIES) {
   try {
     response = await fn();
   } catch (error) {
+    logger.warn('genai-service call failed', {
+      targetService: TARGET_SERVICE,
+      // Scrubbed: raw errors often embed internal hostnames/IPs (e.g.
+      // "ECONNREFUSED 10.0.0.9:8001") which must not reach log aggregation.
+      errorMessage: scrubMessage(error.message),
+    });
     throw new GenaiServiceError('GenAI service unavailable', 503, sanitizeDetails(error.message));
   }
 
@@ -57,6 +72,10 @@ async function sendGenaiRequest(fn, retries = MAX_RETRIES) {
 
   if (!response.ok) {
     const errorText = await response.text();
+    logger.warn('genai-service returned error', {
+      targetService: TARGET_SERVICE,
+      status: response.status,
+    });
     throw new GenaiServiceError(
       'Error communicating with GenAI service',
       response.status,

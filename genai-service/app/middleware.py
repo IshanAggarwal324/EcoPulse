@@ -7,11 +7,10 @@ logger = logging.getLogger("ecopulse.access")
 
 
 async def request_logging_middleware(request: Request, call_next):
-    """Emit a structured access log per request (Module 7.3).
+    """Structured access log per request (Module 7.3).
 
     Uses ``request.url.path`` (no query string) so request parameters are never
-    logged. Correlation id is injected by the shared logging filter from the
-    contextvar (populated by Module 7.4's x-request-id handling).
+    logged. genai-service previously had no request logging at all.
     """
     start = time.perf_counter()
     response = await call_next(request)
