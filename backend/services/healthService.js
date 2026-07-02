@@ -66,6 +66,88 @@ const formatUptime = (seconds) => {
 // Service statuses that indicate a partial/backup mode rather than full health.
 const DEGRADED_STATUSES = ['degraded', 'fallback', 'unhealthy', 'error', 'partial'];
 
+/* ------------------------------------------------------------------ */
+/* Module 7.1 — Shared health contract (shared/healthContract.json)    */
+/* ------------------------------------------------------------------ */
+
+const HEALTH_SCHEMA_VERSION = '1.0';
+const BACKEND_SERVICE_NAME = 'ecopulse-backend';
+
+// Map any internal probe/overall status to the v1 contract enum.
+// Internal probes use up/down/degraded; overall uses healthy/degraded/down.
+// Unknown / missing values are treated as unhealthy (fail-closed).
+const normalizeToContractStatus = (status) => {
+  switch (String(status || '').toLowerCase()) {
+    case 'up':
+    case 'healthy':
+    case 'ready':
+    case 'ok':
+      return 'healthy';
+    case 'degraded':
+    case 'partial':
+    case 'fallback':
+      return 'degraded';
+    case 'down':
+    case 'unhealthy':
+    case 'error':
+    case 'not_ready':
+    case 'notready':
+      return 'unhealthy';
+    default:
+      return 'unhealthy';
+  }
+};
+
+// Stable check identifiers surfaced in the contract (decoupled from the
+// internal component key used by legacy consumers).
+const COMPONENT_TO_CHECK_ID = {
+  mongodb: 'mongodb',
+  aiService: 'ai_service',
+  genaiService: 'genai_service',
+  blockchain: 'blockchain',
+  backend: 'backend',
+  simulator: 'simulator',
+};
+
+// Derive the contract's `status` as the WORST of the overall + every check,
+// so a failing dependency can never read as healthy.
+const deriveContractStatus = (overall, checks) => {
+  const rank = { healthy: 0, degraded: 1, unhealthy: 2 };
+  let worst = normalizeToContractStatus(overall);
+  for (const check of checks) {
+    if (rank[check.status] > rank[worst]) worst = check.status;
+  }
+  return worst;
+};
+
+// Map the existing component probe results into the contract's checks[].
+// Component statuses are normalized to the v1 enum; details are passed through
+// unchanged (probes already scrub secrets via scrubMessage/maskUrlHost).
+const buildChecks = (components) =>
+  Object.entries(components || {}).map(([key, probe]) => ({
+    id: COMPONENT_TO_CHECK_ID[key] || key,
+    status: normalizeToContractStatus(probe?.status),
+    latencyMs: Number.isFinite(probe?.latencyMs) ? Math.round(probe.latencyMs) : null,
+    details: probe?.details ?? {},
+    ...(probe?.error ? { error: probe.error } : {}),
+  }));
+
+// Convert the internal getHealth() result into a v1 health-contract payload.
+// Pure function (no I/O) — safe to unit test and reuse by the aggregator.
+const toHealthContract = (health) => {
+  const components = health?.components || {};
+  const checks = buildChecks(components);
+  const status = deriveContractStatus(health?.overall, checks);
+  return {
+    schemaVersion: HEALTH_SCHEMA_VERSION,
+    service: BACKEND_SERVICE_NAME,
+    status,
+    checkedAt: health?.checkedAt || nowIso(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    checks,
+  };
+};
+
 // Probe an HTTP service health route with timeout + latency capture.
 // Tries {path} (default "/health") and falls back to "/" on 404 so services
 // that only expose a root route still report correctly.
@@ -407,9 +489,19 @@ const getHealth = async () => {
   const simulator = probeSimulator();
 
   const components = { mongodb, aiService, genaiService, blockchain, backend, simulator };
+  const overall = deriveOverall(components);
+  const checks = buildChecks(components);
 
   return {
-    overall: deriveOverall(components),
+    // v1 health-contract fields (Module 7.1) — see shared/healthContract.json.
+    schemaVersion: HEALTH_SCHEMA_VERSION,
+    service: BACKEND_SERVICE_NAME,
+    status: deriveContractStatus(overall, checks),
+    uptimeSeconds: Math.floor(process.uptime()),
+    checks,
+    // Legacy fields retained for backward compatibility with existing
+    // consumers (admin controller, analytics, /api/health/ready, tests).
+    overall,
     components,
     checkedAt: nowIso(),
   };
@@ -417,6 +509,13 @@ const getHealth = async () => {
 
 module.exports = {
   getHealth,
+  // v1 health-contract helpers (Module 7.1)
+  toHealthContract,
+  normalizeToContractStatus,
+  deriveContractStatus,
+  buildChecks,
+  HEALTH_SCHEMA_VERSION,
+  BACKEND_SERVICE_NAME,
   // exported for testing / reuse
   probeMongo,
   probeBlockchain,

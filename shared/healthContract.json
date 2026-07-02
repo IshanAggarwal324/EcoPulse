@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ecopulse.dev/contracts/health-v1.json",
+  "title": "EcoPulse Health Contract",
+  "version": "1.0",
+  "description": "Single shared health schema implemented by every EcoPulse service tier (backend, ai_service, genai-service) so that probes, the /api/health/status aggregator, and the admin UI render consistently. See docs/contracts/health-v1.md.",
+  "type": "object",
+  "required": ["schemaVersion", "service", "status", "checkedAt", "uptimeSeconds", "checks"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Contract version. Bumped only on a breaking shape change."
+    },
+    "service": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable service identifier, e.g. ecopulse-backend, ecopulse-ai-service, ecopulse-genai-service."
+    },
+    "status": {
+      "description": "Overall health, derived as the WORST of the service's own state and every check.",
+      "enum": ["healthy", "degraded", "unhealthy"]
+    },
+    "checkedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp at which the check was performed."
+    },
+    "uptimeSeconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Process uptime in whole seconds."
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 0,
+      "description": "Per-dependency results. May be empty for a pure liveness probe (/health/live).",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable dependency identifier, e.g. mongodb, ai_service, model, gemini."
+          },
+          "status": {
+            "enum": ["healthy", "degraded", "unhealthy"]
+          },
+          "latencyMs": {
+            "type": ["integer", "number"],
+            "minimum": 0,
+            "description": "Probe round-trip latency in milliseconds. null when not measurable."
+          },
+          "details": {
+            "type": "object",
+            "description": "Opaque, NON-SENSITIVE diagnostic fields (booleans, counts, public identifiers). MUST NOT contain secrets."
+          }
+        }
+      }
+    }
+  }
+}
