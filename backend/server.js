@@ -14,7 +14,8 @@ const { metricsHandler } = require('./routes/metrics');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const { issueCsrfToken, csrfProtection } = require('./middleware/csrf');
-const { getHealth } = require('./services/healthService');
+const { getHealth, toPublicStatus, isReadyForTraffic } = require('./services/healthService');
+const { createRateLimiter } = require('./middleware/rateLimit');
 const { logger } = require('./utils/logger');
 const v1Routes = require('./routes/v1');
 const blockchainSyncService = require('./services/blockchainSyncService');
@@ -98,13 +99,36 @@ const startServer = async () => {
     });
   });
 
+  // Single public status aggregator (Module 7.2). Rolls up every tier with a
+  // unified schema but SAFE FIELDS ONLY — no hosts, ports, db names, RPC hosts,
+  // block numbers, PIDs, versions, or error strings. Auth is optional (works
+  // anonymously); a dedicated rate limiter prevents abuse/recon amplification.
+  const healthStatusLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    maxRequests: parseInt(process.env.HEALTH_STATUS_RATE_LIMIT_MAX || '30', 10),
+    message: 'Health status rate limit exceeded. Please try again later.',
+  });
+
+  app.get('/api/health/status', healthStatusLimiter, async (req, res, next) => {
+    try {
+      const health = await getHealth();
+      res.status(200).json({ success: true, data: toPublicStatus(health) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/health/ready', async (req, res, next) => {
     try {
       const health = await getHealth();
-      const ready = health.overall !== 'down';
+      // 503 only when a CRITICAL dependency (mongodb/backend) is down — partial
+      // degradation of non-critical subsystems must not evict the backend from
+      // the load-balancer rotation. The full `status` is always in the body so
+      // strict callers can treat `degraded` as not-ready if they choose.
+      const ready = isReadyForTraffic(health);
       res.status(ready ? 200 : 503).json({
         status: ready ? 'ready' : 'not_ready',
-        overall: health.overall,
+        overall: health.status,
         checkedAt: health.checkedAt,
       });
     } catch (error) {

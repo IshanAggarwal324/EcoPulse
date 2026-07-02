@@ -105,6 +105,7 @@ const COMPONENT_TO_CHECK_ID = {
   aiService: 'ai_service',
   genaiService: 'genai_service',
   blockchain: 'blockchain',
+  frontend: 'frontend',
   backend: 'backend',
   simulator: 'simulator',
 };
@@ -145,6 +146,75 @@ const toHealthContract = (health) => {
     checkedAt: health?.checkedAt || nowIso(),
     uptimeSeconds: Math.floor(process.uptime()),
     checks,
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* Module 7.2 — Public status aggregator (safe-fields projection)      */
+/* ------------------------------------------------------------------ */
+
+// A check is "ready for traffic" only when a CRITICAL dependency has NOT
+// failed entirely. Partial (non-critical) degradation must NOT pull the whole
+// backend out of the load-balancer rotation — that would amplify a single
+// impaired subsystem (e.g. the GenAI chatbot) into a full platform outage.
+// Callers that want strict semantics can read `status !== 'healthy'` instead.
+const isReadyForTraffic = (health) =>
+  normalizeToContractStatus(health?.status || health?.overall) !== 'unhealthy';
+
+const boolOrNull = (value) =>
+  value === true || value === false ? value : null;
+
+const pickDefined = (obj) => {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== null && v !== undefined) out[k] = v;
+  }
+  return out;
+};
+
+// Whitelist of NON-SENSITIVE detail fields exposed per service on the PUBLIC
+// /api/health/status endpoint. Everything else (hosts, ports, db names, RPC
+// hosts, block numbers, PIDs, versions, error messages) is stripped.
+const projectSafeDetails = (id, details) => {
+  const d = details || {};
+  switch (id) {
+    case 'ai_service':
+      return pickDefined({ model_loaded: boolOrNull(d.model_loaded) });
+    case 'genai_service':
+      return pickDefined({ available: boolOrNull(d.available) });
+    case 'blockchain':
+      return pickDefined({ isSyncHealthy: boolOrNull(d.isSyncHealthy) });
+    default:
+      return {};
+  }
+};
+
+const projectSafeService = (check) => {
+  const out = { status: check.status };
+  if (Number.isFinite(check.latencyMs)) out.latencyMs = check.latencyMs;
+  const safeDetails = projectSafeDetails(check.id, check.details);
+  if (Object.keys(safeDetails).length > 0) out.details = safeDetails;
+  return out;
+};
+
+// Build the public aggregator payload: a `services` map keyed by check id,
+// each entry containing only status + latency + whitelisted safe details.
+// No error strings, no internal addresses, no counts beyond the whitelist.
+const toPublicStatus = (health) => {
+  const checks = health?.checks || buildChecks(health?.components || {});
+  const status = health?.status || deriveContractStatus(health?.overall, checks);
+  const services = {};
+  for (const check of checks) {
+    services[check.id] = projectSafeService(check);
+  }
+  return {
+    schemaVersion: HEALTH_SCHEMA_VERSION,
+    service: BACKEND_SERVICE_NAME,
+    status,
+    overall: status, // alias kept for frontend/back-compat with the plan's shape
+    checkedAt: health?.checkedAt || nowIso(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    services,
   };
 };
 
@@ -196,6 +266,11 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
     ).toLowerCase();
     const isDegraded = DEGRADED_STATUSES.includes(serviceStatus);
 
+    // Module 7.1 changed Python services to the v1 contract. genai no longer
+    // sends `gemini_status`/`gemini`; it sends `available` (+ `checks[]`).
+    // Read the actual fields each service emits so the parser stays aligned.
+    const contractChecks = Array.isArray(body?.checks) ? body.checks : null;
+
     return {
       status: isDegraded ? 'degraded' : 'up',
       latencyMs,
@@ -203,8 +278,12 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
       details: {
         httpStatus: res.status,
         status: serviceStatus || 'ok',
+        // ai_service readiness (LSTM model artifacts loaded).
         model_loaded: body?.model_loaded ?? null,
-        gemini_status: body?.gemini_status ?? body?.gemini ?? null,
+        // genai-service readiness (Gemini configured/enabled).
+        available: body?.available ?? null,
+        // v1 contract checks[] when the downstream service returns them.
+        ...(contractChecks ? { checks: contractChecks } : {}),
         version: body?.version ?? null,
       },
       error: null,
@@ -353,6 +432,23 @@ const probeBlockchain = async () => {
 
 const probeBackend = () => {
   const mem = process.memoryUsage();
+
+  // Ingestion counters are informational (process-local). Lazy-required so a
+  // failure in the metrics module can never break the backend self-probe.
+  let ingestion = null;
+  try {
+    // eslint-disable-next-line global-require
+    const ingestionMetrics = require('./ingestion/ingestionMetrics');
+    const snapshot = ingestionMetrics.getSnapshot();
+    ingestion = {
+      accepted: snapshot.counters?.accepted ?? 0,
+      rejected: snapshot.counters?.rejected ?? 0,
+      duplicate: snapshot.counters?.duplicate ?? 0,
+    };
+  } catch {
+    ingestion = null;
+  }
+
   return {
     status: 'up',
     latencyMs: 0,
@@ -368,6 +464,7 @@ const probeBackend = () => {
         heapTotalMb: Math.round((mem.heapTotal / 1024 / 1024) * 10) / 10,
         externalMb: Math.round((mem.external / 1024 / 1024) * 10) / 10,
       },
+      ...(ingestion ? { ingestion } : {}),
     },
     error: null,
     checkedAt: nowIso(),
@@ -447,6 +544,88 @@ const probeSimulator = () => {
   };
 };
 
+// Frontend is a static SPA, so probing it is opt-in via FRONTEND_HEALTH_URL
+// (a CDN/static host serving a health.json, or any reachable health route).
+// When unset we report 'up' (informational/off). When set but unreachable we
+// flag 'down' (degrades overall). Never critical, so it never forces overall
+// 'down'. The configured URL is masked to its hostname in the output.
+const getFrontendHealthUrl = () => String(process.env.FRONTEND_HEALTH_URL || '').trim();
+
+const isValidHttpUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+const probeFrontend = async () => {
+  const url = getFrontendHealthUrl();
+  if (!url) {
+    return {
+      status: 'up',
+      latencyMs: 0,
+      details: { configured: false, note: 'FRONTEND_HEALTH_URL not set' },
+      error: null,
+      checkedAt: nowIso(),
+    };
+  }
+
+  if (!isValidHttpUrl(url)) {
+    return {
+      status: 'down',
+      latencyMs: 0,
+      details: { configured: true },
+      error: 'FRONTEND_HEALTH_URL is not a valid http(s) URL',
+      checkedAt: nowIso(),
+    };
+  }
+
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), getProbeTimeoutMs());
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    const latencyMs = Date.now() - startedAt;
+    if (!res.ok) {
+      return {
+        status: 'down',
+        latencyMs,
+        url: maskUrlHost(url),
+        details: { configured: true, httpStatus: res.status },
+        error: `HTTP ${res.status}`,
+        checkedAt: nowIso(),
+      };
+    }
+    return {
+      status: 'up',
+      latencyMs,
+      url: maskUrlHost(url),
+      details: { configured: true, httpStatus: res.status },
+      error: null,
+      checkedAt: nowIso(),
+    };
+  } catch (error) {
+    return {
+      status: 'down',
+      latencyMs: Date.now() - startedAt,
+      url: maskUrlHost(url),
+      details: { configured: true },
+      error:
+        error.name === 'AbortError'
+          ? `Timed out after ${getProbeTimeoutMs()}ms`
+          : scrubMessage(error.message) || 'Frontend unreachable',
+      checkedAt: nowIso(),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 // MongoDB and the backend process are critical: if either is down the whole
 // platform is down. Other components (AI, GenAI, blockchain) being unavailable
 // only degrades the experience.
@@ -478,17 +657,26 @@ const getHealth = async () => {
   const aiServiceUrl = getAiServiceUrl();
   const genaiServiceUrl = getGenaiServiceUrl();
 
-  const [mongodb, aiService, genaiService, blockchain] = await Promise.all([
+  const [mongodb, aiService, genaiService, blockchain, frontend] = await Promise.all([
     probeMongo(),
     probeHttpService(aiServiceUrl, { label: 'ai_service' }),
     probeHttpService(genaiServiceUrl, { label: 'genai-service' }),
     probeBlockchain(),
+    probeFrontend(),
   ]);
 
   const backend = probeBackend();
   const simulator = probeSimulator();
 
-  const components = { mongodb, aiService, genaiService, blockchain, backend, simulator };
+  const components = {
+    mongodb,
+    aiService,
+    genaiService,
+    blockchain,
+    frontend,
+    backend,
+    simulator,
+  };
   const overall = deriveOverall(components);
   const checks = buildChecks(components);
 
@@ -516,6 +704,12 @@ module.exports = {
   buildChecks,
   HEALTH_SCHEMA_VERSION,
   BACKEND_SERVICE_NAME,
+  // public status aggregator + readiness (Module 7.2)
+  toPublicStatus,
+  isReadyForTraffic,
+  projectSafeService,
+  projectSafeDetails,
+  probeFrontend,
   // exported for testing / reuse
   probeMongo,
   probeBlockchain,

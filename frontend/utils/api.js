@@ -190,6 +190,40 @@ export const authApi = {
     }),
 };
 
+// Public health status aggregator (Module 7.2). Lives at the backend root
+// (NOT under /api/v1), is rate-limited, and returns safe fields only — safe to
+// call unauthenticated for a status page / status badge.
+export const healthApi = {
+  getStatus: async () => {
+    const response = await fetch(`${SOCKET_URL}/api/health/status`, {
+      headers: { Accept: 'application/json' },
+    });
+    const data = await parseJson(response);
+    if (!response.ok) {
+      throw new ApiError(
+        data?.message || `Request failed (${response.status})`,
+        response.status,
+        data,
+      );
+    }
+    return data?.data ?? data;
+  },
+};
+
+async function parseJson(response) {
+  const contentType = response.headers.get('content-type') || '';
+  const raw = await response.text().catch(() => '');
+  if (!raw) return {};
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { message: raw.slice(0, 500) };
+    }
+  }
+  return { message: raw.slice(0, 500) };
+}
+
 export const analyticsApi = {
   getSummary: (params = {}) => {
     const query = new URLSearchParams(params).toString();
