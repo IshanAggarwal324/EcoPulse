@@ -23,15 +23,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Iterator
+from uuid import uuid4
 
 __all__ = [
     "SERVICE_DEFAULT",
     "EXTRA_FIELDS",
+    "MAX_CORRELATION_ID_LENGTH",
     "JsonFormatter",
     "TextFormatter",
     "setup_logging",
@@ -39,6 +42,8 @@ __all__ = [
     "bind_correlation_id",
     "reset_correlation_id",
     "correlation_context",
+    "sanitize_correlation_id",
+    "resolve_request_correlation_id",
     "log_access",
     "now_iso",
 ]
@@ -54,9 +59,41 @@ _CORRELATION_ID: ContextVar[str | None] = ContextVar("ecopulse_correlation_id", 
 
 _ACTIVE_SERVICE = SERVICE_DEFAULT
 
+# Module 7.4 — safe charset + length bound for the correlation id. The inbound
+# `x-request-id` is untrusted: it is written into JSON logs and echoed as a
+# header, so an embedded newline enables log forging and a CR/LF enables header
+# injection. Only this charset survives sanitization, and the length is bounded
+# to prevent log bloat / DoS via an oversized id.
+MAX_CORRELATION_ID_LENGTH = 128
+_UNSAFE_CORRELATION_CHARS = re.compile(r"[^A-Za-z0-9_-]+")
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def sanitize_correlation_id(value: Any) -> str | None:
+    """Reduce an untrusted value to a safe correlation id, or ``None``.
+
+    Strips every character outside ``[A-Za-z0-9_-]`` and rejects empty /
+    over-length results. ``None``/empty input yields ``None`` so callers fall
+    back to a generated id rather than trusting a malformed one.
+    """
+    if value is None:
+        return None
+    cleaned = _UNSAFE_CORRELATION_CHARS.sub("", str(value))
+    if not cleaned or len(cleaned) > MAX_CORRELATION_ID_LENGTH:
+        return None
+    return cleaned
+
+
+def resolve_request_correlation_id(header_value: Any) -> str:
+    """Return a safe correlation id for an inbound request.
+
+    Sanitizes the supplied ``x-request-id``; when it is absent or fails
+    validation a fresh UUID is generated. Never returns an empty/untrusted id.
+    """
+    return sanitize_correlation_id(header_value) or uuid4().hex
 
 
 def _resolve_level(value: Any) -> int:
@@ -76,8 +113,12 @@ def get_correlation_id() -> str | None:
 
 
 def bind_correlation_id(value: str | None) -> None:
-    """Set the correlation id for the current async context (Module 7.4)."""
-    _CORRELATION_ID.set(value if value else None)
+    """Set the correlation id for the current async context (Module 7.4).
+
+    The value is always sanitized so a malformed upstream id can never reach
+    log lines even if a caller forgets to resolve it first.
+    """
+    _CORRELATION_ID.set(sanitize_correlation_id(value))
 
 
 def reset_correlation_id() -> None:
@@ -86,7 +127,7 @@ def reset_correlation_id() -> None:
 
 @contextmanager
 def correlation_context(correlation_id: str | None) -> Iterator[None]:
-    token = _CORRELATION_ID.set(correlation_id or None)
+    token = _CORRELATION_ID.set(sanitize_correlation_id(correlation_id))
     try:
         yield
     finally:

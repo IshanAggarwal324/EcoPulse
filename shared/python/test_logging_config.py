@@ -119,6 +119,47 @@ class CorrelationTests(unittest.TestCase):
         self.assertIsNone(lc.get_correlation_id())
 
 
+class CorrelationSanitizerTests(unittest.TestCase):
+    """Module 7.4 — untrusted x-request-id must never carry control chars."""
+
+    def test_safe_value_passes_through(self):
+        self.assertEqual(lc.sanitize_correlation_id("abc-123_xyz"), "abc-123_xyz")
+        self.assertEqual(
+            lc.sanitize_correlation_id("550e8400-e29b-41d4-a716-446655440000"),
+            "550e8400-e29b-41d4-a716-446655440000",
+        )
+
+    def test_control_chars_are_stripped(self):
+        # CR/LF are the log-forging / header-injection vectors.
+        self.assertEqual(lc.sanitize_correlation_id("a\rb\nc"), "abc")
+        self.assertEqual(lc.sanitize_correlation_id('ev"il; /tmp/'), "eviltmp")
+
+    def test_empty_or_garbage_returns_none(self):
+        for bad in (None, "", "   ", "\r\n\r\n", "\x00\x01"):
+            self.assertIsNone(lc.sanitize_correlation_id(bad))
+
+    def test_over_length_value_rejected(self):
+        long_ok = "a" * lc.MAX_CORRELATION_ID_LENGTH
+        self.assertEqual(lc.sanitize_correlation_id(long_ok), long_ok)
+        self.assertIsNone(lc.sanitize_correlation_id("a" * (lc.MAX_CORRELATION_ID_LENGTH + 1)))
+
+    def test_resolve_returns_sanitized_or_uuid(self):
+        self.assertEqual(lc.resolve_request_correlation_id("good-id"), "good-id")
+        gen = lc.resolve_request_correlation_id("bad value!")
+        self.assertRegex(gen, r"^[A-Za-z0-9_-]+$")
+        self.assertGreater(len(gen), 0)
+        self.assertNotEqual(
+            lc.resolve_request_correlation_id(None),
+            lc.resolve_request_correlation_id(None),
+        )
+
+    def test_bind_sanitizes_untrusted_value(self):
+        # Even if a caller forgets to resolve, bind() never stores control chars.
+        lc.bind_correlation_id("a\rb\nc")
+        self.assertEqual(lc.get_correlation_id(), "abc")
+        lc.reset_correlation_id()
+
+
 class SecurityTests(unittest.TestCase):
     def tearDown(self):
         logging.getLogger().handlers.clear()

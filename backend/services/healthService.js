@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const blockchainSyncService = require('./blockchainSyncService');
 const { getAiServiceUrl, getGenaiServiceUrl } = require('../config/serviceUrls');
+const { getCorrelationId } = require('../utils/logger');
 
 const nowIso = () => new Date().toISOString();
 
@@ -228,9 +229,15 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
   const timer = setTimeout(() => controller.abort(), timeout);
 
   const attempt = async (url) => {
+    // Module 7.4 — forward the active correlation id so health probes are
+    // traceable on the downstream Python service. Already-sanitized upstream.
+    const cid = getCorrelationId();
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(cid ? { 'x-request-id': cid } : {}),
+      },
     });
     let body = null;
     try {
