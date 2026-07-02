@@ -1,15 +1,19 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { logger, runWithContext, getCorrelationId, logBackgroundError } = require('../utils/logger');
+const { logger, runWithContext, getCorrelationId, getTraceparent, logBackgroundError } = require('../utils/logger');
 const {
   sanitizeCorrelationId,
   resolveCorrelationId,
   MAX_CORRELATION_ID_LENGTH,
+  sanitizeTraceparent,
+  resolveTraceparent,
+  generateTraceparent,
 } = require('../utils/correlation');
 const { fetchWithTimeout, buildOutboundHeaders } = require('../utils/fetchWithTimeout');
 const correlationIdMiddleware = require('../middleware/correlationId');
-const { renderMetrics, recordHttpRequest, normalizeRoute } = require('../services/metrics/prometheus');
+const { renderMetrics, recordHttpRequest, normalizeRoute, recordDependencyHealth } = require('../services/metrics/prometheus');
+const { isMetricsEnabled, authorizeMetrics, safeEqual } = require('../routes/metrics');
 const ingestionMetrics = require('../services/ingestion/ingestionMetrics');
 
 /* ------------------------------------------------------------------ */
@@ -225,4 +229,257 @@ test('fetchWithTimeout does not add x-request-id outside a request context', asy
   } finally {
     global.fetch = originalFetch;
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Module 7.5 — dependency health gauge                                */
+/* ------------------------------------------------------------------ */
+
+const VALID_TP = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`;
+
+test('recordDependencyHealth emits a gauge per dependency with mapped values', () => {
+  recordDependencyHealth([
+    { id: 'mongodb', status: 'healthy' },
+    { id: 'ai_service', status: 'degraded' },
+    { id: 'blockchain', status: 'down' },
+    { id: 'genai_service', status: 'up' },
+    { id: 'unknown_thing', status: 'bogus' },
+  ]);
+
+  const body = renderMetrics();
+  assert.match(body, /# TYPE ecopulse_dependency_health gauge/);
+  assert.match(body, /ecopulse_dependency_health\{service="mongodb"\} 1/);
+  assert.match(body, /ecopulse_dependency_health\{service="ai_service"\} 0\.5/);
+  assert.match(body, /ecopulse_dependency_health\{service="blockchain"\} 0/);
+  assert.match(body, /ecopulse_dependency_health\{service="genai_service"\} 1/);
+  // Unknown statuses fail closed to 0.
+  assert.match(body, /ecopulse_dependency_health\{service="unknown_thing"\} 0/);
+});
+
+test('recordDependencyHealth is robust to empty/undefined checks', () => {
+  assert.doesNotThrow(() => recordDependencyHealth(undefined));
+  assert.doesNotThrow(() => recordDependencyHealth([]));
+});
+
+/* ------------------------------------------------------------------ */
+/* Module 7.6 — W3C traceparent validation                             */
+/* ------------------------------------------------------------------ */
+
+test('sanitizeTraceparent accepts a well-formed value and lowercases it', () => {
+  assert.strictEqual(sanitizeTraceparent(VALID_TP), VALID_TP);
+  assert.strictEqual(
+    sanitizeTraceparent(VALID_TP.toUpperCase()),
+    VALID_TP,
+  );
+});
+
+test('sanitizeTraceparent rejects malformed / hostile values', () => {
+  // Log-forging / header-injection vectors must never survive.
+  assert.strictEqual(sanitizeTraceparent('00-\r\nINJECT-b-c-01'), null);
+  assert.strictEqual(sanitizeTraceparent('not a traceparent'), null);
+  assert.strictEqual(sanitizeTraceparent('00-' + 'a'.repeat(31) + '-' + 'b'.repeat(16) + '-01'), null); // short trace id
+  assert.strictEqual(sanitizeTraceparent(`ff-${'a'.repeat(32)}-${'b'.repeat(16)}-01`), null); // forbidden version
+  assert.strictEqual(sanitizeTraceparent(`00-${'0'.repeat(32)}-${'b'.repeat(16)}-01`), null); // all-zero trace id
+  assert.strictEqual(sanitizeTraceparent(`00-${'a'.repeat(32)}-${'0'.repeat(16)}-01`), null); // all-zero parent id
+  assert.strictEqual(sanitizeTraceparent(null), null);
+  assert.strictEqual(sanitizeTraceparent(undefined), null);
+  assert.strictEqual(sanitizeTraceparent(''), null);
+});
+
+test('generateTraceparent is schema-conformant', () => {
+  const tp = generateTraceparent();
+  assert.match(tp, /^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
+  assert.strictEqual(sanitizeTraceparent(tp), tp);
+  // Two generations are distinct (fresh randomness).
+  assert.notStrictEqual(generateTraceparent(), generateTraceparent());
+});
+
+test('resolveTraceparent trusts valid input, mints fresh otherwise', () => {
+  assert.strictEqual(resolveTraceparent(VALID_TP), VALID_TP);
+  const fresh = resolveTraceparent('garbage');
+  assert.notStrictEqual(fresh, 'garbage');
+  assert.strictEqual(sanitizeTraceparent(fresh), fresh);
+});
+
+/* ------------------------------------------------------------------ */
+/* Module 7.6 — traceparent outbound propagation                        */
+/* ------------------------------------------------------------------ */
+
+test('buildOutboundHeaders forwards the context traceparent', async () => {
+  let headers;
+  await runWithContext({ correlationId: 'cid-1', traceparent: VALID_TP }, () => {
+    headers = buildOutboundHeaders({ Accept: 'application/json' });
+  });
+  assert.strictEqual(headers.traceparent, VALID_TP);
+  assert.strictEqual(headers['x-request-id'], 'cid-1');
+});
+
+test('buildOutboundHeaders omits traceparent when no context is active', () => {
+  assert.strictEqual(getTraceparent(), null);
+  const headers = buildOutboundHeaders({ Accept: 'application/json' });
+  assert.ok(!('traceparent' in headers));
+});
+
+test('buildOutboundHeaders validates a caller-supplied traceparent (case-insensitive)', () => {
+  const headers = buildOutboundHeaders({ Traceparent: VALID_TP });
+  assert.strictEqual(headers.traceparent, VALID_TP);
+  assert.ok(!('Traceparent' in headers));
+});
+
+test('buildOutboundHeaders drops a malformed caller traceparent and leaks nothing', () => {
+  const headers = buildOutboundHeaders({ traceparent: 'evil\r\nINJECT' });
+  assert.ok(!('traceparent' in headers));
+});
+
+test('fetchWithTimeout forwards traceparent from the request context', async () => {
+  const calls = [];
+  const originalFetch = global.fetch;
+  global.fetch = (url, opts) => {
+    calls.push(opts.headers);
+    return Promise.resolve({ ok: true, status: 200 });
+  };
+  try {
+    await runWithContext({ correlationId: 'cid-9', traceparent: VALID_TP }, async () => {
+      await fetchWithTimeout('http://internal.test/p', { method: 'POST' });
+    });
+    assert.strictEqual(calls[0].traceparent, VALID_TP);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Module 7.6 — traceparent in the correlation middleware               */
+/* ------------------------------------------------------------------ */
+
+const withEnv = (overrides, fn) => {
+  const backup = {};
+  for (const [k, v] of Object.entries(overrides)) {
+    backup[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of Object.entries(backup)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+};
+
+test('correlation middleware echoes a valid inbound traceparent', () => {
+  withEnv({}, () => {
+    const captured = {};
+    const req = {
+      get: (h) =>
+        h === 'x-request-id' ? 'abc-123' : h === 'traceparent' ? VALID_TP : undefined,
+    };
+    const res = { setHeader: (k, v) => { captured[k] = v; } };
+    correlationIdMiddleware(req, res, () => {});
+    assert.strictEqual(captured['x-request-id'], 'abc-123');
+    assert.strictEqual(captured.traceparent, VALID_TP);
+    assert.strictEqual(req.traceparent, VALID_TP);
+  });
+});
+
+test('correlation middleware rejects a malformed inbound traceparent and mints fresh', () => {
+  withEnv({}, () => {
+    const captured = {};
+    const req = {
+      get: (h) =>
+        h === 'x-request-id'
+          ? 'abc-123'
+          : h === 'traceparent'
+            ? 'evil\r\nINJECT'
+            : undefined,
+    };
+    const res = { setHeader: (k, v) => { captured[k] = v; } };
+    correlationIdMiddleware(req, res, () => {});
+    // Never trust the hostile value; a fresh valid context replaces it.
+    assert.match(captured.traceparent, /^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/);
+    assert.strictEqual(sanitizeTraceparent(captured.traceparent), captured.traceparent);
+  });
+});
+
+test('correlation middleware can opt out of traceparent generation', () => {
+  withEnv({ TRACEPARENT_ENABLED: 'false' }, () => {
+    const captured = {};
+    const req = { get: (h) => (h === 'x-request-id' ? 'abc-123' : undefined) };
+    const res = { setHeader: (k, v) => { captured[k] = v; } };
+    correlationIdMiddleware(req, res, () => {});
+    assert.strictEqual(captured.traceparent, undefined);
+    assert.strictEqual(req.traceparent, undefined);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Module 7.5 — /metrics route security guard rails                    */
+/* ------------------------------------------------------------------ */
+
+test('isMetricsEnabled is disabled by METRICS_ENABLED=false', () => {
+  withEnv({ METRICS_ENABLED: 'false', NODE_ENV: 'development' }, () => {
+    assert.strictEqual(isMetricsEnabled(), false);
+  });
+});
+
+test('isMetricsEnabled stays open in dev without a token', () => {
+  withEnv({ METRICS_ENABLED: 'true', NODE_ENV: 'development', METRICS_TOKEN: '' }, () => {
+    assert.strictEqual(isMetricsEnabled(), true);
+  });
+});
+
+test('isMetricsEnabled refuses open access in production without a token', () => {
+  withEnv({ METRICS_ENABLED: 'true', NODE_ENV: 'production', METRICS_TOKEN: '' }, () => {
+    assert.strictEqual(isMetricsEnabled(), false);
+  });
+});
+
+test('isMetricsEnabled is enabled in production when a token is configured', () => {
+  withEnv({ METRICS_ENABLED: 'true', NODE_ENV: 'production', METRICS_TOKEN: 'scraper-secret' }, () => {
+    assert.strictEqual(isMetricsEnabled(), true);
+  });
+});
+
+test('authorizeMetrics rejects wrong/absent tokens', () => {
+  withEnv({ NODE_ENV: 'production', METRICS_TOKEN: 'scraper-secret' }, () => {
+    const blocked = { set: false };
+    const res401 = {
+      status: (c) => { blocked.code = c; return res401; },
+      set: () => res401,
+      send: () => { blocked.set = true; },
+    };
+    assert.strictEqual(authorizeMetrics({ get: () => undefined }, res401), false);
+    assert.strictEqual(blocked.code, 401);
+
+    const wrong = {
+      status: (c) => { blocked.code = c; return wrong; },
+      set: () => wrong,
+      send: () => { blocked.set = true; },
+    };
+    assert.strictEqual(
+      authorizeMetrics({ get: (h) => (h === 'authorization' ? 'Bearer nope' : undefined) }, wrong),
+      false,
+    );
+  });
+});
+
+test('authorizeMetrics accepts a valid Bearer / x-metrics-token', () => {
+  withEnv({ NODE_ENV: 'production', METRICS_TOKEN: 'scraper-secret' }, () => {
+    assert.strictEqual(
+      authorizeMetrics({ get: (h) => (h === 'authorization' ? 'Bearer scraper-secret' : undefined) }, {}),
+      true,
+    );
+    assert.strictEqual(
+      authorizeMetrics({ get: (h) => (h === 'x-metrics-token' ? 'scraper-secret' : undefined) }, {}),
+      true,
+    );
+  });
+});
+
+test('safeEqual is constant-time-safe (length mismatch returns false, equal returns true)', () => {
+  assert.strictEqual(safeEqual('abc', 'abc'), true);
+  assert.strictEqual(safeEqual('abc', 'abcd'), false);
+  assert.strictEqual(safeEqual('abc', 'abd'), false);
 });

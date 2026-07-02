@@ -47,6 +47,7 @@ const HELP = {
   ecopulse_ingestion_rejected_persist_skipped_total: 'Rejected messages skipped for dead-letter persist',
   ecopulse_process_uptime_seconds: 'Process uptime',
   ecopulse_nodejs_heap_used_bytes: 'Node.js heap used',
+  ecopulse_dependency_health: 'Health of a probed dependency (1=healthy, 0.5=degraded, 0=down)',
 };
 
 const recordHttpRequest = ({ method, route, statusCode, durationMs }) => {
@@ -59,6 +60,29 @@ const recordHttpRequest = ({ method, route, statusCode, durationMs }) => {
     method: method || 'UNKNOWN',
     route: route || 'unknown',
   }, durationMs);
+};
+
+// Module 7.5 — dependency health gauge. Maps the v1 health-contract status enum
+// (plus legacy up/down) to a numeric gauge so Prometheus can alert on a failing
+// dependency. Unknown statuses fail closed to 0 (down).
+const DEPENDENCY_STATUS_VALUE = {
+  healthy: 1,
+  up: 1,
+  ready: 1,
+  degraded: 0.5,
+  fallback: 0.5,
+  partial: 0.5,
+  unhealthy: 0,
+  down: 0,
+  error: 0,
+};
+
+const recordDependencyHealth = (checks) => {
+  for (const check of checks || []) {
+    const status = String(check?.status || '').toLowerCase();
+    const value = DEPENDENCY_STATUS_VALUE[status] ?? 0;
+    setGauge('ecopulse_dependency_health', { service: check.id || 'unknown' }, value);
+  }
 };
 
 const normalizeRoute = (req) => {
@@ -122,4 +146,5 @@ module.exports = {
   renderMetrics,
   incCounter,
   setGauge,
+  recordDependencyHealth,
 };

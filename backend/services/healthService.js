@@ -687,6 +687,19 @@ const getHealth = async () => {
   const overall = deriveOverall(components);
   const checks = buildChecks(components);
 
+  // Module 7.5 — publish per-dependency health as a Prometheus gauge so a
+  // failing dependency drives alerts. Lazy-required so a metrics module fault
+  // can never break the health check itself.
+  try {
+    // eslint-disable-next-line global-require
+    const prometheus = require('./metrics/prometheus');
+    if (typeof prometheus.recordDependencyHealth === 'function') {
+      prometheus.recordDependencyHealth(checks);
+    }
+  } catch {
+    // Non-fatal: metrics are best-effort and must not affect health reporting.
+  }
+
   return {
     // v1 health-contract fields (Module 7.1) — see shared/healthContract.json.
     schemaVersion: HEALTH_SCHEMA_VERSION,

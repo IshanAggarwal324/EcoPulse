@@ -56,6 +56,7 @@ SERVICE_DEFAULT = "ecopulse-python"
 EXTRA_FIELDS = ("correlationId", "durationMs", "path", "status", "method", "traceId")
 
 _CORRELATION_ID: ContextVar[str | None] = ContextVar("ecopulse_correlation_id", default=None)
+_TRACEPARENT: ContextVar[str | None] = ContextVar("ecopulse_traceparent", default=None)
 
 _ACTIVE_SERVICE = SERVICE_DEFAULT
 
@@ -94,6 +95,49 @@ def resolve_request_correlation_id(header_value: Any) -> str:
     validation a fresh UUID is generated. Never returns an empty/untrusted id.
     """
     return sanitize_correlation_id(header_value) or uuid4().hex
+
+
+# Module 7.6 — W3C Trace Context ``traceparent`` propagation.
+#
+# ``traceparent`` is untrusted inbound: it is written into structured logs (the
+# trace id) and echoed/forwarded as an HTTP header. An invalid/malformed value
+# must NEVER be trusted verbatim (newline -> log forging; CR/LF -> header
+# injection). Only values matching the exact W3C grammar survive; everything
+# else is replaced with a freshly generated trace context.
+_TRACEPARENT_RE = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+
+
+def sanitize_traceparent(value: Any) -> str | None:
+    """Return a valid W3C traceparent, or ``None`` when invalid/malformed."""
+    if value is None:
+        return None
+    candidate = str(value).strip().lower()
+    if not _TRACEPARENT_RE.match(candidate):
+        return None
+    version, trace_id, parent_id, _flags = candidate.split("-")
+    if version == "ff":
+        return None
+    if trace_id == "0" * 32 or parent_id == "0" * 16:
+        return None
+    return candidate
+
+
+def _generate_traceparent() -> str:
+    """Create a fresh, valid traceparent (version 00, sampled flag 01)."""
+    return f"00-{uuid4().hex}-{uuid4().hex[:16]}-01"
+
+
+def resolve_traceparent(header_value: Any) -> str:
+    """Validate an inbound ``traceparent`` or mint a fresh trace context."""
+    return sanitize_traceparent(header_value) or _generate_traceparent()
+
+
+def bind_traceparent(value: str | None) -> None:
+    _TRACEPARENT.set(sanitize_traceparent(value))
+
+
+def get_traceparent() -> str | None:
+    return _TRACEPARENT.get()
 
 
 def _resolve_level(value: Any) -> int:

@@ -20,6 +20,7 @@ from uuid import uuid4
 SERVICE_NAME = "ecopulse-genai-service"
 EXTRA_FIELDS = ("correlationId", "durationMs", "path", "status", "method", "traceId")
 _CORRELATION_ID: ContextVar[str | None] = ContextVar("ecopulse_correlation_id", default=None)
+_TRACEPARENT: ContextVar[str | None] = ContextVar("ecopulse_traceparent", default=None)
 _ACTIVE_SERVICE = SERVICE_NAME
 
 # Populated by setup_logging() when the shared observability package is on the
@@ -85,6 +86,52 @@ def resolve_request_correlation_id(header_value: Any) -> str:
     return sanitize_correlation_id(header_value) or uuid4().hex
 
 
+# Module 7.6 — W3C Trace Context ``traceparent`` propagation.
+#
+# ``traceparent`` is untrusted inbound: it is written into structured logs (the
+# trace id) and echoed/forwarded as an HTTP header. An invalid/malformed value
+# must NEVER be trusted verbatim (newline -> log forging; CR/LF -> header
+# injection). Only values matching the exact W3C grammar survive; everything
+# else is replaced with a freshly generated trace context.
+_TRACEPARENT_RE = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+
+
+def sanitize_traceparent(value: Any) -> str | None:
+    """Return a valid W3C traceparent, or ``None`` when invalid/malformed."""
+    if value is None:
+        return None
+    candidate = str(value).strip().lower()
+    if not _TRACEPARENT_RE.match(candidate):
+        return None
+    version, trace_id, parent_id, _flags = candidate.split("-")
+    if version == "ff":
+        return None
+    if trace_id == "0" * 32 or parent_id == "0" * 16:
+        return None
+    return candidate
+
+
+def _generate_traceparent() -> str:
+    """Create a fresh, valid traceparent (version 00, sampled flag 01)."""
+    return f"00-{uuid4().hex}-{uuid4().hex[:16]}-01"
+
+
+def resolve_traceparent(header_value: Any) -> str:
+    """Validate an inbound ``traceparent`` or mint a fresh trace context."""
+    return sanitize_traceparent(header_value) or _generate_traceparent()
+
+
+def bind_traceparent(value: str | None) -> None:
+    safe = sanitize_traceparent(value)
+    _TRACEPARENT.set(safe)
+    if _SHARED_MODULE is not None and hasattr(_SHARED_MODULE, "bind_traceparent"):
+        _SHARED_MODULE.bind_traceparent(safe)
+
+
+def get_traceparent() -> str | None:
+    return _TRACEPARENT.get()
+
+
 def bind_correlation_id(value: str | None) -> None:
     """Bind the correlation id for the current async context (Module 7.4).
 
@@ -110,10 +157,14 @@ def get_correlation_id() -> str | None:
 
 
 @contextmanager
-def correlation_context(correlation_id: str | None) -> Iterator[None]:
-    """Bind a correlation id for the duration of the ``with`` block."""
+def correlation_context(
+    correlation_id: str | None, traceparent: str | None = None
+) -> Iterator[None]:
+    """Bind a correlation id (and optional traceparent) for the block."""
     safe = _sanitize_inline(correlation_id)
+    safe_tp = sanitize_traceparent(traceparent)
     token_inline = _CORRELATION_ID.set(safe)
+    token_tp = _TRACEPARENT.set(safe_tp)
     shared_cm = (
         _SHARED_MODULE.correlation_context(safe)
         if _SHARED_MODULE is not None
@@ -124,6 +175,7 @@ def correlation_context(correlation_id: str | None) -> Iterator[None]:
             yield
         finally:
             _CORRELATION_ID.reset(token_inline)
+            _TRACEPARENT.reset(token_tp)
 
 
 class _CorrelationFilter(logging.Filter):

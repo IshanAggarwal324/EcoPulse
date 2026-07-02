@@ -27,6 +27,10 @@ services:
       NODE_ENV: production
       MONGO_URI: mongodb://mongodb:27017/ecopulse
       INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:-dev-internal-key-change-me}
+      # Module 7.5 — Prometheus scrape protection. Required in production
+      # (NODE_ENV=production): /metrics is DISABLED when this is unset.
+      METRICS_ENABLED: "true"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:
       - mongodb
 
@@ -42,6 +46,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:-dev-internal-key-change-me}
       AI_SERVICE_URL: http://ai-service:8000
+      METRICS_ENABLED: "true"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
 
   backend:
     build:
@@ -62,11 +68,29 @@ services:
       CORS_ORIGIN: http://localhost:5173
       RECAPTCHA_SECRET: ${RECAPTCHA_SECRET:-dev-recaptcha-secret}
       METRICS_ENABLED: "true"
+      # Required in production: the backend disables /metrics when unset
+      # (NODE_ENV=production). Scrape with the same token via Bearer/x-metrics-token.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:
       - mongodb
       - redis
       - ai-service
       - genai-service
 
+  # Module 7.5 — optional local Prometheus scraper. Uncomment to collect metrics
+  # from all three application tiers. See docs/observability/metrics.md.
+  #
+  # prometheus:
+  #   image: prom/prometheus:v2.54.0
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./docs/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus_data:/prometheus
+  #   depends_on:
+  #     - backend
+
 volumes:
   mongodb_data:
+  # prometheus_data:

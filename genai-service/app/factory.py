@@ -10,7 +10,7 @@ from app.handlers.exceptions import register_exception_handlers
 from app.internal_auth import internal_auth_response
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
-from app.routers import assistant, health, reports
+from app.routers import assistant, health, metrics, reports
 from app.services.doc_rag_service import DocRagService
 from app.services.llm_service import LlmService
 
@@ -90,6 +90,7 @@ def create_app() -> FastAPI:
         app.state.doc_rag_service = rag
 
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(reports.router)
     app.include_router(assistant.router)
 

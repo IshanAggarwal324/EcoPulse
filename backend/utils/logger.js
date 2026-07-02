@@ -64,6 +64,8 @@ const runWithContext = (context, fn) => requestContext.run(context, fn);
 
 const getCorrelationId = () => requestContext.getStore()?.correlationId || null;
 
+const getTraceparent = () => requestContext.getStore()?.traceparent || null;
+
 /**
  * Log a non-fatal background failure without throwing (H18).
  */
@@ -80,6 +82,7 @@ module.exports = {
   child,
   runWithContext,
   getCorrelationId,
+  getTraceparent,
   logBackgroundError,
   requestContext,
 };

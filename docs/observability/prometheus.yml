@@ -1,0 +1,35 @@
+# Example Prometheus scrape configuration for EcoPulse (Module 7.5).
+#
+# Mount this file into a Prometheus container, e.g. via docker-compose:
+#   volumes:
+#     - ./docs/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#
+# In production, supply METRICS_TOKEN to Prometheus (e.g. via a Secret + env
+# substitution) and pass it as a Bearer token. Each service disables /metrics
+# when NODE_ENV=production and no token is configured.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ecopulse-backend
+    metrics_path: /metrics
+    scheme: http
+    bearer_token: REPLACE_WITH_METRICS_TOKEN
+    static_configs:
+      - targets: ['backend:5000']
+
+  - job_name: ecopulse-ai-service
+    metrics_path: /metrics
+    scheme: http
+    bearer_token: REPLACE_WITH_METRICS_TOKEN
+    static_configs:
+      - targets: ['ai-service:8000']
+
+  - job_name: ecopulse-genai-service
+    metrics_path: /metrics
+    scheme: http
+    bearer_token: REPLACE_WITH_METRICS_TOKEN
+    static_configs:
+      - targets: ['genai-service:8001']

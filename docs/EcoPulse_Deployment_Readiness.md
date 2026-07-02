@@ -244,7 +244,10 @@ Use this checklist before pointing any public domain at the application.
 - [ ] **Event indexing:** The Graph or live listeners instead of polling from block 0
 - [ ] **Wallet UX:** Wagmi/RainbowKit; human-readable revert messages
 - [ ] **Monitoring:** Sentry or equivalent on frontend, backend, and AI
-- [ ] **Structured logging:** JSON logs with request IDs
+- [x] **Structured logging:** JSON logs with request IDs
+- [x] **Metrics:** Prometheus `/metrics` on backend, ai_service, and genai-service (Module 7.5) — token-protected; see `docs/observability/metrics.md`
+- [x] **Distributed tracing (lightweight):** W3C `traceparent` header propagated end-to-end alongside `x-request-id` (Module 7.6); values strictly validated against the grammar to prevent log forging / header injection
+- [ ] **Full OpenTelemetry:** `opentelemetry-instrumentation-fastapi` (Python) + `@opentelemetry/sdk-node` (backend) — wire the propagated `traceparent` into a real OTel exporter
 - [ ] **Role-based admin:** Enforce `admin` role on sync and sensitive routes
 - [ ] **Security audit:** Third-party review before mainnet
 

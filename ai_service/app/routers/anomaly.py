@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 
 from app.dependencies import get_anomaly_service
 from app.exceptions import ModelUnavailableError
+from app import metrics
 from app.schemas import (
     AnomalyBatchRequest,
     AnomalyBatchResponse,
@@ -44,6 +45,7 @@ async def score_readings(
     if not service.is_ready():
         raise ModelUnavailableError("Anomaly model is not loaded")
     result = await service.score_readings(payload.node_id, payload.window_days)
+    metrics.record_inference("anomaly")
     return AnomalyScoreResponse(
         node_id=result["node_id"],
         window_days=result["window_days"],
@@ -88,4 +90,5 @@ async def score_batch(
                 flagged=[AnomalyFlaggedReading(**f) for f in r["flagged"]],
             )
         )
+    metrics.record_inference("anomaly")
     return AnomalyBatchResponse(results=results, model_status="ready")

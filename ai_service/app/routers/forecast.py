@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_ab_test_service, get_forecast_service, get_model_store
 from app.exceptions import AppError, ModelUnavailableError
+from app import metrics
 from app.schemas import (
     BatchForecastRequest,
     BatchForecastResponse,
@@ -160,6 +161,7 @@ async def get_forecast(
             )
         )
 
+    metrics.record_inference("forecast")
     return ForecastResponse(**response_payload)
 
 
@@ -233,4 +235,5 @@ async def get_batch_forecast(
         "horizon": request.horizon,
     }
     forecast_cache.set_cached("batch", cache_payload, response_payload)
+    metrics.record_inference("forecast")
     return BatchForecastResponse(**response_payload)

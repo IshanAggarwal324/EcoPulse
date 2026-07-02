@@ -11,7 +11,7 @@ from app.handlers.exceptions import register_exception_handlers
 from app.internal_auth import internal_auth_response
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
-from app.routers import anomaly, forecast, health, models
+from app.routers import anomaly, forecast, health, metrics, models
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(forecast.router)
     app.include_router(anomaly.router)
     app.include_router(models.router)
