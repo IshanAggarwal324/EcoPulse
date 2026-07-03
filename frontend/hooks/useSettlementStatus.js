@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { settlementsApi } from '../utils/api';
+import { useSocketEvent } from '../context/SocketContext';
+import { SOCKET_EVENTS } from '../constants/socketEvents';
+import {
+  matchesSettlementEvent,
+} from './settlementSocket';
 
 /**
- * useSettlementStatus — Module 6.4.4
+ * useSettlementStatus — Module 6.4.4 / extended 9.6
  *
  * After a marketplace purchase, submit the tx for on-chain receipt verification
  * (`POST /settlements/verify`) once, then poll the lifecycle-enriched settlement
@@ -14,6 +19,13 @@ import { settlementsApi } from '../utils/api';
  *    forever and rack up requests/cost.
  *  - Backoff grows up to a cap; polling pauses while the tab is hidden.
  *  - All timers are cleared on unmount / dependency change (no leaked loops).
+ *
+ * Module 9.6 — socket fast-path: `settlementVerified` / `settlementMismatch`
+ * are pushed by the backend (scoped to the buyer/seller only). On a matching
+ * event we cancel the scheduled poll and refresh immediately, so the UI
+ * converges in ~ms instead of waiting for the next backoff tick. The inbound
+ * payload is validated + txHash-matched before any state mutation (never trust
+ * the wire), and a terminal event stops polling outright.
  */
 
 const TERMINAL = new Set(['released', 'mismatch', 'disputed', 'refunded']);
@@ -34,6 +46,11 @@ export function useSettlementStatus({ txHash, listingId, enabled = true }) {
     error: null,
   });
   const timerRef = useRef(null);
+
+  // Module 9.6 — expose the live poll fn + tracked settlement id to the socket
+  // fast-path handler. Set inside the effect below; null when not polling.
+  const pollRef = useRef(null);
+  const idRef = useRef(null);
 
   const stop = useCallback(() => {
     if (timerRef.current) {
@@ -78,6 +95,9 @@ export function useSettlementStatus({ txHash, listingId, enabled = true }) {
       }
     };
 
+    // Expose to the socket fast-path before the first request fires.
+    pollRef.current = poll;
+
     const run = async () => {
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
@@ -88,6 +108,7 @@ export function useSettlementStatus({ txHash, listingId, enabled = true }) {
           setState((s) => ({ ...s, loading: false, error: new Error('No settlement id returned') }));
           return;
         }
+        idRef.current = id;
         poll(id, 0);
       } catch (err) {
         if (cancelled) return;
@@ -99,8 +120,28 @@ export function useSettlementStatus({ txHash, listingId, enabled = true }) {
     return () => {
       cancelled = true;
       stop();
+      pollRef.current = null;
+      idRef.current = null;
     };
   }, [enabled, txHash, listingId, stop]);
+
+  // Module 9.6 — socket fast-path. Cancel the scheduled poll and refresh
+  // immediately when a matching settlement transition is pushed. The handler is
+  // txHash-validated + matched before acting (defense-in-depth); non-matching
+  // or malformed events are ignored. `useSocketEvent` rebinds only on event
+  // name, and reads the latest handler each call, so `txHash`/`stop`/refs are
+  // always fresh without re-subscribing on every render.
+  const handleSettlementSocket = useCallback((raw) => {
+    if (!matchesSettlementEvent(txHash, raw)) return;
+    // Cancel the scheduled poll and pull the latest state immediately. If the
+    // event is terminal, the refresh's own TERMINAL check stops polling for
+    // good; otherwise the normal backoff schedule resumes from this snapshot.
+    stop();
+    pollRef.current?.(idRef.current, 0);
+  }, [txHash, stop]);
+
+  useSocketEvent(SOCKET_EVENTS.SERVER.SETTLEMENT_VERIFIED, handleSettlementSocket);
+  useSocketEvent(SOCKET_EVENTS.SERVER.SETTLEMENT_MISMATCH, handleSettlementSocket);
 
   return { ...state, reset };
 }

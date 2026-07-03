@@ -1,0 +1,10 @@
+{
+  "name": "ecopulse-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "EcoPulse React frontend sources. Type marker so these ESM modules are runnable under node (tests); the app is built by the Vite project in ../ecopulse.",
+  "scripts": {
+    "test": "node --test hooks/__tests__/settlementSocket.test.js"
+  }
+}

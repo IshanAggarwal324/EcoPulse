@@ -278,14 +278,19 @@ function emitSettlementEvent(settlement, { wasMismatch } = {}) {
     deltaPct: settlement.deltaPct,
     mismatchFlags: settlement.mismatchFlags,
   };
+  // Module 9.6 — deliver ONLY to the buyer/seller wallet rooms. The old path
+  // wrapped these in a global `blockchainEvent` broadcast, which leaked every
+  // user's trade settlement status (txHash, delivery delta, mismatch flags) to
+  // all authenticated clients. Scoping mirrors `notificationService`.
+  const wallets = { seller: settlement.seller, buyer: settlement.buyer };
   const status = settlement.verificationStatus;
   const nowMismatch = status === 'mismatch' || status === 'disputed';
   if (status === 'verified') {
-    socketBroadcastService.emitBlockchainEvent({ eventType: 'settlementVerified', ...payload });
+    socketBroadcastService.emitSettlementVerified(payload, wallets);
   } else if (nowMismatch && wasMismatch === false) {
-    socketBroadcastService.emitBlockchainEvent({ eventType: 'settlementMismatch', ...payload });
+    socketBroadcastService.emitSettlementMismatch(payload, wallets);
   } else if (nowMismatch) {
-    socketBroadcastService.emitBlockchainEvent({ eventType: 'settlementMismatch', ...payload });
+    socketBroadcastService.emitSettlementMismatch(payload, wallets);
   }
 }
 

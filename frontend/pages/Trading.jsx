@@ -40,6 +40,10 @@ const SORT_OPTIONS = [
   { value: 'unit_price_asc', label: 'Unit price: low to high' },
 ];
 
+// Module 9.6 — minimum gap between notification toasts on this page so a burst
+// can't spam the UI.
+const NOTIFICATION_THROTTLE_MS = 2000;
+
 const formatAddress = (address) => {
   if (!address) return '—';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -417,6 +421,17 @@ const Trading = () => {
     // Compact diff signal (Sub-module 6.1.4) — refetch the visible book + depth.
     loadOrders();
     scheduleDepthRefresh();
+  });
+
+  // Module 9.6 — surface user-scoped notifications as toasts here too, but
+  // throttle so a backfill/burst can't flood the UI with toasts.
+  const lastNotificationAt = useRef(0);
+  useSocketEvent(SOCKET_EVENTS.SERVER.NOTIFICATION, (data) => {
+    if (!data || typeof data.title !== 'string') return;
+    const now = Date.now();
+    if (now - lastNotificationAt.current < NOTIFICATION_THROTTLE_MS) return;
+    lastNotificationAt.current = now;
+    toast.info(data.title);
   });
 
   const requireWallet = async () => {

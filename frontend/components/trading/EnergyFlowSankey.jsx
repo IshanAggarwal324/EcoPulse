@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { analyticsApi } from '../../utils/api';
 import { useSocketEvent } from '../../context/SocketContext';
 import { SOCKET_EVENTS } from '../../constants/socketEvents';
@@ -151,10 +151,25 @@ const EnergyFlowSankey = ({ refreshKey = 0 }) => {
     load(windowSel);
   }, [windowSel, load, refreshKey]);
 
-  // Refresh on live blockchain activity (purchases change the flow graph).
-  useSocketEvent(SOCKET_EVENTS.SERVER.BLOCKCHAIN_EVENT, () => {
-    load(windowSel);
-  });
+  // Module 9.6 — refresh on live trade activity. A purchase fires both
+  // `tradeExecuted` and `blockchainEvent`, so debounce (rather than bind two
+  // eager fetches) to coalesce a burst into a single analytics request. This
+  // also caps the request rate if a sync pass emits a flood of events.
+  const refreshTimer = useRef(null);
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      load(windowSel);
+    }, 700);
+  }, [load, windowSel]);
+
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+  }, []);
+
+  useSocketEvent(SOCKET_EVENTS.SERVER.BLOCKCHAIN_EVENT, scheduleRefresh);
+  useSocketEvent(SOCKET_EVENTS.SERVER.TRADE_EXECUTED, scheduleRefresh);
 
   const layout = useMemo(() => {
     if (!data?.nodes?.length || !data?.links?.length) return null;

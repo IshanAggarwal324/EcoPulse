@@ -138,6 +138,119 @@ const emitTradeExecuted = (trade) => {
   emit(SOCKET_EVENTS.SERVER.TRADE_EXECUTED, item);
 };
 
+// ---------------------------------------------------------------------------
+// Module 9.6 — settlement lifecycle push (SECURITY-CRITICAL scoping)
+// ---------------------------------------------------------------------------
+// Settlement events carry per-trade private data (txHash, verification status,
+// delivery delta, mismatch flags). They MUST be delivered only to the buyer and
+// seller wallet rooms — never to the global `authenticated` room. Broadcasting
+// them to every logged-in client is an information-disclosure vulnerability.
+// `notificationService` already follows this user-scoped pattern; this mirrors it.
+
+const normalizeWallet = (addr) =>
+  typeof addr === 'string' && addr ? addr.trim().toLowerCase() : '';
+
+const numOrNull = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const SETTLEMENT_MISMATCH_FLAG_RE = /^[A-Z0-9_]{1,40}$/;
+
+/**
+ * Whitelist + coerce a settlement payload before it ever touches the wire.
+ * Unknown keys are dropped (defense-in-depth against leaking future fields,
+ * secrets, or nested PII a caller might attach). Returns null if the payload
+ * cannot be safely delivered (no valid txHash or settlementId).
+ */
+const sanitizeSettlementPayload = (payload = {}) => {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const txHash =
+    typeof payload.txHash === 'string' && /^0x[a-f0-9]{64}$/i.test(payload.txHash)
+      ? payload.txHash.toLowerCase()
+      : null;
+
+  const settlementId =
+    typeof payload.settlementId === 'string' && payload.settlementId
+      ? String(payload.settlementId).slice(0, 64)
+      : null;
+
+  // Must carry at least one stable identifier so a client can act on it.
+  if (!txHash && !settlementId) return null;
+
+  const listingId = numOrNull(payload.listingId);
+
+  const mismatchFlags = Array.isArray(payload.mismatchFlags)
+    ? payload.mismatchFlags
+        .filter((f) => typeof f === 'string' && SETTLEMENT_MISMATCH_FLAG_RE.test(f))
+        .slice(0, 8)
+    : [];
+
+  return {
+    settlementId,
+    txHash,
+    listingId: Number.isFinite(listingId) ? listingId : null,
+    verificationStatus:
+      typeof payload.verificationStatus === 'string' &&
+      ['pending', 'verified', 'mismatch', 'disputed'].includes(payload.verificationStatus)
+        ? payload.verificationStatus
+        : null,
+    deltaPct: numOrNull(payload.deltaPct),
+    mismatchFlags,
+    at: new Date().toISOString(),
+  };
+};
+
+/**
+ * Emit a settlement lifecycle transition to ONLY the buyer and seller wallet
+ * rooms. Never falls back to a global broadcast — if neither wallet is known
+ * the event is dropped (and logged) rather than leaked.
+ *
+ * @param {'verified'|'mismatch'} status
+ * @param {object} payload  raw settlement fields (sanitized internally)
+ * @param {{ seller?: string, buyer?: string }} [wallets] explicit party wallets
+ */
+const emitSettlementEvent = (status, payload = {}, wallets = {}) => {
+  if (!io) return;
+
+  const safe = sanitizeSettlementPayload(payload);
+  if (!safe) return;
+
+  const seller = normalizeWallet(wallets.seller ?? payload.seller);
+  const buyer = normalizeWallet(wallets.buyer ?? payload.buyer);
+
+  const targets = new Set();
+  if (seller) targets.add(`wallet:${seller}`);
+  if (buyer) targets.add(`wallet:${buyer}`);
+
+  if (!targets.size) {
+    // No party to scope to. Dropping is intentional — a global fallback is the
+    // exact disclosure this guard exists to prevent.
+    logger.warn('settlement socket event dropped: no scoppable wallet', {
+      component: 'socket',
+      status,
+      settlementId: safe.settlementId,
+    });
+    return;
+  }
+
+  const event =
+    status === 'verified'
+      ? SOCKET_EVENTS.SERVER.SETTLEMENT_VERIFIED
+      : SOCKET_EVENTS.SERVER.SETTLEMENT_MISMATCH;
+
+  for (const room of targets) {
+    io.to(room).emit(event, safe);
+  }
+};
+
+const emitSettlementVerified = (payload, wallets) =>
+  emitSettlementEvent('verified', payload, wallets);
+
+const emitSettlementMismatch = (payload, wallets) =>
+  emitSettlementEvent('mismatch', payload, wallets);
+
 module.exports = {
   setIo,
   emitNewReading,
@@ -148,4 +261,9 @@ module.exports = {
   emitBlockchainEventWithAnalytics,
   emitOrderbookUpdate,
   emitTradeExecuted,
+  emitSettlementVerified,
+  emitSettlementMismatch,
+  // Exposed for tests / advanced callers.
+  sanitizeSettlementPayload,
+  normalizeWallet,
 };
