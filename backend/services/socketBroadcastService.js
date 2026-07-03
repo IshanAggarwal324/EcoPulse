@@ -1,6 +1,7 @@
 const analyticsService = require('./analytics');
 const { SOCKET_EVENTS } = require('../socket/events');
 const { logger } = require('../utils/logger');
+const { shapeTradeTickerItem } = require('./tradeHistoryService');
 
 let io = null;
 let analyticsDebounceTimer = null;
@@ -123,6 +124,20 @@ const emitOrderbookUpdate = (payload = {}) => {
   emit(SOCKET_EVENTS.SERVER.ORDERBOOK_UPDATE, safe);
 };
 
+/**
+ * Module 9.4 — push a compact, anonymized trade to the live ticker. Accepts a
+ * raw trade (DB lean doc or a realtime contract-event payload). The item is
+ * sanitized/anonymized by `shapeTradeTickerItem`; malformed input is dropped.
+ *
+ * Emits to the `authenticated` room only.
+ */
+const emitTradeExecuted = (trade) => {
+  if (!io) return;
+  const item = shapeTradeTickerItem(trade);
+  if (!item) return;
+  emit(SOCKET_EVENTS.SERVER.TRADE_EXECUTED, item);
+};
+
 module.exports = {
   setIo,
   emitNewReading,
@@ -132,4 +147,5 @@ module.exports = {
   emitBlockchainEvent,
   emitBlockchainEventWithAnalytics,
   emitOrderbookUpdate,
+  emitTradeExecuted,
 };

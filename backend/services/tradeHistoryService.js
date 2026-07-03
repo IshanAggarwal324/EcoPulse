@@ -194,6 +194,68 @@ const getRecentTrades = async ({ eventType = 'purchased', limit = 25, sinceDays 
   return trades;
 };
 
+const toIsoTs = (value) => {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    if (Number.isFinite(d.getTime())) return d.toISOString();
+  }
+  return new Date().toISOString();
+};
+
+/**
+ * Module 9.4 — shape a raw trade (DB doc OR realtime contract-event payload)
+ * into the compact, SANITIZED, ANONYMIZED item used by the live trade ticker
+ * and the GET /trades/recent seed endpoint.
+ *
+ * Security:
+ *  - seller/buyer are anonymized (0x1234…abcd). The ticker is a global feed
+ *    shown to all authenticated users; we never broadcast full wallet PII.
+ *  - every field is type-coerced so a malformed on-chain/log payload can never
+ *    push oversized or garbage data to connected clients.
+ *  - `id` derives from txHash:logIndex (stable dedup vs. the seed); falls back
+ *    to a live composite so realtime events always dedup-safe.
+ *
+ * Returns null for non-object input so callers can drop junk silently.
+ */
+const shapeTradeTickerItem = (trade) => {
+  if (!trade || typeof trade !== 'object') return null;
+
+  const sellerAnon = anonymizeWallet(trade.seller);
+  const buyerAnon = anonymizeWallet(trade.buyer);
+  const txHash = typeof trade.txHash === 'string' ? trade.txHash.toLowerCase() : '';
+  const logIndex = Number(trade.logIndex);
+  const hasLogIndex = Number.isInteger(logIndex) && logIndex >= 0;
+
+  // A ticker item must carry a real counterparty (or a stable on-chain ref).
+  // Anything else is junk — drop it so malformed payloads never reach clients.
+  if (!sellerAnon && !buyerAnon && !(txHash && hasLogIndex)) return null;
+
+  const id = txHash && hasLogIndex
+    ? `${txHash}:${logIndex}`
+    : `live:${trade.listingId ?? 'x'}:${toIsoTs(trade.blockTimestamp ?? trade.ts)}`;
+
+  const kwh = Number(trade.energyAmount);
+  const priceStr = typeof trade.price === 'string' || typeof trade.price === 'number'
+    ? String(trade.price)
+    : '0';
+  const priceNum = parseFloat(priceStr);
+  const safePriceNum = Number.isFinite(priceNum) ? priceNum : 0;
+  const safeKwh = Number.isFinite(kwh) ? kwh : 0;
+  const listingIdNum = Number(trade.listingId);
+
+  return {
+    id,
+    listingId: Number.isInteger(listingIdNum) && listingIdNum >= 0 ? listingIdNum : null,
+    seller: sellerAnon,
+    buyer: buyerAnon,
+    kwh: safeKwh,
+    price: safePriceNum.toString(),
+    pricePerKwh: safeKwh > 0 ? Number((safePriceNum / safeKwh).toFixed(6)) : 0,
+    ts: toIsoTs(trade.blockTimestamp ?? trade.ts),
+  };
+};
+
 module.exports = {
   buildTradeQuery,
   getTradeHistory,
@@ -201,5 +263,6 @@ module.exports = {
   getTradeByTxHash,
   getRecentTrades,
   anonymizeWallet,
+  shapeTradeTickerItem,
   TRADE_EVENT_TYPES,
 };

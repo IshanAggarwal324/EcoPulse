@@ -697,7 +697,7 @@ const listenToBlockchainEvents = () => {
       }
     });
 
-    contract.on('EnergyPurchased', async (listingId, buyer, seller, energyAmount, price) => {
+    contract.on('EnergyPurchased', async (listingId, buyer, seller, energyAmount, price, event) => {
       const listingIdNum = Number(listingId);
       console.log(`[Sync] Real-time event detected: EnergyPurchased (listingId: ${listingIdNum}, buyer: ${buyer}, seller: ${seller}, amount: ${energyAmount}, price: ${price})`);
       try {
@@ -710,6 +710,21 @@ const listenToBlockchainEvents = () => {
           buyer,
           seller,
           energyAmount: energyAmount.toString(),
+          price: ethers.formatEther(price),
+        });
+
+        // Module 9.4 — live trade ticker. txHash/logIndex make the item dedup
+        // against the GET /trades/recent seed; blockTimestamp isn't available
+        // synchronously on the event, so ts falls back to "now" (realtime).
+        const txHash = String(event?.transactionHash || event?.log?.transactionHash || '').toLowerCase();
+        const logIndex = Number(event?.index ?? event?.logIndex ?? event?.log?.index ?? -1);
+        socketBroadcastService.emitTradeExecuted({
+          txHash,
+          logIndex,
+          listingId: listingIdNum,
+          seller,
+          buyer,
+          energyAmount: Number(energyAmount),
           price: ethers.formatEther(price),
         });
       } catch (err) {

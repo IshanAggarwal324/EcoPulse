@@ -20,6 +20,7 @@ const Dashboard = lazy(() => import('../../frontend/pages/Dashboard'));
 const Trading = lazy(() => import('../../frontend/pages/Trading'));
 const AutoTrading = lazy(() => import('../../frontend/pages/AutoTrading'));
 const CarbonTransactions = lazy(() => import('../../frontend/pages/CarbonTransactions'));
+const CarbonWallet = lazy(() => import('../../frontend/pages/CarbonWallet'));
 const Forecasts = lazy(() => import('../../frontend/pages/Forecasts'));
 const Credits = lazy(() => import('../../frontend/pages/Credits'));
 const Settings = lazy(() => import('../../frontend/pages/Settings'));
@@ -75,6 +76,7 @@ function AuthenticatedApp() {
                       <Route path="/trading" element={<Trading />} />
                       <Route path="/auto-trading" element={<AutoTrading />} />
                       <Route path="/transactions" element={<CarbonTransactions />} />
+                      <Route path="/wallet" element={<CarbonWallet />} />
                       <Route path="/forecasts" element={<Forecasts />} />
                       <Route path="/credits" element={<Credits />} />
                       <Route path="/settings" element={<Settings />} />

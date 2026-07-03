@@ -321,6 +321,11 @@ export const tradesApi = {
     const query = new URLSearchParams(params).toString();
     return fetchApi(`/trades/history${query ? `?${query}` : ''}`);
   },
+  // Module 9.4 — anonymized global recent-trade seed for the live ticker.
+  getRecent: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/trades/recent${query ? `?${query}` : ''}`);
+  },
   syncHistory: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return fetchApi(`/trades/history/sync${query ? `?${query}` : ''}`);

@@ -86,8 +86,38 @@ const syncAndGetHistory = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * Module 9.4 — GET /trades/recent
+ * Global, ANONYMIZED recent-trade feed used to seed the live ticker. Every
+ * item is sanitized via `shapeTradeTickerItem` (full wallets are never exposed
+ * — only 0x1234…abcd). Auth + API rate-limit are inherited from the v1 mount.
+ *
+ * Query: limit (1-100, default 50), eventType (listed|purchased|cancelled|expired,
+ * default purchased), sinceDays (positive, ≤ 365).
+ */
+const getRecent = asyncHandler(async (req, res) => {
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 50;
+
+  const requestedType = typeof req.query.eventType === 'string' ? req.query.eventType : null;
+  const eventType = requestedType && tradeHistoryService.TRADE_EVENT_TYPES.includes(requestedType)
+    ? requestedType
+    : 'purchased';
+
+  const rawSince = Number(req.query.sinceDays);
+  const sinceDays = Number.isFinite(rawSince) && rawSince > 0 ? Math.min(rawSince, 365) : null;
+
+  const trades = await tradeHistoryService.getRecentTrades({ eventType, limit, sinceDays });
+  const items = trades
+    .map((t) => tradeHistoryService.shapeTradeTickerItem(t))
+    .filter(Boolean);
+
+  res.status(200).json({ success: true, data: items });
+});
+
 module.exports = {
   getHistory,
   getByTxHash,
   syncAndGetHistory,
+  getRecent,
 };

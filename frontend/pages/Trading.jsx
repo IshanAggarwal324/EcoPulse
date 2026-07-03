@@ -19,6 +19,7 @@ import EmptyState from '../components/ui/EmptyState';
 import RatingModal from '../components/ui/RatingModal';
 import SettlementStatusTimeline from '../components/settlement/SettlementStatusTimeline';
 import EnergyFlowSankey from '../components/trading/EnergyFlowSankey';
+import LiveTradeTicker from '../components/trading/LiveTradeTicker';
 import TransactionSummary from '../components/ui/TransactionSummary';
 import TransactionFilters from '../components/ui/TransactionFilters';
 import {
@@ -584,6 +585,8 @@ const Trading = () => {
         title="Energy Marketplace"
         subtitle="List energy orders and trade peer-to-peer using carbon credits."
       />
+
+      <LiveTradeTicker />
 
       {!account && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 content-card rounded-xl">

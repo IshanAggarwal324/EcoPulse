@@ -13,6 +13,10 @@ const SOCKET_EVENTS = {
     // Order book (Sub-module 6.1.4) — compact "book changed" push, not a full
     // resync. Clients refetch their visible page on receipt.
     ORDERBOOK_UPDATE: 'orderbookUpdate',
+    // Module 9.4 — compact, anonymized live-trade push for the ticker. Fired
+    // only from the realtime event listener (never from historical backfill),
+    // so clients never receive a burst of stale trades on startup.
+    TRADE_EXECUTED: 'tradeExecuted',
   },
 };
 
