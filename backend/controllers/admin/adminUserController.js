@@ -5,8 +5,10 @@ const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
 const auditService = require('../../services/auditService');
 const { escapeRegex } = require('../../utils/validators');
+const { ALL_ROLES, ROLES } = require('../../auth/roles');
 
-const VALID_ROLES = ['user', 'admin', 'moderator'];
+// Module 8.1 — admin can assign any of the domain roles.
+const VALID_ROLES = ALL_ROLES;
 
 const toAdminUserResponse = (user, extra = {}) => ({
   _id: user._id,
@@ -110,6 +112,23 @@ const setRole = asyncHandler(async (req, res) => {
   }
 
   const previousRole = user.role;
+
+  // Module 8.1 guardrail — never strip admin from the last remaining active
+  // admin (would lock the platform out of all admin functionality).
+  if (previousRole === ROLES.ADMIN && role !== ROLES.ADMIN) {
+    const activeAdminCount = await User.countDocuments({
+      role: ROLES.ADMIN,
+      deletedAt: null,
+      isBanned: false,
+    });
+    if (activeAdminCount <= 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot demote the last remaining active admin',
+      });
+    }
+  }
+
   user.role = role;
   await user.save();
 

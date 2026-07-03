@@ -79,7 +79,7 @@ test('resolveFlowScope: privileged may request a wallet', () => {
 });
 
 test('resolveFlowScope: non-privileged locked to own wallet', () => {
-  const s = resolveFlowScope({ role: 'user', _id: 'u1', walletAddress: BUYER }, {});
+  const s = resolveFlowScope({ role: 'consumer', _id: 'u1', walletAddress: BUYER }, {});
   assert.strictEqual(s.scope, 'wallet');
   assert.strictEqual(s.wallet, BUYER);
   assert.strictEqual(s.privileged, false);
@@ -87,7 +87,7 @@ test('resolveFlowScope: non-privileged locked to own wallet', () => {
 
 test('resolveFlowScope: non-privileged without wallet throws 400', () => {
   assertThrows(
-    () => resolveFlowScope({ role: 'user', _id: 'u1', walletAddress: null }, {}),
+    () => resolveFlowScope({ role: 'consumer', _id: 'u1', walletAddress: null }, {}),
     400,
     'no wallet',
   );
@@ -95,14 +95,14 @@ test('resolveFlowScope: non-privileged without wallet throws 400', () => {
 
 test('resolveFlowScope: non-privileged requesting another wallet throws 403', () => {
   assertThrows(
-    () => resolveFlowScope({ role: 'user', _id: 'u1', walletAddress: BUYER }, { wallet: SELLER }),
+    () => resolveFlowScope({ role: 'consumer', _id: 'u1', walletAddress: BUYER }, { wallet: SELLER }),
     403,
     'cross wallet',
   );
 });
 
 test('resolveFlowScope: non-privileged requesting own wallet is allowed', () => {
-  const s = resolveFlowScope({ role: 'user', _id: 'u1', walletAddress: BUYER }, { wallet: BUYER.toUpperCase() });
+  const s = resolveFlowScope({ role: 'consumer', _id: 'u1', walletAddress: BUYER }, { wallet: BUYER.toUpperCase() });
   assert.strictEqual(s.wallet, BUYER);
 });
 

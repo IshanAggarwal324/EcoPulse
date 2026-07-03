@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
+const { DEFAULT_ROLE, ALL_ROLES } = require('../auth/roles');
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME_MS = 15 * 60 * 1000;
@@ -37,9 +38,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
     role: {
+      // Module 8.1 — domain personas (separate from node types). `user` is the
+      // pre-8.1 legacy value; run scripts/migrate-user-roles.js to backfill.
       type: String,
-      enum: ['user', 'admin', 'moderator'],
-      default: 'user',
+      enum: ALL_ROLES,
+      default: DEFAULT_ROLE,
     },
     preferences: {
       emailNotifications: { type: Boolean, default: true },

@@ -97,7 +97,12 @@ test('buildMapFilter: moderator sees all', () => {
 
 test('buildMapFilter: regular user is scoped to own nodes', () => {
   const uid = '507f1f77bcf86cd799439011';
-  assert.deepStrictEqual(buildMapFilter({ role: 'user', _id: uid }), { userId: uid });
+  assert.deepStrictEqual(buildMapFilter({ role: 'consumer', _id: uid }), { userId: uid });
+});
+
+test('buildMapFilter: grid_operator is scoped to own nodes (zone read comes in Module 8.3)', () => {
+  const uid = '507f1f77bcf86cd799439011';
+  assert.deepStrictEqual(buildMapFilter({ role: 'grid_operator', _id: uid }), { userId: uid });
 });
 
 test('buildMapFilter: missing user throws 401', () => {

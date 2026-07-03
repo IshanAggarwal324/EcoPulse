@@ -27,7 +27,9 @@ import { shortWallet, formatDate } from '../../utils/adminFormat';
 
 const LIMIT = 20;
 const ROLE_OPTIONS = [
-  { value: 'user', label: 'User' },
+  { value: 'consumer', label: 'Consumer' },
+  { value: 'prosumer', label: 'Prosumer' },
+  { value: 'grid_operator', label: 'Grid Operator' },
   { value: 'moderator', label: 'Moderator' },
   { value: 'admin', label: 'Admin' },
 ];

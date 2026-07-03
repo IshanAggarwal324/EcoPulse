@@ -2,6 +2,7 @@ import React, {
   createContext, useState, useContext, useEffect, useCallback, useRef, useMemo,
 } from 'react';
 import { API_BASE, authApi, ApiError } from '../utils/api';
+import { hasPermission as userHasPermission, hasRole as userHasRole } from '../utils/permissions';
 
 const AuthContext = createContext(null);
 
@@ -183,11 +184,18 @@ export const AuthProvider = ({ children }) => {
 
   const isAuthenticated = !!user;
 
+  // Module 8.2 — role/permission helpers bound to the current user, for
+  // client-side UI gating. (Server still enforces every authorization.)
+  const hasPermission = useCallback((permission) => userHasPermission(user, permission), [user]);
+  const hasRole = useCallback((role) => userHasRole(user, role), [user]);
+
   const value = useMemo(
     () => ({
       user,
       loading,
       isAuthenticated,
+      hasPermission,
+      hasRole,
       login,
       register,
       logout,
@@ -199,6 +207,8 @@ export const AuthProvider = ({ children }) => {
       user,
       loading,
       isAuthenticated,
+      hasPermission,
+      hasRole,
       login,
       register,
       logout,

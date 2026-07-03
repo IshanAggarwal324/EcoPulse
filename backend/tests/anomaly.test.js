@@ -188,7 +188,7 @@ async function callHandler(query) {
     nextArg = err;
     resolveDone();
   };
-  getAnomalies({ user: { _id: 'u1', role: 'user' }, query }, res, next);
+  getAnomalies({ user: { _id: 'u1', role: 'consumer' }, query }, res, next);
   // Safety timeout so a misbehaving handler fails instead of hanging the runner.
   await Promise.race([
     done,

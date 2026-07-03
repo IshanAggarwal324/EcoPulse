@@ -202,45 +202,45 @@ test('resolveMarketplaceTradeScope allows admin to query unscoped', () => {
 });
 
 test('resolveMarketplaceTradeScope rejects unscoped queries from regular users', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: {} };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: {} };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 403);
 });
 
 test('resolveMarketplaceTradeScope allows regular users to query their own wallet', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { wallet: SELLER } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { wallet: SELLER } };
   const scope = resolveMarketplaceTradeScope(req);
   assert.strictEqual(scope.wallet, SELLER);
 });
 
 test('resolveMarketplaceTradeScope blocks regular users from querying other wallets (IDOR)', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { wallet: BUYER1 } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { wallet: BUYER1 } };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 403);
 });
 
 test('resolveMarketplaceTradeScope blocks regular user filtering by another seller', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { seller: BUYER1 } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { seller: BUYER1 } };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 403);
 });
 
 test('resolveMarketplaceTradeScope allows public per-listing history for any user', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { listingId: '42' } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { listingId: '42' } };
   const scope = resolveMarketplaceTradeScope(req);
   assert.strictEqual(scope.listingId, 42);
   assert.strictEqual(scope.wallet, null);
 });
 
 test('resolveMarketplaceTradeScope rejects invalid wallet with 400', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { wallet: '0xdead' } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { wallet: '0xdead' } };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 400);
 });
 
 test('resolveMarketplaceTradeScope rejects invalid listingId with 400', () => {
-  const req = { user: { role: 'user', walletAddress: SELLER }, query: { listingId: 'abc' } };
+  const req = { user: { role: 'consumer', walletAddress: SELLER }, query: { listingId: 'abc' } };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 400);
 });
 
 test('resolveMarketplaceTradeScope blocks user with no registered wallet confirming ownership of another', () => {
-  const req = { user: { role: 'user' }, query: { wallet: SELLER } };
+  const req = { user: { role: 'consumer' }, query: { wallet: SELLER } };
   assertThrowsStatus(() => resolveMarketplaceTradeScope(req), 403);
 });
 

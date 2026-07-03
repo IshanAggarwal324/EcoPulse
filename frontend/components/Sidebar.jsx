@@ -7,9 +7,18 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
 const Sidebar = memo(function Sidebar({ onClose }) {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const toast = useToast();
   const showAdmin = hasAdminAccess(user);
+
+  // Module 8.2 — role-aware nav. A link may declare an optional `permission`
+  // (or `roles[]`); links without a guard stay visible to everyone. This is UI
+  // gating only — the server still authorizes every request.
+  const visibleLinks = NAV_LINKS.filter((link) => {
+    if (link.permission && !hasPermission(link.permission)) return false;
+    if (link.roles?.length && !link.roles.includes(user?.role)) return false;
+    return true;
+  });
 
   return (
     <aside className="h-full flex flex-col bg-gradient-to-b from-slate-800/95 via-slate-850 to-slate-900/95 backdrop-blur-xl border-r border-slate-700/40 shadow-2xl shadow-black/20">
@@ -37,7 +46,7 @@ const Sidebar = memo(function Sidebar({ onClose }) {
         <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 px-3 mb-2">
           Navigation
         </p>
-        {NAV_LINKS.map((link) => (
+        {visibleLinks.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}

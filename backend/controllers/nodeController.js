@@ -1,7 +1,13 @@
 const EnergyNode = require('../models/EnergyNode');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/apiError');
-const { isPrivileged } = require('../utils/nodeOwnership');
+const {
+  isPrivileged,
+  resolveCreateOwner,
+  buildNodeListFilter,
+  assertNodeAccess,
+  assertNodeTypeAllowedForRole,
+} = require('../utils/nodeOwnership');
 const {
   MAX_MAP_NODES,
   normalizeCoordinates,
@@ -37,10 +43,22 @@ const toNodeResponse = (node, req) => {
 
 const createNode = asyncHandler(async (req, res) => {
   const safeBody = sanitizeNodePayload(req.body, { allowUserId: true });
-  const { name, nodeType, sourceType, location, userId } = safeBody;
+  const { name, nodeType, sourceType, location } = safeBody;
 
-  if (!name || !nodeType || !sourceType || !userId) {
-    throw new ApiError('Name, nodeType, sourceType, and userId are required', 400, 'INVALID_NODE_PAYLOAD');
+  if (!name || !nodeType || !sourceType) {
+    throw new ApiError('Name, nodeType, and sourceType are required', 400, 'INVALID_NODE_PAYLOAD');
+  }
+
+  // Module 8.2 — nodeType must be permitted for the caller's role (e.g. a
+  // consumer cannot create a producer node).
+  assertNodeTypeAllowedForRole(req.user?.role, nodeType);
+
+  // Module 8.2 — ownership: privileged roles may target an arbitrary user;
+  // every other role owns the node themselves and a request-supplied userId is
+  // ignored (prevents createNode IDOR).
+  const userId = resolveCreateOwner(req.user, safeBody.userId);
+  if (!userId) {
+    throw new ApiError('Could not resolve node owner', 400, 'INVALID_NODE_PAYLOAD');
   }
 
   const coordinates = normalizeCoordinates(req.body.coordinates);
@@ -64,7 +82,7 @@ const getNodes = asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
-  const filter = isPrivileged(req.user) ? {} : { userId: req.user._id };
+  const filter = buildNodeListFilter(req.user);
 
   const [nodes, total] = await Promise.all([
     EnergyNode.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -90,6 +108,9 @@ const getNodeById = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
+  // Module 8.2 — enforce ownership/privilege (fixes GET /nodes/:id IDOR).
+  assertNodeAccess(req.user, node);
+
   res.status(200).json({
     success: true,
     data: toNodeResponse(node, req),
@@ -106,14 +127,23 @@ const updateNode = asyncHandler(async (req, res) => {
     safeUpdates.coordinates = normalizeCoordinates(req.body.coordinates);
   }
 
-  const node = await EnergyNode.findByIdAndUpdate(req.params.id, safeUpdates, {
-    new: true,
-    runValidators: true,
-  });
-
+  const node = await EnergyNode.findById(req.params.id);
   if (!node) {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
+
+  // Module 8.2 — enforce ownership/privilege BEFORE any content validation so
+  // a non-owner cannot infer processing state from differing error codes.
+  assertNodeAccess(req.user, node);
+
+  // A node-type change must still be permitted for the caller's role (e.g. a
+  // consumer cannot upgrade a node to `producer`).
+  if (safeUpdates.nodeType !== undefined) {
+    assertNodeTypeAllowedForRole(req.user?.role, safeUpdates.nodeType);
+  }
+
+  node.set(safeUpdates);
+  await node.save();
 
   res.status(200).json({
     success: true,
@@ -126,6 +156,9 @@ const deleteNode = asyncHandler(async (req, res) => {
   if (!node) {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
+
+  // Module 8.2 — enforce ownership/privilege before deleting.
+  assertNodeAccess(req.user, node);
 
   await node.deleteOne();
   res.status(200).json({
