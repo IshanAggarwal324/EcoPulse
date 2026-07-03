@@ -335,6 +335,8 @@ export const tradesApi = {
 
 export const nodesApi = {
   getAll: () => fetchApi('/nodes'),
+  // Module 9.5 — RBAC-scoped, PII-free geographic map payload.
+  getMap: () => fetchApi('/nodes/map'),
 };
 
 export const readingsApi = {

@@ -20,6 +20,8 @@ const EMPTY = {
   sourceType: 'solar',
   status: 'active',
   location: '',
+  lat: '',
+  lng: '',
   userId: '',
 };
 
@@ -43,6 +45,8 @@ const NodeFormModal = ({ open, node, loading, onClose, onSubmit }) => {
           sourceType: node.sourceType || 'solar',
           status: node.status || 'active',
           location: node.location || '',
+          lat: node.coordinates?.lat ?? '',
+          lng: node.coordinates?.lng ?? '',
           userId: '',
         });
       } else {
@@ -76,6 +80,11 @@ const NodeFormModal = ({ open, node, loading, onClose, onSubmit }) => {
       sourceType: values.sourceType,
       status: values.status,
       location: values.location.trim() || undefined,
+      // Backend normalizes + range-validates; both empty clears coordinates.
+      coordinates: {
+        lat: values.lat.trim() === '' ? '' : Number(values.lat),
+        lng: values.lng.trim() === '' ? '' : Number(values.lng),
+      },
     };
     if (!isEdit && values.userId.trim()) {
       payload.userId = values.userId.trim();
@@ -160,6 +169,38 @@ const NodeFormModal = ({ open, node, loading, onClose, onSubmit }) => {
               className={inputClass}
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass} htmlFor="nodeLat">Latitude</label>
+              <input
+                id="nodeLat"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={values.lat}
+                onChange={set('lat')}
+                disabled={loading}
+                placeholder="-90 to 90"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor="nodeLng">Longitude</label>
+              <input
+                id="nodeLng"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={values.lng}
+                onChange={set('lng')}
+                disabled={loading}
+                placeholder="-180 to 180"
+                className={inputClass}
+              />
+            </div>
+          </div>
+          <p className="-mt-2 text-xs text-slate-500">Optional. Required for the live grid map.</p>
 
           {!isEdit && (
             <div>

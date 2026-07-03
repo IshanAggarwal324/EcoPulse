@@ -40,6 +40,21 @@ const energyNodeSchema = new mongoose.Schema({
   location: {
     type: String,
   },
+  // Module 9.5 — geographic coordinates for the live grid map. Optional so
+  // legacy nodes keep working; GET /nodes/map only returns nodes that have
+  // valid coordinates. Range is re-validated in nodeMapService before writes.
+  coordinates: {
+    lat: {
+      type: Number,
+      min: [-90, 'Latitude must be >= -90'],
+      max: [90, 'Latitude must be <= 90'],
+    },
+    lng: {
+      type: Number,
+      min: [-180, 'Longitude must be >= -180'],
+      max: [180, 'Longitude must be <= 180'],
+    },
+  },
   userId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',

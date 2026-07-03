@@ -4,6 +4,7 @@ const EnergyReading = require('../../models/EnergyReading');
 const { parsePagination, paginateResults } = require('../../utils/paginate');
 const asyncHandler = require('../../utils/asyncHandler');
 const auditService = require('../../services/auditService');
+const { normalizeCoordinates } = require('../../services/nodeMapService');
 
 const VALID_NODE_TYPES = ['producer', 'consumer', 'prosumer'];
 const VALID_SOURCE_TYPES = ['solar', 'wind', 'home', 'industry', 'other'];
@@ -105,6 +106,8 @@ const createNode = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid userId' });
   }
 
+  const coordinates = normalizeCoordinates(req.body.coordinates);
+
   const node = await EnergyNode.create({
     name,
     nodeType,
@@ -112,6 +115,7 @@ const createNode = asyncHandler(async (req, res) => {
     status: status || 'active',
     location,
     userId: owner,
+    ...(coordinates ? { coordinates } : {}),
   });
 
   await auditService.log({
@@ -143,6 +147,11 @@ const updateNode = asyncHandler(async (req, res) => {
     if (req.body[field] !== undefined) {
       updates[field] = req.body[field];
     }
+  }
+
+  // Coordinates are validated/normalized explicitly (null clears the subdoc).
+  if (req.body.coordinates !== undefined) {
+    updates.coordinates = normalizeCoordinates(req.body.coordinates);
   }
 
   if (updates.nodeType && !VALID_NODE_TYPES.includes(updates.nodeType)) {

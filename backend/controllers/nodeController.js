@@ -2,6 +2,14 @@ const EnergyNode = require('../models/EnergyNode');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/apiError');
 const { isPrivileged } = require('../utils/nodeOwnership');
+const {
+  MAX_MAP_NODES,
+  normalizeCoordinates,
+  buildMapFilter,
+  coordinatesExistFilter,
+  hasValidCoordinates,
+  shapeMapNode,
+} = require('../services/nodeMapService');
 
 const ALLOWED_NODE_FIELDS = new Set(['name', 'nodeType', 'sourceType', 'status', 'location', 'userId']);
 
@@ -35,12 +43,15 @@ const createNode = asyncHandler(async (req, res) => {
     throw new ApiError('Name, nodeType, sourceType, and userId are required', 400, 'INVALID_NODE_PAYLOAD');
   }
 
+  const coordinates = normalizeCoordinates(req.body.coordinates);
+
   const node = await EnergyNode.create({
     name,
     nodeType,
     sourceType,
     location,
     userId,
+    ...(coordinates ? { coordinates } : {}),
   });
 
   res.status(201).json({
@@ -87,6 +98,14 @@ const getNodeById = asyncHandler(async (req, res) => {
 
 const updateNode = asyncHandler(async (req, res) => {
   const safeUpdates = sanitizeNodePayload(req.body, { allowUserId: false });
+
+  // Coordinates are validated/normalized explicitly (not via the allow-list).
+  // normalizeCoordinates returns null when both fields are empty, which clears
+  // the stored coordinates.
+  if (req.body.coordinates !== undefined) {
+    safeUpdates.coordinates = normalizeCoordinates(req.body.coordinates);
+  }
+
   const node = await EnergyNode.findByIdAndUpdate(req.params.id, safeUpdates, {
     new: true,
     runValidators: true,
@@ -115,4 +134,46 @@ const deleteNode = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createNode, getNodes, getNodeById, updateNode, deleteNode };
+// Module 9.5 — geographic map payload. RBAC-scoped (own nodes only unless
+// privileged) and PII-free. Bounded by MAX_MAP_NODES to protect payload size.
+const getNodesForMap = asyncHandler(async (req, res) => {
+  const filter = { ...buildMapFilter(req.user), ...coordinatesExistFilter() };
+
+  const nodes = await EnergyNode.aggregate([
+    { $match: filter },
+    { $sort: { createdAt: -1 } },
+    { $limit: MAX_MAP_NODES },
+    {
+      $lookup: {
+        from: 'energyreadings',
+        let: { nodeId: '$_id' },
+        pipeline: [
+          { $match: { $expr: { $eq: ['$nodeId', '$$nodeId'] } } },
+          { $sort: { timestamp: -1 } },
+          { $limit: 1 },
+          {
+            $project: {
+              _id: 0,
+              energyGenerated: 1,
+              energyConsumed: 1,
+              timestamp: 1,
+              unit: 1,
+            },
+          },
+        ],
+        as: 'lastReading',
+      },
+    },
+    { $set: { lastReading: { $arrayElemAt: ['$lastReading', 0] } } },
+  ]);
+
+  const data = nodes.filter(hasValidCoordinates).map(shapeMapNode);
+
+  res.status(200).json({
+    success: true,
+    count: data.length,
+    data,
+  });
+});
+
+module.exports = { createNode, getNodes, getNodeById, updateNode, deleteNode, getNodesForMap };

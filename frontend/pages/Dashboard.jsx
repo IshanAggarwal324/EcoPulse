@@ -11,6 +11,7 @@ import DashboardSummaryCards from '../components/dashboard/DashboardSummaryCards
 import DashboardWalletSection from '../components/dashboard/DashboardWalletSection';
 import DashboardNodePanel from '../components/dashboard/DashboardNodePanel';
 import LiveGridPanel from '../components/dashboard/LiveGridPanel';
+import LiveGridMap from '../components/dashboard/LiveGridMap';
 import PageLoader from '../components/ui/PageLoader';
 
 const SOURCE_ICONS = {
@@ -28,6 +29,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [gridView, setGridView] = useState('chart');
   const toast = useToast();
 
   useDashboardRealtime({ setSummary, setLiveReadings });
@@ -139,8 +141,29 @@ const Dashboard = () => {
         forecastStatus={forecastStatus}
       />
 
+      <div className="flex justify-end">
+        <div role="tablist" className="inline-flex rounded-xl border border-slate-700/40 overflow-hidden text-xs">
+          {[['chart', 'Analytics'], ['map', 'Live Map']].map(([key, label]) => (
+            <button
+              key={key}
+              role="tab"
+              type="button"
+              aria-selected={gridView === key}
+              onClick={() => setGridView(key)}
+              className={`px-4 py-2 font-medium transition-colors ${
+                gridView === key
+                  ? 'bg-emerald-500/15 text-emerald-300'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <LiveGridPanel liveReadings={liveReadings} />
+        {gridView === 'map' ? <LiveGridMap /> : <LiveGridPanel liveReadings={liveReadings} />}
         <DashboardNodePanel nodeStatus={nodeStatus} />
       </div>
     </div>

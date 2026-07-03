@@ -15,7 +15,7 @@ export default defineConfig({
   ],
   optimizeDeps: {
     // victory-vendor has no "." export (only d3-* subpaths) — do not include it here.
-    include: ['recharts', 'react-is', 'react-redux', 'immer'],
+    include: ['recharts', 'react-is', 'react-redux', 'immer', 'leaflet', 'react-leaflet'],
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router-dom', 'react-is'],
@@ -27,6 +27,12 @@ export default defineConfig({
       ethers: dep('ethers'),
       recharts: dep('recharts/es6/index.js'),
       'socket.io-client': dep('socket.io-client/build/esm/index.js'),
+      // Module 9.5 — frontend sources live outside the project root, so bare
+      // specifiers resolve via node walk-up that misses ecopulse/node_modules.
+      // Alias explicitly like the other deps.
+      leaflet: dep('leaflet'),
+      'react-leaflet': dep('react-leaflet'),
+      '@react-leaflet/core': dep('@react-leaflet/core'),
     },
   },
   build: {
@@ -36,6 +42,7 @@ export default defineConfig({
           ethers: ['ethers'],
           recharts: ['recharts'],
           socket: ['socket.io-client'],
+          leaflet: ['leaflet', 'react-leaflet'],
         },
       },
     },
