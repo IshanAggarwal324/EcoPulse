@@ -81,6 +81,7 @@ const Dashboard = () => {
 
   const nodeStatus = useMemo(
     () => nodes.slice(0, 5).map((node) => ({
+      id: node._id,
       name: node.name,
       type: node.nodeType === 'consumer' ? 'Consumption' : 'Generation',
       status: node.status === 'active' ? 'Optimal' : node.status,
