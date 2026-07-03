@@ -18,6 +18,7 @@ import MarketplaceOrderCard from '../components/ui/MarketplaceOrderCard';
 import EmptyState from '../components/ui/EmptyState';
 import RatingModal from '../components/ui/RatingModal';
 import SettlementStatusTimeline from '../components/settlement/SettlementStatusTimeline';
+import EnergyFlowSankey from '../components/trading/EnergyFlowSankey';
 import TransactionSummary from '../components/ui/TransactionSummary';
 import TransactionFilters from '../components/ui/TransactionFilters';
 import {
@@ -1035,6 +1036,8 @@ const Trading = () => {
         ratedWallet={ratingTarget?.ratedWallet}
         listingId={ratingTarget?.listingId}
       />
+
+      <EnergyFlowSankey />
 
       {settlementTarget && (
         <SettlementStatusTimeline

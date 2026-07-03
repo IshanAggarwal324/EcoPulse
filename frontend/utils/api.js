@@ -235,6 +235,10 @@ export const analyticsApi = {
   },
   getStatus: () => fetchApi('/analytics/status'),
   syncBlockchain: () => fetchApi('/analytics/sync', { method: 'POST' }),
+  // Module 9.1 — energy/carbon flow Sankey graph. Scoped to caller's wallet
+  // server-side; admin/moderator receive the global marketplace flow.
+  getEnergyFlow: (window = '7d') =>
+    fetchApi(`/analytics/energy-flow?window=${encodeURIComponent(window)}`),
 };
 
 // Module 5.3.6 — carbon lifecycle (retirements, bridge, totals).
