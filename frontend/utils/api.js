@@ -36,7 +36,7 @@ export function configureApiAuth(handlers) {
   authHandlers = { ...authHandlers, ...handlers };
 }
 
-const DEFAULT_TIMEOUT_MS = 20000;
+const DEFAULT_TIMEOUT_MS = 90000;
 let csrfTokenCache = null;
 
 function getCsrfTokenFromCookie() {
