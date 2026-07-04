@@ -64,9 +64,13 @@ function normalizeCoordinates(input) {
  * while every other non-privileged user maps only their OWN nodes. A node's
  * physical location is sensitive, so this is the core privacy guardrail: it is
  * combined with coordinatesExistFilter() by the controller before querying.
+ *
+ * Module 8.5 — `activeZoneCodes` (resolved + cached by the controller) is
+ * forwarded so a deactivated/deleted zone no longer plots its nodes for a
+ * grid_operator. Omitted in unit tests (sync core trusts declared zones).
  */
-function buildMapFilter(user) {
-  return buildNodeAccessFilter(user, { permission: 'read' });
+function buildMapFilter(user, { activeZoneCodes } = {}) {
+  return buildNodeAccessFilter(user, { permission: 'read', activeZoneCodes });
 }
 
 /**

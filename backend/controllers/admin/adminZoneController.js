@@ -6,7 +6,7 @@ const User = require('../../models/User');
 const auditService = require('../../services/auditService');
 const { ROLES } = require('../../auth/roles');
 const { ZONE_CODE_RE } = require('../../models/GridZone');
-const { getUserZoneIds } = require('../../utils/nodeOwnership');
+const { getUserZoneIds, invalidateActiveZoneCache } = require('../../utils/nodeOwnership');
 
 const MAX_ZONES_PER_USER = 50;
 
@@ -51,6 +51,9 @@ const createZone = asyncHandler(async (req, res) => {
       description: description || '',
       createdBy: req.user?._id || null,
     });
+    // Module 8.5 — a newly active zone may expand a grid_operator's scope, so
+    // drop the cached active set so it is re-resolved on the next node read.
+    invalidateActiveZoneCache();
     await auditService.log({
       actor: req.user,
       action: 'GRID_ZONE_CREATED',
@@ -80,6 +83,11 @@ const updateZone = asyncHandler(async (req, res) => {
   if (active !== undefined) zone.active = active === true;
   await zone.save();
 
+  // Module 8.5 — an activation/deactivation changes which zones grant
+  // visibility. Drop the cached active set so revocation (active:false) takes
+  // effect on the very next node read instead of after the TTL.
+  invalidateActiveZoneCache();
+
   await auditService.log({
     actor: req.user,
     action: 'GRID_ZONE_UPDATED',
@@ -105,6 +113,11 @@ const deleteZone = asyncHandler(async (req, res) => {
     { assignedZoneIds: zone.code },
     { $pull: { assignedZoneIds: zone.code } },
   ).catch(() => {});
+
+  // Module 8.5 — the deleted zone is gone from the active set; drop the cache so
+  // any operator whose assignment is still mid-propagation stops seeing its
+  // nodes on the next read.
+  invalidateActiveZoneCache();
 
   await auditService.log({
     actor: req.user,

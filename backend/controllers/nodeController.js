@@ -4,8 +4,9 @@ const ApiError = require('../utils/apiError');
 const {
   isPrivileged,
   resolveCreateOwner,
-  buildNodeAccessFilter,
-  assertNodeAccess,
+  buildNodeAccessFilterAsync,
+  assertNodeAccessAsync,
+  resolveActiveZoneCodes,
   assertCanManageNodeAccess,
   assertNodeTypeAllowedForRole,
   sanitizeZoneId,
@@ -96,8 +97,10 @@ const getNodes = asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
-  // Module 8.3 — zone + delegation-aware scoping.
-  const filter = buildNodeAccessFilter(req.user);
+  // Module 8.3 / 8.5 — zone + delegation-aware scoping. The active-zone set is
+  // resolved (cached) so a deactivated zone revokes grid_operator visibility
+  // immediately instead of waiting for an assignment edit.
+  const filter = await buildNodeAccessFilterAsync(req.user);
 
   const [nodes, total] = await Promise.all([
     EnergyNode.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -123,9 +126,11 @@ const getNodeById = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.3 — enforce ownership/delegation/zone access (fixes GET /nodes/:id
-  // IDOR and now grants read to delegates + zoned grid_operators).
-  assertNodeAccess(req.user, node, 'read');
+  // Module 8.3 / 8.5 — enforce ownership/delegation/zone access (fixes GET
+  // /nodes/:id IDOR and now grants read to delegates + zoned grid_operators).
+  // The active-zone set is resolved so a deactivated/deleted zone no longer
+  // grants a grid_operator read on this node.
+  await assertNodeAccessAsync(req.user, node, 'read');
 
   res.status(200).json({
     success: true,
@@ -148,10 +153,11 @@ const updateNode = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.3 — enforce access BEFORE any content validation so a non-owner
-  // cannot infer processing state from differing error codes. Write delegates
-  // pass the 'write' check; read-only delegates/operators get a 403.
-  assertNodeAccess(req.user, node, 'write');
+  // Module 8.3 / 8.5 — enforce access BEFORE any content validation so a
+  // non-owner cannot infer processing state from differing error codes. Write
+  // delegates pass the 'write' check; read-only delegates/operators get a 403.
+  // Zone visibility is read-only, so a deactivated zone is naturally excluded.
+  await assertNodeAccessAsync(req.user, node, 'write');
 
   // A node-type change must still be permitted for the caller's role (e.g. a
   // consumer cannot upgrade a node to `producer`).
@@ -188,8 +194,10 @@ const deleteNode = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.3 — only the owner (or privileged) may delete; delegates cannot.
-  assertNodeAccess(req.user, node, 'write');
+  // Module 8.3 / 8.5 — only the owner (or privileged) may delete; delegates
+  // cannot. Resolves active zones for parity (write is owner/delegate only, so
+  // zone state does not change the outcome, but the path stays consistent).
+  await assertNodeAccessAsync(req.user, node, 'write');
   assertCanManageNodeAccess(req.user, node);
 
   await node.deleteOne();
@@ -202,7 +210,10 @@ const deleteNode = asyncHandler(async (req, res) => {
 // Module 9.5 — geographic map payload. RBAC-scoped (own nodes only unless
 // privileged) and PII-free. Bounded by MAX_MAP_NODES to protect payload size.
 const getNodesForMap = asyncHandler(async (req, res) => {
-  const filter = { ...buildMapFilter(req.user), ...coordinatesExistFilter() };
+  // Module 8.5 — resolve the active-zone set so a deactivated zone stops
+  // surfacing its nodes on the operator's map.
+  const activeZoneCodes = await resolveActiveZoneCodes(req.user);
+  const filter = { ...buildMapFilter(req.user, { activeZoneCodes }), ...coordinatesExistFilter() };
 
   const nodes = await EnergyNode.aggregate([
     { $match: filter },

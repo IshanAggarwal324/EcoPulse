@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const EnergyNode = require('../models/EnergyNode');
+const GridZone = require('../models/GridZone');
 const ApiError = require('./apiError');
+const { logger } = require('./logger');
 const { isPrivilegedRole, ROLES } = require('../auth/roles');
 
 const isPrivileged = (user) => isPrivilegedRole(user?.role);
@@ -8,6 +10,72 @@ const isPrivileged = (user) => isPrivilegedRole(user?.role);
 // Module 8.3 — operator delegation + zone scoping limits.
 const MAX_OPERATORS = 10;
 const ZONE_CODE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+
+// Module 8.5 — active-zone visibility cache. A grid_operator's read scope is
+// the intersection of their declared `assignedZoneIds` and the zones that are
+// currently `active` in the GridZone collection. Resolving that on every node
+// read would add a DB round-trip per request, so the active-code set is cached
+// for a short TTL. The cache is invalidated by the admin zone controller on any
+// create/update/delete so a deactivated/deleted zone revokes visibility within
+// the same request rather than waiting for the TTL.
+const ACTIVE_ZONE_TTL_MS = Math.max(
+  1000,
+  parseInt(process.env.ZONE_ACTIVE_CACHE_MS || '30000', 10),
+);
+let _activeZoneCache = { codes: null, expiresAt: 0 };
+
+/**
+ * Module 8.5 — the set of currently-active zone codes (lowercased). Cached for
+ * ACTIVE_ZONE_TTL_MS. On any DB/lookup error the function FAILS CLOSED: it
+ * resolves to an empty set so a grid_operator can never gain zone visibility
+ * through an outage (they still see their own + delegated nodes). The empty
+ * result is cached briefly to avoid hammering a failing collection.
+ *
+ * @returns {Promise<Set<string>>}
+ */
+async function getActiveZoneCodes() {
+  const now = Date.now();
+  if (_activeZoneCache.codes && _activeZoneCache.expiresAt > now) {
+    return _activeZoneCache.codes;
+  }
+
+  let codes = new Set();
+  try {
+    const zones = await GridZone.find({ active: true }).select('code').lean();
+    for (const z of zones) {
+      const c = typeof z.code === 'string' ? z.code.toLowerCase() : null;
+      if (c) codes.add(c);
+    }
+  } catch (err) {
+    // Fail-closed: no active zones verifiable -> no zone visibility granted.
+    logger.warn('grid_zone_active_lookup_failed', {
+      error: err?.message || String(err),
+    });
+    codes = new Set();
+  }
+
+  _activeZoneCache = { codes, expiresAt: now + ACTIVE_ZONE_TTL_MS };
+  return codes;
+}
+
+/**
+ * Drop the active-zone cache. Called by the admin zone controller after any
+ * create/update/delete so revocation is immediate instead of TTL-bound.
+ */
+function invalidateActiveZoneCache() {
+  _activeZoneCache = { codes: null, expiresAt: 0 };
+}
+
+/**
+ * Module 8.5 — resolve the active-zone context for a request. Returns the
+ * cached active-code Set for grid_operator users (the only role whose node
+ * visibility depends on zone state) and `undefined` for everyone else, so the
+ * sync access core can short-circuit the zone intersection work.
+ */
+async function resolveActiveZoneCodes(user) {
+  if (user?.role !== ROLES.GRID_OPERATOR) return undefined;
+  return getActiveZoneCodes();
+}
 
 /**
  * Module 8.2 — which node types a role is allowed to create.
@@ -109,7 +177,7 @@ function operatorMatchFilter(user, permission) {
  * Privileged roles (admin/moderator) see everything. grid_operator never gets a
  * zone clause for write permission — zone access is strictly read-only.
  */
-function buildNodeAccessFilter(user, { permission = 'read' } = {}) {
+function buildNodeAccessFilter(user, { permission = 'read', activeZoneCodes } = {}) {
   if (isPrivileged(user)) return {};
   if (!user?._id) {
     throw new ApiError('Authentication required', 401, 'NOT_AUTHORIZED');
@@ -121,11 +189,31 @@ function buildNodeAccessFilter(user, { permission = 'read' } = {}) {
   if (opClause) clauses.push(opClause);
 
   if (user.role === ROLES.GRID_OPERATOR && permission === 'read') {
-    const zones = getUserZoneIds(user);
+    let zones = getUserZoneIds(user);
+    // Module 8.5 — intersect with the active zone set when provided. A zone
+    // that has been deactivated (active:false) or deleted must immediately stop
+    // granting visibility; without this an operator retains stale read access
+    // until their assignment is manually edited. `activeZoneCodes` is supplied
+    // by the async orchestrators (resolveActiveZoneCodes); when absent the core
+    // trusts the user's declared zones (unit-test path).
+    if (activeZoneCodes instanceof Set) {
+      zones = zones.filter((z) => activeZoneCodes.has(z));
+    }
     if (zones.length) clauses.push({ zoneId: { $in: zones } });
   }
 
   return clauses.length === 1 ? clauses[0] : { $or: clauses };
+}
+
+/**
+ * Module 8.5 — async variant of buildNodeAccessFilter that resolves the
+ * active-zone set (cached) before delegating to the sync core. Controllers
+ * SHOULD use this so deactivation revokes grid_operator visibility without a
+ * manual assignment edit.
+ */
+async function buildNodeAccessFilterAsync(user, opts = {}) {
+  const activeZoneCodes = await resolveActiveZoneCodes(user);
+  return buildNodeAccessFilter(user, { ...opts, activeZoneCodes });
 }
 
 /**
@@ -166,7 +254,7 @@ function nodeGrantsOperatorPermission(node, userId, permission) {
  * read-only delegate/operator, which is a clear policy violation worth surfacing
  * distinctly once access to the node is already established.
  */
-function assertNodeAccess(user, node, permission = 'read') {
+function assertNodeAccess(user, node, permission = 'read', { activeZoneCodes } = {}) {
   if (!node) {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
@@ -189,9 +277,17 @@ function assertNodeAccess(user, node, permission = 'read') {
     && user?.role === ROLES.GRID_OPERATOR
     && typeof node.zoneId === 'string'
     && node.zoneId
-    && getUserZoneIds(user).includes(node.zoneId.toLowerCase())
   ) {
-    return;
+    // Module 8.5 — zone visibility only counts while the zone is active. When
+    // an active set is supplied (async path), a deactivated/deleted zone no
+    // longer grants read even though it is still listed in assignedZoneIds.
+    let zones = getUserZoneIds(user);
+    if (activeZoneCodes instanceof Set) {
+      zones = zones.filter((z) => activeZoneCodes.has(z));
+    }
+    if (zones.includes(node.zoneId.toLowerCase())) {
+      return;
+    }
   }
 
   // Distinguish "you can see it but not mutate it" (403) from "hidden" (404):
@@ -202,6 +298,56 @@ function assertNodeAccess(user, node, permission = 'read') {
   }
 
   throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+}
+
+/**
+ * Module 8.5 — async variant of assertNodeAccess that resolves the active-zone
+ * set (cached) before delegating. Controllers SHOULD use this for the GET/PUT/
+ * DELETE node paths so a deactivated zone revokes a grid_operator's read.
+ */
+async function assertNodeAccessAsync(user, node, permission = 'read', opts = {}) {
+  const activeZoneCodes = await resolveActiveZoneCodes(user);
+  return assertNodeAccess(user, node, permission, { ...opts, activeZoneCodes });
+}
+
+/**
+ * Module 8.5 — PII boundary for raw per-node meter telemetry (EnergyReading).
+ *
+ * Raw meter readings are personal energy-usage data. Access is granted to:
+ *   - privileged roles (admin/moderator),
+ *   - the node owner, and
+ *   - a delegated operator with at least read permission.
+ * It is DELIBERATELY NOT granted to a grid_operator via zone visibility: an
+ * operator's scope is topology + aggregates, never an individual's meter curve.
+ * Existence is hidden as 404 (no cross-tenant leak), matching assertNodeAccess.
+ */
+function assertNodeTelemetryAccess(user, node) {
+  if (!node) {
+    throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+  }
+  if (isPrivileged(user)) return;
+  const uid = user?._id ? String(user._id) : null;
+  if (uid && String(node.userId) === uid) return;
+  if (uid && nodeGrantsOperatorPermission(node, uid, 'read')) return;
+  throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+}
+
+/**
+ * Module 8.5 — load a node by id and enforce the telemetry PII boundary. Selects
+ * only the fields needed for the access decision. Replaces the raw
+ * assertNodeOwnership call on the readings path so delegated operators can read
+ * a delegated node's meter data while grid_operator zone readers still cannot.
+ */
+async function assertNodeTelemetryAccessById(user, nodeId) {
+  if (!nodeId || !mongoose.isValidObjectId(nodeId)) {
+    throw new ApiError('A valid nodeId is required', 400, 'INVALID_NODE_ID');
+  }
+  const node = await EnergyNode.findById(nodeId).select('userId operators').lean();
+  if (!node) {
+    throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+  }
+  assertNodeTelemetryAccess(user, node);
+  return node;
 }
 
 /**
@@ -356,9 +502,16 @@ module.exports = {
   assertNodeTypeAllowedForRole,
   resolveCreateOwner,
   getUserZoneIds,
+  getActiveZoneCodes,
+  invalidateActiveZoneCache,
+  resolveActiveZoneCodes,
   buildNodeAccessFilter,
+  buildNodeAccessFilterAsync,
   buildNodeListFilter,
   assertNodeAccess,
+  assertNodeAccessAsync,
+  assertNodeTelemetryAccess,
+  assertNodeTelemetryAccessById,
   assertCanManageNodeAccess,
   nodeGrantsOperatorPermission,
   sanitizeZoneId,
@@ -368,4 +521,11 @@ module.exports = {
   assertNodeOwnership,
   assertNodesOwnership,
   MAX_OPERATORS,
+  ACTIVE_ZONE_TTL_MS,
+  __setActiveZoneCacheForTest: (codes) => {
+    const set = codes instanceof Set
+      ? codes
+      : new Set(Array.isArray(codes) ? codes : []);
+    _activeZoneCache = { codes: set, expiresAt: Date.now() + ACTIVE_ZONE_TTL_MS };
+  },
 };

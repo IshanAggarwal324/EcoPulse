@@ -4,7 +4,7 @@ const { asObjectId } = require('../utils/validators');
 const {
   isPrivileged,
   getOwnedNodeIds,
-  assertNodeOwnership,
+  assertNodeTelemetryAccessById,
 } = require('../utils/nodeOwnership');
 
 const createReading = asyncHandler(async (req, res) => {
@@ -27,7 +27,10 @@ const getReadings = asyncHandler(async (req, res) => {
     }
 
     if (!privileged) {
-      await assertNodeOwnership(req.user._id, nodeId);
+      // Module 8.5 — raw per-node meter telemetry is PII. Access is owner +
+      // delegated operator only; a grid_operator's zone visibility grants node
+      // metadata/aggregates but NOT an individual's meter curve.
+      await assertNodeTelemetryAccessById(req.user, nodeId);
     }
 
     const readings = await readingService.listReadings({
