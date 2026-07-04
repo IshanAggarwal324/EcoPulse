@@ -5,6 +5,10 @@ const { isPrivilegedRole, ROLES } = require('../auth/roles');
 
 const isPrivileged = (user) => isPrivilegedRole(user?.role);
 
+// Module 8.3 — operator delegation + zone scoping limits.
+const MAX_OPERATORS = 10;
+const ZONE_CODE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+
 /**
  * Module 8.2 — which node types a role is allowed to create.
  * `null` means "any" (admin/moderator). An empty array means "none"
@@ -63,31 +67,158 @@ function resolveCreateOwner(user, requestedUserId) {
 }
 
 /**
- * Mongo filter for list endpoints. Privileged roles see everything; everyone
- * else is scoped to their own nodes. Reused by controllers + the map service.
+ * Module 8.3 — the zone codes a grid_operator is responsible for. Returns [] for
+ * any other role or a user without assignments. Inputs are coerced defensively
+ * (deduped, validated) so a stray malformed code can never reach a Mongo filter.
  */
-function buildNodeListFilter(user) {
+function getUserZoneIds(user) {
+  const raw = Array.isArray(user?.assignedZoneIds) ? user.assignedZoneIds : [];
+  const seen = new Set();
+  const out = [];
+  for (const code of raw) {
+    if (typeof code !== 'string') continue;
+    const c = code.trim().toLowerCase();
+    if (!c || !ZONE_CODE_RE.test(c) || seen.has(c)) continue;
+    seen.add(c);
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Mongo predicate for "this user is an operator on the node with at least
+ * `permission`". Read accepts read OR write; write requires write explicitly.
+ */
+function operatorMatchFilter(user, permission) {
+  const uid = user?._id;
+  if (!uid) return null;
+  if (permission === 'write') {
+    return { operators: { $elemMatch: { userId: uid, permission: 'write' } } };
+  }
+  return { 'operators.userId': uid };
+}
+
+/**
+ * Module 8.3 — zone + delegation-aware list filter (the plan's `buildNodeQuery`).
+ *
+ * Visibility for a non-privileged user is the union of:
+ *   - nodes they OWN                       ({ userId })
+ *   - nodes they are DELEGATED on          (operatorMatchFilter)
+ *   - (grid_operator only, read only) nodes in their assigned zone(s)
+ *
+ * Privileged roles (admin/moderator) see everything. grid_operator never gets a
+ * zone clause for write permission — zone access is strictly read-only.
+ */
+function buildNodeAccessFilter(user, { permission = 'read' } = {}) {
   if (isPrivileged(user)) return {};
   if (!user?._id) {
     throw new ApiError('Authentication required', 401, 'NOT_AUTHORIZED');
   }
-  return { userId: user._id };
+
+  const clauses = [{ userId: user._id }];
+
+  const opClause = operatorMatchFilter(user, permission);
+  if (opClause) clauses.push(opClause);
+
+  if (user.role === ROLES.GRID_OPERATOR && permission === 'read') {
+    const zones = getUserZoneIds(user);
+    if (zones.length) clauses.push({ zoneId: { $in: zones } });
+  }
+
+  return clauses.length === 1 ? clauses[0] : { $or: clauses };
 }
 
 /**
- * Ownership/privilege access check for a loaded node document. Privileged roles
- * pass; the owner passes; everyone else is denied. Existence is reported as
- * 404 (not 403) so the endpoint does not leak the existence of another user's
- * node — a hardening over the previous NODE_ACCESS_DENIED 403.
+ * Backward-compatible alias used by nodeController + nodeMapService. Equivalent
+ * to a read-scope access filter.
  */
-function assertNodeAccess(user, node) {
+function buildNodeListFilter(user) {
+  return buildNodeAccessFilter(user, { permission: 'read' });
+}
+
+/**
+ * Does the operator list grant `permission` to `userId`? Pure check on a loaded
+ * node document (no DB hit). Read accepts read|write; write requires write.
+ */
+function nodeGrantsOperatorPermission(node, userId, permission) {
+  const ops = Array.isArray(node?.operators) ? node.operators : [];
+  if (!userId || ops.length === 0) return false;
+  const uid = String(userId);
+  return ops.some((op) => {
+    if (!op || String(op.userId) !== uid) return false;
+    if (permission === 'write') return op.permission === 'write';
+    return op.permission === 'read' || op.permission === 'write';
+  });
+}
+
+/**
+ * Module 8.3 — ownership/privilege/delegation/zone access check for a LOADED
+ * node document. Callers that only have a nodeId should use assertNodeOwnership.
+ *
+ * Access is granted when the caller is, in order:
+ *   1. privileged (admin/moderator), OR
+ *   2. the node owner, OR
+ *   3. a delegate with sufficient permission, OR
+ *   4. a grid_operator reading a node in one of their assigned zones (read only)
+ *
+ * Existence is reported as 404 (not 403) so the endpoint does not leak the
+ * existence of another user's node. The only 403 is a write attempt by a
+ * read-only delegate/operator, which is a clear policy violation worth surfacing
+ * distinctly once access to the node is already established.
+ */
+function assertNodeAccess(user, node, permission = 'read') {
+  if (!node) {
+    throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+  }
+  if (permission !== 'read' && permission !== 'write') {
+    throw new ApiError('Invalid permission', 400, 'INVALID_PERMISSION');
+  }
+  if (isPrivileged(user)) return;
+
+  const uid = user?._id ? String(user._id) : null;
+
+  // Owner has full access.
+  if (uid && String(node.userId) === uid) return;
+
+  // Delegated operator.
+  if (uid && nodeGrantsOperatorPermission(node, uid, permission)) return;
+
+  // grid_operator read-only zone visibility.
+  if (
+    permission === 'read'
+    && user?.role === ROLES.GRID_OPERATOR
+    && typeof node.zoneId === 'string'
+    && node.zoneId
+    && getUserZoneIds(user).includes(node.zoneId.toLowerCase())
+  ) {
+    return;
+  }
+
+  // Distinguish "you can see it but not mutate it" (403) from "hidden" (404):
+  // a read-only delegate/operator attempting a write clearly knows the node
+  // exists, so 403 is appropriate. Everyone else gets a 404 (no existence leak).
+  if (permission === 'write' && uid && nodeGrantsOperatorPermission(node, uid, 'read')) {
+    throw new ApiError('You have read-only access to this node', 403, 'NODE_ACCESS_DENIED');
+  }
+
+  throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
+}
+
+/**
+ * Module 8.3 — ONLY the owner (or a privileged role) may manage a node's access
+ * surface: the operators list and the zone assignment. Write-delegates can edit
+ * node telemetry/fields but must NEVER be able to escalate privileges (add
+ * operators) or re-zone the node. Throws on denial.
+ */
+function assertCanManageNodeAccess(user, node) {
   if (!node) {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
   if (isPrivileged(user)) return;
-  if (!user?._id || String(node.userId) !== String(user._id)) {
-    throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
-  }
+  const uid = user?._id ? String(user._id) : null;
+  if (uid && String(node.userId) === uid) return;
+  // Existence hidden for non-owners to avoid leaking access surface state.
+  throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
 }
 
 async function getOwnedNodeIds(userId) {
@@ -151,15 +282,90 @@ async function assertNodesOwnership(userId, nodeIds) {
   return unique;
 }
 
+/**
+ * Module 8.3 — validate a `zoneId` payload. Returns the lowercased code, `null`
+ * to clear, or throws 400 on a malformed value. Empty string == clear.
+ */
+function sanitizeZoneId(input) {
+  if (input === null || input === undefined || input === '') return null;
+  if (typeof input !== 'string') {
+    throw new ApiError('zoneId must be a string', 400, 'INVALID_ZONE');
+  }
+  const code = input.trim().toLowerCase();
+  if (!code) return null;
+  if (!ZONE_CODE_RE.test(code)) {
+    throw new ApiError(
+      'zoneId must be 1-64 chars of [a-z0-9_-], starting alphanumeric',
+      400,
+      'INVALID_ZONE',
+    );
+  }
+  return code;
+}
+
+/**
+ * Module 8.3 — validate + normalize an operators payload from an owner/admin.
+ *
+ * Accepts [{ userId, permission }] (or { userId, permission }). Rejects junk,
+ * dedupes by userId, drops the owner (redundant), caps length, and coerces each
+ * userId to an ObjectId. Returns `null` when the field is absent (so callers can
+ * distinguish "not provided" from "explicitly cleared to []").
+ */
+function sanitizeOperators(input, ownerId) {
+  if (input === undefined || input === null) return null;
+  if (!Array.isArray(input)) {
+    // Allow a single object for convenience; otherwise reject.
+    if (input && typeof input === 'object') input = [input];
+    else throw new ApiError('operators must be an array', 400, 'INVALID_OPERATORS');
+  }
+
+  const ownerIdStr = ownerId ? String(ownerId) : null;
+  const seen = new Set();
+  const out = [];
+
+  for (const entry of input) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new ApiError('Each operator must be an object', 400, 'INVALID_OPERATORS');
+    }
+    const uid = typeof entry.userId === 'string' ? entry.userId.trim() : entry.userId;
+    if (!uid || !mongoose.isValidObjectId(uid)) {
+      throw new ApiError('operator.userId must be a valid id', 400, 'INVALID_OPERATORS');
+    }
+    const permission = typeof entry.permission === 'string' ? entry.permission : 'read';
+    if (!['read', 'write'].includes(permission)) {
+      throw new ApiError('operator.permission must be "read" or "write"', 400, 'INVALID_OPERATORS');
+    }
+    const uidStr = String(uid);
+    // Owner is implicitly the owner; never store them as an operator.
+    if (ownerIdStr && uidStr === ownerIdStr) continue;
+    if (seen.has(uidStr)) continue;
+    seen.add(uidStr);
+    out.push({ userId: new mongoose.Types.ObjectId(uidStr), permission });
+  }
+
+  if (out.length > MAX_OPERATORS) {
+    throw new ApiError(`A node may have at most ${MAX_OPERATORS} operators`, 400, 'INVALID_OPERATORS');
+  }
+
+  return out;
+}
+
 module.exports = {
   isPrivileged,
   allowedNodeTypesForRole,
   assertNodeTypeAllowedForRole,
   resolveCreateOwner,
+  getUserZoneIds,
+  buildNodeAccessFilter,
   buildNodeListFilter,
   assertNodeAccess,
+  assertCanManageNodeAccess,
+  nodeGrantsOperatorPermission,
+  sanitizeZoneId,
+  sanitizeOperators,
   getOwnedNodeIds,
   getOwnedNodes,
   assertNodeOwnership,
   assertNodesOwnership,
+  MAX_OPERATORS,
 };

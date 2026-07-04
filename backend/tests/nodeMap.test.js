@@ -95,14 +95,34 @@ test('buildMapFilter: moderator sees all', () => {
   assert.deepStrictEqual(buildMapFilter({ role: 'moderator', _id: 'u1' }), {});
 });
 
-test('buildMapFilter: regular user is scoped to own nodes', () => {
+test('buildMapFilter: regular user is scoped to own + delegated nodes', () => {
+  // Module 8.3 — buildMapFilter now delegates to the zone/delegation-aware
+  // access filter, so a user also maps nodes they are an operator on.
   const uid = '507f1f77bcf86cd799439011';
-  assert.deepStrictEqual(buildMapFilter({ role: 'consumer', _id: uid }), { userId: uid });
+  assert.deepStrictEqual(buildMapFilter({ role: 'consumer', _id: uid }), {
+    $or: [{ userId: uid }, { 'operators.userId': uid }],
+  });
 });
 
-test('buildMapFilter: grid_operator is scoped to own nodes (zone read comes in Module 8.3)', () => {
+test('buildMapFilter: grid_operator without zones is scoped to own + delegated nodes', () => {
   const uid = '507f1f77bcf86cd799439011';
-  assert.deepStrictEqual(buildMapFilter({ role: 'grid_operator', _id: uid }), { userId: uid });
+  assert.deepStrictEqual(buildMapFilter({ role: 'grid_operator', _id: uid }), {
+    $or: [{ userId: uid }, { 'operators.userId': uid }],
+  });
+});
+
+test('buildMapFilter: grid_operator with zones also maps their assigned zones', () => {
+  const uid = '507f1f77bcf86cd799439011';
+  assert.deepStrictEqual(
+    buildMapFilter({ role: 'grid_operator', _id: uid, assignedZoneIds: ['north'] }),
+    {
+      $or: [
+        { userId: uid },
+        { 'operators.userId': uid },
+        { zoneId: { $in: ['north'] } },
+      ],
+    },
+  );
 });
 
 test('buildMapFilter: missing user throws 401', () => {

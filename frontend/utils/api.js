@@ -190,6 +190,20 @@ export const authApi = {
     }),
 };
 
+// Module 8.4 — cryptographic wallet↔account linking. The wallet address backs
+// carbon balances/settlements/trades, so it can only be set by signing an
+// EIP-712 challenge, never typed by hand. getChallenge mints a server-bound
+// nonce; link verifies the signature; unlink clears it (password re-auth on the
+// server). See utils/walletLink.js for the signing helper.
+export const walletApi = {
+  getChallenge: (wallet) =>
+    fetchApi(`/auth/wallet/challenge?wallet=${encodeURIComponent(wallet)}`),
+  link: (body) =>
+    fetchApi('/auth/wallet/link', { method: 'POST', body: JSON.stringify(body) }),
+  unlink: (body) =>
+    fetchApi('/auth/wallet/unlink', { method: 'DELETE', body: JSON.stringify(body || {}) }),
+};
+
 // Public health status aggregator (Module 7.2). Lives at the backend root
 // (NOT under /api/v1), is rate-limited, and returns safe fields only — safe to
 // call unauthenticated for a status page / status badge.

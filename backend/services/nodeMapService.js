@@ -1,5 +1,5 @@
 const ApiError = require('../utils/apiError');
-const { isPrivileged } = require('../utils/nodeOwnership');
+const { buildNodeAccessFilter } = require('../utils/nodeOwnership');
 
 // Module 9.5 — Live grid map. Pure helpers kept separate from the controller so
 // the security-critical logic (RBAC scoping, coordinate validation, PII
@@ -59,16 +59,14 @@ function normalizeCoordinates(input) {
 }
 
 /**
- * RBAC scoping for the map view. A node's physical location is sensitive, so
- * non-privileged users may only ever map their OWN nodes. Admin/moderator see
- * all (intended for grid operators). This is the core privacy guardrail.
+ * RBAC scoping for the map view. Delegates to the Module 8.3 access filter so a
+ * grid_operator sees their assigned zones and delegates see delegated nodes,
+ * while every other non-privileged user maps only their OWN nodes. A node's
+ * physical location is sensitive, so this is the core privacy guardrail: it is
+ * combined with coordinatesExistFilter() by the controller before querying.
  */
 function buildMapFilter(user) {
-  if (isPrivileged(user)) return {};
-  if (!user?._id) {
-    throw new ApiError('Authentication required', 401, 'NOT_AUTHORIZED');
-  }
-  return { userId: user._id };
+  return buildNodeAccessFilter(user, { permission: 'read' });
 }
 
 /**

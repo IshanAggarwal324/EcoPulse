@@ -12,6 +12,11 @@ const {
   resendVerification,
   getCaptchaConfig,
 } = require('../controllers/authController');
+const {
+  getChallenge,
+  linkWallet,
+  unlinkWallet,
+} = require('../controllers/walletLinkController');
 const { protect, requireEmailVerified } = require('../middleware/auth');
 const { createAuthRateLimiter, createProfileRateLimiter } = require('../middleware/rateLimit');
 const { captchaVerify } = require('../middleware/captchaVerify');
@@ -59,5 +64,24 @@ router.post('/resend-verification', protect, resendVerificationLimiter, resendVe
 router.get('/me', protect, getMe);
 router.put('/profile', protect, profileLimiter, requireEmailVerified, updateProfile);
 router.put('/password', protect, profileLimiter, requireEmailVerified, updatePassword);
+
+// Module 8.4 — wallet ↔ user linking (EIP-712). All three are authenticated and
+// rate-limited: the challenge endpoint is a nonce mint (cap tightly to deter
+// probing), link is a signature verify (allow a few retries for user error),
+// unlink requires password re-auth handled in the controller.
+const walletChallengeLimiter = createAuthRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
+  message: 'Too many wallet challenge requests. Please try again later.',
+});
+const walletLinkLimiter = createAuthRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 15,
+  message: 'Too many wallet link attempts. Please try again later.',
+});
+
+router.get('/wallet/challenge', protect, walletChallengeLimiter, requireEmailVerified, getChallenge);
+router.post('/wallet/link', protect, walletLinkLimiter, requireEmailVerified, linkWallet);
+router.delete('/wallet/unlink', protect, walletLinkLimiter, requireEmailVerified, unlinkWallet);
 
 module.exports = router;

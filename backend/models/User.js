@@ -32,10 +32,51 @@ const userSchema = new mongoose.Schema(
       minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
+    // Module 8.4 — wallet is now cryptographically linked via EIP-712
+    // (/auth/wallet/challenge -> /auth/wallet/link). The address is the single
+    // source of truth for carbon balances, settlements and trades, so it MUST
+    // be unique across the platform and may only be set through the signed flow.
+    // `unique + sparse` allows many users with `null` (unlinked) addresses while
+    // rejecting any duplicate claim of the same address. See migration script
+    // scripts/migrate-wallet-address-index.js to clean dupes before the index.
     walletAddress: {
       type: String,
       default: null,
       trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+      match: [/^0x[a-fA-F0-9]{40}$/, 'Wallet address must be a valid Ethereum address'],
+    },
+    // null until the user signs an EIP-712 challenge to bind the wallet. Legacy
+    // manually-entered addresses remain but keep `walletLinkedAt: null`, which
+    // the UI uses to prompt a re-link. Settlements/trades key off walletAddress
+    // regardless, so this field is an attestation flag, not a gate.
+    walletLinkedAt: {
+      type: Date,
+      default: null,
+    },
+    // Last-verified signature (audit only; never used to authorize anything).
+    walletLinkSignature: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    // Pending single-use EIP-712 challenge. select:false so it never leaks in a
+    // default projection; the wallet-link controller selects it explicitly.
+    walletLinkChallenge: {
+      nonce: { type: String, default: null },
+      wallet: { type: String, default: null },
+      issuedAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+      _id: false,
+    },
+    // Module 8.3 — zone codes a grid_operator is responsible for. Grants
+    // read-only visibility into EnergyNodes whose zoneId matches. Ignored for
+    // every other role. Kept on the default projection so protect() loads it.
+    assignedZoneIds: {
+      type: [String],
+      default: [],
     },
     role: {
       // Module 8.1 — domain personas (separate from node types). `user` is the

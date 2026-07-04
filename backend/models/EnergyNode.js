@@ -60,6 +60,39 @@ const energyNodeSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  // Module 8.3 — grid segment this node belongs to. Optional so legacy nodes
+  // keep working. A grid_operator whose assignedZoneIds includes this value
+  // gains READ-ONLY visibility (never ownership). Lowercased on save so zone
+  // matching is case-insensitive. Validated/sanitized in nodeOwnership helpers.
+  zoneId: {
+    type: String,
+    default: null,
+    trim: true,
+    lowercase: true,
+  },
+  // Module 8.3 — delegated access. Each entry grants a non-owner read or write
+  // access to THIS node without transferring ownership. Managed by the owner /
+  // admin only (assertCanManageNodeAccess). Write delegates may mutate node
+  // fields but can NEVER modify the operators list or zone (no escalation).
+  operators: {
+    type: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        permission: {
+          type: String,
+          enum: ['read', 'write'],
+          required: true,
+          default: 'read',
+        },
+        _id: false,
+      },
+    ],
+    default: [],
+  },
 }, {
   timestamps: true,
 });
@@ -67,5 +100,9 @@ const energyNodeSchema = new mongoose.Schema({
 energyNodeSchema.index({ userId: 1, createdAt: -1 });
 energyNodeSchema.index({ status: 1 });
 energyNodeSchema.index({ ingestionMode: 1 });
+// Module 8.3 — fast zone-scoped reads for grid_operator visibility + delegate
+// lookups (operators.userId).
+energyNodeSchema.index({ zoneId: 1 });
+energyNodeSchema.index({ 'operators.userId': 1 });
 
 module.exports = mongoose.model('EnergyNode', energyNodeSchema);

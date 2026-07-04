@@ -160,6 +160,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Module 8.4 — re-fetch the current user (e.g. after a wallet link/unlink that
+  // mutates walletAddress / walletLinkedAt server-side outside updateProfile).
+  const refreshUser = useCallback(async () => {
+    return fetchCurrentUser();
+  }, [fetchCurrentUser]);
+
   const updatePassword = async ({ currentPassword, newPassword }) => {
     try {
       const data = await authApi.updatePassword({ currentPassword, newPassword });
@@ -201,6 +207,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       updateProfile,
       updatePassword,
+      refreshUser,
       refreshSession,
     }),
     [
@@ -214,6 +221,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       updateProfile,
       updatePassword,
+      refreshUser,
       refreshSession,
     ],
   );

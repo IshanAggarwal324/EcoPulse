@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { User, Lock, Bell, Save, AlertCircle, Activity } from 'lucide-react';
 import SectionTitle from '../components/ui/SectionTitle';
 import FormField from '../components/ui/FormField';
+import WalletLinkCard from '../components/settings/WalletLinkCard';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { anomalyApi } from '../utils/api';
 import {
   validateName,
-  validateWalletAddress,
   validatePassword,
   validatePasswordStrength,
 } from '../utils/validation';
@@ -18,7 +18,6 @@ const Settings = () => {
 
   const [profile, setProfile] = useState({
     name: '',
-    walletAddress: '',
     emailNotifications: true,
     gridAlerts: true,
     energyUnit: 'kWh',
@@ -45,7 +44,6 @@ const Settings = () => {
     if (user) {
       setProfile({
         name: user.name || '',
-        walletAddress: user.walletAddress || '',
         emailNotifications: user.preferences?.emailNotifications ?? true,
         gridAlerts: user.preferences?.gridAlerts ?? true,
         energyUnit: user.preferences?.energyUnit || 'kWh',
@@ -87,18 +85,17 @@ const Settings = () => {
     e.preventDefault();
     setProfileError('');
 
+    // Module 8.4 — walletAddress is no longer editable here; it is bound via the
+    // signed WalletLinkCard flow. Only name + preferences are submitted.
     const errors = {};
     const nameErr = validateName(profile.name);
-    const walletErr = validateWalletAddress(profile.walletAddress);
     if (nameErr) errors.name = nameErr;
-    if (walletErr) errors.walletAddress = walletErr;
     setProfileErrors(errors);
     if (Object.keys(errors).length) return;
 
     setSavingProfile(true);
     const result = await updateProfile({
       name: profile.name.trim(),
-      walletAddress: profile.walletAddress.trim() || null,
       preferences: {
         emailNotifications: profile.emailNotifications,
         gridAlerts: profile.gridAlerts,
@@ -186,16 +183,6 @@ const Settings = () => {
             required
           />
 
-          <FormField
-            label="Wallet address"
-            id="walletAddress"
-            value={profile.walletAddress}
-            onChange={(e) => setProfile((p) => ({ ...p, walletAddress: e.target.value }))}
-            error={profileErrors.walletAddress}
-            placeholder="0x..."
-            hint="Used for carbon credit balance on the dashboard"
-          />
-
           <button
             type="submit"
             disabled={savingProfile}
@@ -206,6 +193,8 @@ const Settings = () => {
           </button>
         </form>
       </section>
+
+      <WalletLinkCard />
 
       <section className="content-card">
         <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">

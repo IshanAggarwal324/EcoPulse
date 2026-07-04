@@ -4,9 +4,12 @@ const ApiError = require('../utils/apiError');
 const {
   isPrivileged,
   resolveCreateOwner,
-  buildNodeListFilter,
+  buildNodeAccessFilter,
   assertNodeAccess,
+  assertCanManageNodeAccess,
   assertNodeTypeAllowedForRole,
+  sanitizeZoneId,
+  sanitizeOperators,
 } = require('../utils/nodeOwnership');
 const {
   MAX_MAP_NODES,
@@ -33,11 +36,15 @@ const toNodeResponse = (node, req) => {
   const doc = node?.toObject ? node.toObject() : node;
   if (!doc) return doc;
 
-  if (isPrivileged(req.user)) {
+  // Owner + privileged roles see the full document (incl. operators list).
+  // Everyone else (delegates, zone-readers) gets a PII-stripped view: the
+  // owner id and the operators roster are access-surface data, not telemetry.
+  const isOwner = req.user && String(doc.userId) === String(req.user._id);
+  if (isPrivileged(req.user) || isOwner) {
     return doc;
   }
 
-  const { userId, ...publicFields } = doc;
+  const { userId, operators, ...publicFields } = doc;
   return publicFields;
 };
 
@@ -63,12 +70,19 @@ const createNode = asyncHandler(async (req, res) => {
 
   const coordinates = normalizeCoordinates(req.body.coordinates);
 
+  // Module 8.3 — the creator (or admin) IS the owner, so they may set the
+  // node's zone and initial operators at create time.
+  const zoneId = sanitizeZoneId(req.body.zoneId);
+  const operators = sanitizeOperators(req.body.operators, userId);
+
   const node = await EnergyNode.create({
     name,
     nodeType,
     sourceType,
     location,
     userId,
+    ...(zoneId ? { zoneId } : {}),
+    ...(operators ? { operators } : {}),
     ...(coordinates ? { coordinates } : {}),
   });
 
@@ -82,7 +96,8 @@ const getNodes = asyncHandler(async (req, res) => {
   const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
   const skip = (page - 1) * limit;
-  const filter = buildNodeListFilter(req.user);
+  // Module 8.3 — zone + delegation-aware scoping.
+  const filter = buildNodeAccessFilter(req.user);
 
   const [nodes, total] = await Promise.all([
     EnergyNode.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -108,8 +123,9 @@ const getNodeById = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.2 — enforce ownership/privilege (fixes GET /nodes/:id IDOR).
-  assertNodeAccess(req.user, node);
+  // Module 8.3 — enforce ownership/delegation/zone access (fixes GET /nodes/:id
+  // IDOR and now grants read to delegates + zoned grid_operators).
+  assertNodeAccess(req.user, node, 'read');
 
   res.status(200).json({
     success: true,
@@ -132,14 +148,29 @@ const updateNode = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.2 — enforce ownership/privilege BEFORE any content validation so
-  // a non-owner cannot infer processing state from differing error codes.
-  assertNodeAccess(req.user, node);
+  // Module 8.3 — enforce access BEFORE any content validation so a non-owner
+  // cannot infer processing state from differing error codes. Write delegates
+  // pass the 'write' check; read-only delegates/operators get a 403.
+  assertNodeAccess(req.user, node, 'write');
 
   // A node-type change must still be permitted for the caller's role (e.g. a
   // consumer cannot upgrade a node to `producer`).
   if (safeUpdates.nodeType !== undefined) {
     assertNodeTypeAllowedForRole(req.user?.role, safeUpdates.nodeType);
+  }
+
+  // Module 8.3 — zone + operators are access-surface fields. Only the OWNER or
+  // a privileged role may touch them (assertCanManageNodeAccess). This blocks a
+  // write-delegate from escalating privileges (adding operators) or re-zoning.
+  if (req.body.zoneId !== undefined || req.body.operators !== undefined) {
+    assertCanManageNodeAccess(req.user, node);
+    if (req.body.zoneId !== undefined) {
+      safeUpdates.zoneId = sanitizeZoneId(req.body.zoneId);
+    }
+    if (req.body.operators !== undefined) {
+      const ops = sanitizeOperators(req.body.operators, node.userId);
+      safeUpdates.operators = Array.isArray(ops) ? ops : [];
+    }
   }
 
   node.set(safeUpdates);
@@ -157,8 +188,9 @@ const deleteNode = asyncHandler(async (req, res) => {
     throw new ApiError('Node not found', 404, 'NODE_NOT_FOUND');
   }
 
-  // Module 8.2 — enforce ownership/privilege before deleting.
-  assertNodeAccess(req.user, node);
+  // Module 8.3 — only the owner (or privileged) may delete; delegates cannot.
+  assertNodeAccess(req.user, node, 'write');
+  assertCanManageNodeAccess(req.user, node);
 
   await node.deleteOne();
   res.status(200).json({

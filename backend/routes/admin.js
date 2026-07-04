@@ -31,6 +31,10 @@ router.patch('/users/:id/ban', adminOnly, adminUserController.banUser);
 router.patch('/users/:id/unban', adminOnly, adminUserController.unbanUser);
 router.delete('/users/:id', adminOnly, adminUserController.deleteUser);
 
+// Module 8.3 — assign grid zones to a grid_operator (read scope only).
+const adminZoneController = require('../controllers/admin/adminZoneController');
+router.put('/users/:id/zones', adminOnly, adminZoneController.assignUserZones);
+
 router.get('/nodes', adminNodeController.listNodes);
 router.post('/nodes', adminOnly, adminNodeController.createNode);
 router.put('/nodes/:id', adminOnly, adminNodeController.updateNode);
@@ -84,6 +88,9 @@ router.use('/public-grid-sources', adminOnly, require('./adminPublicGrid'));
 
 // Sub-module 2.3 — Auto-trading kill switch + matcher observability
 router.use('/auto-trading', require('./adminAutoTrading'));
+
+// Module 8.3 — grid zone lifecycle (CRUD). Admin-only via the parent guard.
+router.use('/zones', adminOnly, require('./admin/adminZones'));
 
 // Sub-module 2.4 guardrail — marketplace (contract) emergency stop
 router.get('/marketplace/status', adminMarketplaceController.getStatus);

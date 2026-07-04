@@ -54,6 +54,9 @@ const toUserResponse = (user) => ({
   name: user.name,
   email: user.email,
   walletAddress: user.walletAddress,
+  // Module 8.4 — null until the wallet is cryptographically linked. The UI uses
+  // this to prompt re-linking of legacy manually-entered addresses.
+  walletLinkedAt: user.walletLinkedAt ?? null,
   role: user.role,
   isBanned: user.isBanned,
   isEmailVerified: user.isEmailVerified ?? false,
@@ -310,11 +313,22 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
 
   if (walletAddress !== undefined) {
-    const walletError = validateWalletAddress(walletAddress, { required: false });
-    if (walletAddress && walletError) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: [walletError] });
+    // Module 8.4 — the wallet address is the source of truth for carbon
+    // balances, settlements and trades, so it MUST be bound via a signed
+    // EIP-712 challenge (/auth/wallet/link), never typed by hand. Allowing a
+    // free-text set here would let any user claim ANYONE's wallet. Clearing is
+    // only permitted through /auth/wallet/unlink (which re-authenticates).
+    const requested = walletAddress ? String(walletAddress).trim() : null;
+    const current = req.user.walletAddress ? String(req.user.walletAddress).toLowerCase() : null;
+    if (requested && requested.toLowerCase() !== current) {
+      return res.status(400).json({
+        success: false,
+        message: 'Use the wallet linking flow (Sign to link) to set your wallet address.',
+        code: 'WALLET_LINK_REQUIRED',
+      });
     }
-    updates.walletAddress = walletAddress?.trim() || null;
+    // No-op: either clearing (must use unlink) or setting the same value. We do
+    // not persist anything so the signed attestation state is preserved.
   }
 
   if (preferences !== undefined) {
