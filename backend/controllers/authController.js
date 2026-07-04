@@ -14,6 +14,7 @@ const DUMMY_BCRYPT_HASH = '$2a$10$8wM17rRLf4vH4vPSc6Qh9.jv4CuUu63eVUsM8c7kwh28yk
 
 const isProduction = process.env.NODE_ENV === 'production';
 const cookieSameSite = isProduction ? 'none' : 'lax';
+const RESEND_COOLDOWN_SECONDS = Math.max(15, parseInt(process.env.RESEND_VERIFICATION_COOLDOWN_SECONDS || '60', 10) || 60);
 
 const getAccessCookieOptions = () => ({
   httpOnly: true,
@@ -508,7 +509,9 @@ const resendVerification = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Email is required' });
   }
 
-  const user = await User.findOne({ email }).select('+isEmailVerified +emailVerificationToken');
+  const user = await User.findOne({ email }).select(
+    '+isEmailVerified +emailVerificationToken +emailVerificationExpires +emailVerificationLastSentAt',
+  );
 
   if (!user) {
     return res.status(200).json({
@@ -526,11 +529,6 @@ const resendVerification = asyncHandler(async (req, res) => {
     });
   }
 
-  const { rawToken, hashed, expires } = User.generateEmailVerificationToken();
-  user.emailVerificationToken = hashed;
-  user.emailVerificationExpires = expires;
-  await user.save();
-
   const {
     isConfigured: emailConfigured,
     sendEmail,
@@ -546,26 +544,43 @@ const resendVerification = asyncHandler(async (req, res) => {
     });
   }
 
-  try {
-    const verificationUrl = buildVerificationUrl(rawToken);
-    await sendEmail({
-      to: user.email,
-      subject: 'Verify Your EcoPulse Account',
-      html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
-    });
-  } catch (emailErr) {
-    console.warn('Resend verification email failed:', emailErr.message);
+  const nowMs = Date.now();
+  const lastSentMs = user.emailVerificationLastSentAt ? new Date(user.emailVerificationLastSentAt).getTime() : 0;
+  const retryAfter = Math.ceil((lastSentMs + RESEND_COOLDOWN_SECONDS * 1000 - nowMs) / 1000);
+  if (retryAfter > 0) {
     return res.status(200).json({
       success: false,
-      status: 'send_failed',
-      message: 'Verification email could not be sent. Please try again later.',
+      status: 'cooldown',
+      retryAfter,
+      message: `Please wait ${retryAfter}s before requesting another verification email.`,
     });
   }
 
+  const { rawToken, hashed, expires } = User.generateEmailVerificationToken();
+  user.emailVerificationToken = hashed;
+  user.emailVerificationExpires = expires;
+  user.emailVerificationLastSentAt = new Date(nowMs);
+  await user.save();
+
+  const verificationUrl = buildVerificationUrl(rawToken);
+  const payload = {
+    to: user.email,
+    subject: 'Verify Your EcoPulse Account',
+    html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+  };
+
+  // Do not block the HTTP request on provider latency/outages.
+  setImmediate(() => {
+    sendEmail(payload).catch((emailErr) => {
+      console.warn('Resend verification email failed:', emailErr.message);
+    });
+  });
+
   res.status(200).json({
     success: true,
-    status: 'sent',
-    message: 'Verification email sent. Check your inbox.',
+    status: 'queued',
+    retryAfter: RESEND_COOLDOWN_SECONDS,
+    message: 'Verification email queued. Check your inbox shortly.',
   });
 });
 

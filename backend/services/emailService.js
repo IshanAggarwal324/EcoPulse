@@ -7,9 +7,23 @@ const {
   SMTP_USER,
   SMTP_PASS,
   SMTP_SECURE,
+  SMTP_CONNECTION_TIMEOUT_MS,
+  SMTP_GREETING_TIMEOUT_MS,
+  SMTP_SOCKET_TIMEOUT_MS,
   REPORT_FROM_EMAIL,
   NODE_ENV,
 } = process.env;
+
+const toPositiveInt = (value, fallback) => {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+
+const MAIL_TIMEOUTS = {
+  connectionTimeout: toPositiveInt(SMTP_CONNECTION_TIMEOUT_MS, 10000),
+  greetingTimeout: toPositiveInt(SMTP_GREETING_TIMEOUT_MS, 10000),
+  socketTimeout: toPositiveInt(SMTP_SOCKET_TIMEOUT_MS, 15000),
+};
 
 function createTransport() {
   if (RESEND_API_KEY) {
@@ -18,6 +32,7 @@ function createTransport() {
       port: 465,
       secure: true,
       auth: { user: 'resend', pass: RESEND_API_KEY },
+      ...MAIL_TIMEOUTS,
     });
   }
 
@@ -27,6 +42,7 @@ function createTransport() {
       port: parseInt(SMTP_PORT, 10) || 587,
       secure: SMTP_SECURE === 'true',
       auth: { user: SMTP_USER, pass: SMTP_PASS },
+      ...MAIL_TIMEOUTS,
     });
   }
 

@@ -36,7 +36,7 @@ export function configureApiAuth(handlers) {
   authHandlers = { ...authHandlers, ...handlers };
 }
 
-const DEFAULT_TIMEOUT_MS = 90000;
+const DEFAULT_TIMEOUT_MS = 20000;
 let csrfTokenCache = null;
 
 function getCsrfTokenFromCookie() {
@@ -145,7 +145,7 @@ export async function fetchApi(path, options = {}) {
       response.status === 401 &&
       !skipAuth &&
       !isRetry &&
-      (data.code === 'TOKEN_EXPIRED' || data.code === 'TOKEN_INVALID')
+      (data.code === 'TOKEN_EXPIRED' || data.code === 'TOKEN_INVALID' || data.code === 'NO_TOKEN')
     ) {
       const refreshed = await authHandlers.refreshSession();
       if (refreshed) {
@@ -187,6 +187,7 @@ export const authApi = {
     fetchApi('/auth/resend-verification', {
       method: 'POST',
       body: JSON.stringify(email ? { email } : {}),
+      timeoutMs: 30000,
     }),
 };
 

@@ -41,7 +41,7 @@ const refreshLimiter = createAuthRateLimiter({
 
 const resendVerificationLimiter = createAuthRateLimiter({
   windowMs: 60 * 60 * 1000,
-  maxRequests: 3,
+  maxRequests: 6,
   message: 'Too many verification email requests. Please try again later.',
 });
 
