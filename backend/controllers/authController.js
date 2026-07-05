@@ -114,20 +114,22 @@ const register = asyncHandler(async (req, res) => {
     emailVerificationExpires: expires,
   });
 
-  // Attempt to send verification email; do not block registration if email is unconfigured.
-  try {
-    const { isConfigured: emailConfigured, sendEmail, buildVerificationEmailBody, buildVerificationUrl } =
-      require('../services/emailService');
-    if (emailConfigured()) {
-      const verificationUrl = buildVerificationUrl(rawToken);
-      await sendEmail({
-        to: user.email,
-        subject: 'Verify Your EcoPulse Account',
-        html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+  // Send verification email non-blocking with retry + structured logging so
+  // registration never hangs on SMTP latency and failures are diagnosable.
+  const { isConfigured: emailConfigured, sendEmailWithRetry, buildVerificationEmailBody, buildVerificationUrl } =
+    require('../services/emailService');
+  if (emailConfigured()) {
+    const verificationUrl = buildVerificationUrl(rawToken);
+    const verificationPayload = {
+      to: user.email,
+      subject: 'Verify Your EcoPulse Account',
+      html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
+    };
+    setImmediate(() => {
+      sendEmailWithRetry(verificationPayload).catch(() => {
+        // Full context already logged inside sendEmailWithRetry.
       });
-    }
-  } catch (emailErr) {
-    console.warn('Verification email failed to send:', emailErr.message);
+    });
   }
 
   const tokens = generateTokenPair(
@@ -531,7 +533,7 @@ const resendVerification = asyncHandler(async (req, res) => {
 
   const {
     isConfigured: emailConfigured,
-    sendEmail,
+    sendEmailWithRetry,
     buildVerificationEmailBody,
     buildVerificationUrl,
   } = require('../services/emailService');
@@ -569,10 +571,12 @@ const resendVerification = asyncHandler(async (req, res) => {
     html: buildVerificationEmailBody({ userName: user.name, verificationUrl }),
   };
 
-  // Do not block the HTTP request on provider latency/outages.
+  // Non-blocking: return 'queued' immediately, but deliver with retry +
+  // structured logging so SMTP failures (auth rejected, timeouts) are
+  // diagnosable in logs instead of silently swallowed.
   setImmediate(() => {
-    sendEmail(payload).catch((emailErr) => {
-      console.warn('Resend verification email failed:', emailErr.message);
+    sendEmailWithRetry(payload).catch(() => {
+      // Full context already logged inside sendEmailWithRetry.
     });
   });
 

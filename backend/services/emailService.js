@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { logger } = require('../utils/logger');
 
 const {
   RESEND_API_KEY,
@@ -131,6 +132,53 @@ async function sendEmail({ to, subject, html }) {
   return transporter.sendMail({ from: fromAddress, to, subject, html });
 }
 
+/**
+ * Send a transactional email with bounded retry + structured logging.
+ *
+ * SMTP failures (auth rejected, transient 4xx, timeouts) were previously
+ * swallowed by a bare console.warn in the caller, making them invisible to
+ * operators. This helper logs every attempt (with the SMTP code/response,
+ * e.g. EAUTH / 535) so delivery failures are diagnosable, and retries
+ * transient errors with exponential backoff. A permanent failure is logged
+ * at error level.
+ */
+async function sendEmailWithRetry(payload, { attempts = 3, baseDelayMs = 1500 } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const res = await sendEmail(payload);
+      logger.info('transactional email sent', {
+        to: payload.to,
+        subject: payload.subject,
+        attempt,
+        messageId: res?.messageId,
+      });
+      return res;
+    } catch (err) {
+      lastErr = err;
+      logger.warn('transactional email send failed', {
+        to: payload.to,
+        subject: payload.subject,
+        attempt,
+        attempts,
+        err,
+        code: err?.code,
+        responseCode: err?.responseCode,
+        response: typeof err?.response === 'string' ? err.response.slice(0, 200) : undefined,
+      });
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
+      }
+    }
+  }
+  logger.error('transactional email permanently failed', {
+    to: payload.to,
+    subject: payload.subject,
+    err: lastErr,
+  });
+  throw lastErr;
+}
+
 function buildVerificationEmailBody({ userName, verificationUrl }) {
   const safeName = userName ? escapeHtml(userName) : 'there';
   const safeUrl = escapeHtml(verificationUrl);
@@ -165,4 +213,4 @@ function canSendEmail(user) {
   return { allowed: true };
 }
 
-module.exports = { transporter, fromAddress, isConfigured, getProvider, sendReport, sendEmail, buildReportEmailSubject, buildReportEmailBody, buildVerificationEmailBody, buildVerificationUrl, canSendEmail };
+module.exports = { transporter, fromAddress, isConfigured, getProvider, sendReport, sendEmail, sendEmailWithRetry, buildReportEmailSubject, buildReportEmailBody, buildVerificationEmailBody, buildVerificationUrl, canSendEmail };

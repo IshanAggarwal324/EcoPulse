@@ -67,6 +67,7 @@ class Settings:
     registry_model_name: str = "lstm_energy_forecast"
     registry_version: Optional[str] = None
     allow_model_free_dummy: bool = False
+    model_load_retry_backoff_seconds: int = 60
     look_back_days: int = 30
     history_days: int = 60
 
@@ -128,6 +129,9 @@ def get_settings() -> Settings:
         allow_model_free_dummy=os.getenv(
             "ALLOW_MODEL_FREE_DUMMY", ""
         ).lower() in ("1", "true", "yes"),
+        model_load_retry_backoff_seconds=_clamp_int(
+            os.getenv("MODEL_LOAD_RETRY_BACKOFF_SECONDS", "60"), 1, 3600, 60
+        ),
         mongo_uri=os.getenv(
             "MONGODB_URI", os.getenv("MONGO_URI", "mongodb://localhost:27017")
         ),

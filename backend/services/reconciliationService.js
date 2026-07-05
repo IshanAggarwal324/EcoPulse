@@ -48,6 +48,31 @@ const getReconcileBatchSize = () => {
 
 const MS_PER_HOUR = 3600 * 1000;
 
+// Rate-limit the listing-window decode warning. A persistent ABI/contract
+// mismatch (e.g. ENERGY_TRADING_ADDRESS pointing at the wrong deployment, or a
+// listing that no longer exists on-chain) throws BAD_DATA on EVERY
+// reconciliation tick for the same listings, flooding the logs. Log once per
+// listing per cooldown window instead, and classify decode failures so they're
+// distinguishable from transient RPC errors. The actual fix for a decode
+// failure is correcting the contract address/ABI (config); this just stops the
+// noise so real issues remain visible.
+const LISTING_WARN_COOLDOWN_MS = 10 * 60 * 1000;
+const lastListingWarnAt = new Map();
+
+function logListingWindowFailure(listingId, err) {
+  const now = Date.now();
+  const last = lastListingWarnAt.get(listingId) || 0;
+  if (now - last < LISTING_WARN_COOLDOWN_MS) return;
+  lastListingWarnAt.set(listingId, now);
+  const isDecode = /BAD_DATA|could not decode/i.test(err?.message || '');
+  logger.warn('reconciliation listing-window decode failed', {
+    scope: 'reconciliation.listingWindow',
+    listingId,
+    kind: isDecode ? 'abi_or_contract_mismatch' : 'rpc_error',
+    err,
+  });
+}
+
 /**
  * Trapezoidal integration of power samples → energy (kWh).
  * `samples` must be sorted ascending by timestamp.
@@ -134,9 +159,7 @@ async function reconcileSettlement(settlement) {
       windowStart = new Date(createdAt * 1000);
     }
   } catch (err) {
-    logBackgroundError('reconciliation.listingWindow', err, {
-      listingId: settlement.listingId,
-    });
+    logListingWindowFailure(settlement.listingId, err);
   }
 
   if (!windowStart) {

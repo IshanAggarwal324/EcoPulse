@@ -37,6 +37,8 @@ export function configureApiAuth(handlers) {
 }
 
 const DEFAULT_TIMEOUT_MS = 20000;
+const COLD_START_RETRY_DELAY_MS = 2000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let csrfTokenCache = null;
 
 function getCsrfTokenFromCookie() {
@@ -168,7 +170,26 @@ export async function fetchApi(path, options = {}) {
     return data;
   };
 
-  return execute();
+  // Cold-start / transient resilience: on a timeout or network error, retry
+  // once after a short delay. Safe methods (GET/HEAD) retry automatically;
+  // mutating calls opt in via `options.retryOnColdStart`. This turns a single
+  // Render/Cloud-Run cold start (which aborts the first request) into a
+  // transparent warm-up instead of an immediate "cancelled"/failure for the
+  // user. Exactly one retry — no retry storms.
+  const attemptWithWarmUp = async () => {
+    try {
+      return await execute();
+    } catch (err) {
+      const retriable = err?.code === 'REQUEST_TIMEOUT' || err?.code === 'NETWORK_ERROR';
+      const safeMethod = ['GET', 'HEAD'].includes(method);
+      const allowRetry = retriable && (safeMethod || options.retryOnColdStart === true);
+      if (!allowRetry) throw err;
+      await sleep(COLD_START_RETRY_DELAY_MS);
+      return execute(); // second attempt hits a now-warm instance
+    }
+  };
+
+  return attemptWithWarmUp();
 }
 
 export const authApi = {
@@ -188,6 +209,7 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(email ? { email } : {}),
       timeoutMs: 30000,
+      retryOnColdStart: true,
     }),
 };
 

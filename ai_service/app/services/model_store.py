@@ -1,4 +1,5 @@
 import logging
+import time
 import joblib
 from tensorflow.keras.models import load_model
 
@@ -27,6 +28,9 @@ class ModelStore:
         self._version: str | None = None
         self._load_error: str | None = None
         self._versions: dict[str, tuple] = {}
+        # Guardrail: when artifacts are missing, avoid retrying full model-load on
+        # every request. We retry after a bounded backoff window.
+        self._next_retry_at_monotonic: float | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -46,6 +50,17 @@ class ModelStore:
     def metadata(self) -> dict:
         return self._metadata or {}
 
+    @property
+    def allow_model_free_dummy(self) -> bool:
+        return bool(self._settings.allow_model_free_dummy)
+
+    @property
+    def model_load_retry_after_seconds(self) -> int:
+        if self._next_retry_at_monotonic is None:
+            return 0
+        remaining = self._next_retry_at_monotonic - time.monotonic()
+        return max(0, int(remaining))
+
     def resolved_version(self, version: str | None = None) -> str | None:
         if version:
             return version
@@ -53,6 +68,9 @@ class ModelStore:
 
     def load(self) -> None:
         if self.is_ready:
+            return
+        now = time.monotonic()
+        if self._next_retry_at_monotonic is not None and now < self._next_retry_at_monotonic:
             return
 
         primary_error = None
@@ -63,6 +81,7 @@ class ModelStore:
             self._metadata = {}
             self._version = None
             self._load_error = None
+            self._next_retry_at_monotonic = None
             logger.info("Model artifacts loaded successfully")
             return
         except Exception as exc:
@@ -84,6 +103,7 @@ class ModelStore:
             self._metadata = metadata or {}
             self._version = metadata.get("version", self._settings.registry_version)
             self._load_error = None
+            self._next_retry_at_monotonic = None
             logger.info(
                 "Loaded model artifacts from registry (model=%s, version=%s)",
                 metadata.get("model_name", self._settings.registry_model_name),
@@ -99,7 +119,13 @@ class ModelStore:
                 f"Primary load failed: {primary_error}. "
                 f"Registry fallback failed: {fallback_error}"
             )
-            logger.error("Failed to load model artifacts from primary and fallback paths.")
+            retry_after = max(1, int(self._settings.model_load_retry_backoff_seconds))
+            self._next_retry_at_monotonic = now + retry_after
+            logger.error(
+                "Failed to load model artifacts from primary and fallback paths. "
+                "Retrying in %ss.",
+                retry_after,
+            )
 
     def get_version(self, version: str | None = None):
         """Return (model, scaler, metadata, resolved_version).

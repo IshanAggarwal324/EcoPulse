@@ -13,12 +13,20 @@ logger = logging.getLogger(__name__)
 SERVICE_NAME = "ecopulse-ai-service"
 
 
-def _model_check(model_loaded: bool) -> dict:
+def _model_check(
+    model_loaded: bool,
+    fallback_enabled: bool,
+    retry_after_seconds: int,
+) -> dict:
     return {
         "id": "model",
         "status": HEALTHY if model_loaded else DEGRADED,
         "latencyMs": 0,
-        "details": {"model_loaded": model_loaded},
+        "details": {
+            "model_loaded": model_loaded,
+            "fallback_enabled": fallback_enabled,
+            "retry_after_seconds": retry_after_seconds,
+        },
     }
 
 
@@ -39,18 +47,22 @@ async def health_live():
 
 @router.get("/health/ready")
 async def health_ready(model_store: ModelStore = Depends(get_model_store)):
-    """Readiness probe — model artifacts loaded and the service can infer.
+    """Readiness probe — service can accept forecast traffic.
 
-    Returns 503 (with the full contract body) when the model is not yet loaded
-    so orchestrators route traffic away until ready.
+    If model artifacts are missing but heuristic fallback mode is enabled
+    (ALLOW_MODEL_FREE_DUMMY=true), the service remains routable and reports
+    DEGRADED (HTTP 200) rather than hard unready.
     """
     model_loaded = bool(model_store.is_ready)
+    fallback_enabled = bool(model_store.allow_model_free_dummy)
+    retry_after_seconds = model_store.model_load_retry_after_seconds
+    ready_for_traffic = model_loaded or fallback_enabled
     contract = build_contract(
         SERVICE_NAME,
         HEALTHY if model_loaded else DEGRADED,
-        [_model_check(model_loaded)],
+        [_model_check(model_loaded, fallback_enabled, retry_after_seconds)],
     )
-    if not model_loaded:
+    if not ready_for_traffic:
         return JSONResponse(status_code=503, content=contract)
     return contract
 
@@ -64,9 +76,16 @@ async def health(model_store: ModelStore = Depends(get_model_store)):
     the contract enum.
     """
     model_loaded = bool(model_store.is_ready)
+    fallback_enabled = bool(model_store.allow_model_free_dummy)
+    retry_after_seconds = model_store.model_load_retry_after_seconds
     contract = build_contract(
         SERVICE_NAME,
         HEALTHY if model_loaded else DEGRADED,
-        [_model_check(model_loaded)],
+        [_model_check(model_loaded, fallback_enabled, retry_after_seconds)],
     )
-    return {**contract, "model_loaded": model_loaded}
+    return {
+        **contract,
+        "model_loaded": model_loaded,
+        "fallback_enabled": fallback_enabled,
+        "ready_for_traffic": model_loaded or fallback_enabled,
+    }

@@ -12,6 +12,7 @@ const { mergeForecastPredictions } = require('../utils/forecastMerge');
 
 const { getAiServiceUrl } = require('../config/serviceUrls');
 const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
+const { logger } = require('../utils/logger');
 
 const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
@@ -31,6 +32,21 @@ const buildInternalHeaders = () => ({
   'Content-Type': 'application/json',
   ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
 });
+
+// Observability for AI-service hops. Previously the generic
+// "Error communicating with AI service" message was returned to the client
+// with NO server-side log of why — making cold-start/timeout (unreachable)
+// vs a real upstream error (non-2xx) impossible to distinguish in prod logs.
+function noteAiUnreachable(error) {
+  logger.warn('ai-service unreachable (timeout/cold start/down)', {
+    kind: error?.code || error?.name || 'unknown',
+    err: error?.message ? String(error.message).slice(0, 300) : undefined,
+  });
+}
+
+function noteAiUpstreamError(response) {
+  logger.warn('ai-service upstream error', { status: response.status });
+}
 
 const MIN_FORECAST_DAYS = 1;
 const MAX_FORECAST_DAYS = 90;
@@ -186,10 +202,12 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy, horizon, m
   try {
     response = await callAiBatchForecast(aiBody);
   } catch (error) {
+    noteAiUnreachable(error);
     throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE', isProduction ? null : error.message);
   }
 
   if (!response.ok) {
+    noteAiUpstreamError(response);
     const errorDetails = await safeUpstreamErrorDetails(response);
     throw new ApiError(
       'Error communicating with AI service',
@@ -281,6 +299,7 @@ const getForecast = asyncHandler(async (req, res) => {
     try {
       response = await callAiForecast(aiBody);
     } catch (error) {
+      noteAiUnreachable(error);
       return res.status(503).json({
         success: false,
         message: 'AI service unavailable',
@@ -289,6 +308,7 @@ const getForecast = asyncHandler(async (req, res) => {
     }
 
     if (!response.ok) {
+      noteAiUpstreamError(response);
       const errorDetails = await safeUpstreamErrorDetails(response);
       return res.status(response.status).json({
         success: false,
@@ -405,10 +425,12 @@ const getForecastConfidence = asyncHandler(async (req, res) => {
   try {
     response = await callAiConfidence(modelVersion || undefined);
   } catch (error) {
+    noteAiUnreachable(error);
     throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE');
   }
 
   if (!response.ok) {
+    noteAiUpstreamError(response);
     const details = await safeUpstreamErrorDetails(response);
     throw new ApiError(
       'Error communicating with AI service',
