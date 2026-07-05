@@ -123,8 +123,10 @@ class ModelStore:
             self._next_retry_at_monotonic = now + retry_after
             logger.error(
                 "Failed to load model artifacts from primary and fallback paths. "
-                "Retrying in %ss.",
+                "Retrying in %ss. primary_error=%s registry_error=%s",
                 retry_after,
+                primary_error,
+                fallback_error,
             )
 
     def get_version(self, version: str | None = None):
