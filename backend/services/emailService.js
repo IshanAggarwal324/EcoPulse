@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const { logger } = require('../utils/logger');
 
 const {
+  BREVO_API_KEY,
   RESEND_API_KEY,
   SMTP_HOST,
   SMTP_PORT,
@@ -54,11 +55,23 @@ const transporter = createTransport();
 
 const fromAddress = REPORT_FROM_EMAIL || 'reports@ecopulse.local';
 
+// Transport selection. Brevo's HTTP API (port 443) takes precedence because
+// cloud PaaS (e.g. Render free) commonly filter outbound SMTP ports, causing
+// ETIMEDOUT. The HTTP API uses the same egress path as every other outbound
+// HTTPS call, so it is never blocked.
+const transportMode = (() => {
+  if (BREVO_API_KEY) return 'brevo-api';
+  if (RESEND_API_KEY) return 'resend';
+  if (SMTP_HOST) return 'smtp';
+  return 'none';
+})();
+
 function isConfigured() {
-  return transporter !== null;
+  return transportMode !== 'none';
 }
 
 function getProvider() {
+  if (transportMode === 'brevo-api') return 'brevo-api';
   if (RESEND_API_KEY) return 'resend';
   if (SMTP_HOST) return 'smtp';
   return 'none';
@@ -103,9 +116,89 @@ function buildReportEmailBody({ userName, period }) {
   `.trim();
 }
 
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+const BREVO_API_TIMEOUT_MS = toPositiveInt(process.env.BREVO_API_TIMEOUT_MS, 20000);
+
+/**
+ * Send via Brevo's HTTP API (port 443) instead of SMTP. This sidesteps
+ * cloud-PaaS outbound SMTP filtering (which manifests as ETIMEDOUT) and
+ * returns explicit JSON error codes (e.g. 400 invalid_sender, 401 bad key).
+ */
+async function sendViaBrevoApi({ to, subject, html, attachments }) {
+  if (!BREVO_API_KEY) throw new Error('Brevo API key not configured');
+
+  const body = {
+    sender: { email: fromAddress },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+  };
+  if (Array.isArray(attachments) && attachments.length) {
+    body.attachment = attachments.map((a) => ({
+      name: a.filename || 'attachment',
+      content: Buffer.isBuffer(a.content)
+        ? a.content.toString('base64')
+        : Buffer.from(String(a.content ?? '')).toString('base64'),
+    }));
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BREVO_API_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': BREVO_API_KEY,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const isTimeout = err?.name === 'AbortError';
+    const wrapped = new Error(isTimeout ? 'Brevo API request timed out' : 'Brevo API network error');
+    wrapped.code = isTimeout ? 'ETIMEDOUT' : 'ENETUNREACH';
+    throw wrapped;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const errBody = await res.json();
+      detail = errBody?.message || errBody?.code || JSON.stringify(errBody);
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    const wrapped = new Error(
+      `Brevo API error ${res.status}${detail ? `: ${String(detail).slice(0, 200)}` : ''}`,
+    );
+    wrapped.code = `BREVO_${res.status}`;
+    wrapped.responseCode = res.status;
+    throw wrapped;
+  }
+
+  const data = await res.json().catch(() => ({}));
+  return { messageId: data?.messageId };
+}
+
 async function sendReport({ to, subject, html, pdfBuffer, filename }) {
-  if (!transporter) {
+  if (transportMode === 'none') {
     throw new Error('Email transport not configured');
+  }
+
+  const attachmentName = filename || 'ecopulse-report.pdf';
+
+  if (transportMode === 'brevo-api') {
+    return sendViaBrevoApi({
+      to,
+      subject,
+      html,
+      attachments: [{ filename: attachmentName, content: pdfBuffer }],
+    });
   }
 
   const result = await transporter.sendMail({
@@ -115,7 +208,7 @@ async function sendReport({ to, subject, html, pdfBuffer, filename }) {
     html,
     attachments: [
       {
-        filename: filename || 'ecopulse-report.pdf',
+        filename: attachmentName,
         content: pdfBuffer,
         contentType: 'application/pdf',
       },
@@ -126,8 +219,11 @@ async function sendReport({ to, subject, html, pdfBuffer, filename }) {
 }
 
 async function sendEmail({ to, subject, html }) {
-  if (!transporter) {
+  if (transportMode === 'none') {
     throw new Error('Email transport not configured');
+  }
+  if (transportMode === 'brevo-api') {
+    return sendViaBrevoApi({ to, subject, html });
   }
   return transporter.sendMail({ from: fromAddress, to, subject, html });
 }
