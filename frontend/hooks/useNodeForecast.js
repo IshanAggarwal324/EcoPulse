@@ -27,11 +27,16 @@ const DEFAULT_POLL_MS = 10 * 60 * 1000; // 10 min (within the spec's 5–15 min)
 
 const isModelUnavailable = (err) => {
   if (!(err instanceof ApiError)) return false;
+  // Rate limiting and other 4xx client errors are NOT model-unavailable: never
+  // auto-retry them (a 429 retry would just hit the same throttled path and
+  // double the load). Only a genuine model-unavailable (503 / MODEL_UNAVAILABLE)
+  // should fall back to dummy data.
+  if (err.status === 429 || (err.status >= 400 && err.status < 500)) return false;
   const detailsText = JSON.stringify(err.details || {});
   return (
     err.code === 'MODEL_UNAVAILABLE' ||
     detailsText.includes('MODEL_UNAVAILABLE') ||
-    /error communicating with ai service/i.test(err.message || '')
+    (err.status === 503 && /error communicating with ai service/i.test(err.message || ''))
   );
 };
 

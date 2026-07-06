@@ -13,6 +13,7 @@ const { mergeForecastPredictions } = require('../utils/forecastMerge');
 const { getAiServiceUrl } = require('../config/serviceUrls');
 const { fetchWithTimeout } = require('../utils/fetchWithTimeout');
 const { logger } = require('../utils/logger');
+const forecastCache = require('../services/forecastCache');
 
 const AI_SERVICE_URL = getAiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
@@ -125,6 +126,125 @@ async function callAiConfidence(modelVersion) {
   return response;
 }
 
+// Stale-data notice shown when the AI layer is throttled/down and we serve the
+// last successful forecast instead of erroring.
+const STALE_WARNING =
+  'Showing the last successful forecast — the AI service is temporarily unavailable.';
+
+const cacheKey = (parts) =>
+  parts.filter((p) => p !== undefined && p !== null && p !== '').join('|');
+
+/**
+ * Call the AI forecast endpoint with a short-TTL response cache + a
+ * stale-while-error fallback. Returns either `{ data, stale }` on success
+ * (including a stale-serve on transient upstream failure) or `{ error: ApiError }`
+ * when no usable response is available. Keeps transient AI-layer throttling
+ * (429), outages (5xx) and cold starts (unreachable) from hard-erroring the
+ * dashboard on the free tier where the AI service is reached over the public
+ * path.
+ */
+async function callAiForecastCached({ key, body }) {
+  const cached = forecastCache.get(key);
+
+  let response;
+  try {
+    response = await callAiForecast(body);
+  } catch (error) {
+    noteAiUnreachable(error);
+    if (cached) return { data: cached.value, stale: true };
+    return {
+      error: new ApiError(
+        'AI service unavailable',
+        503,
+        'AI_UNAVAILABLE',
+        isProduction ? null : error.message,
+      ),
+    };
+  }
+
+  if (!response.ok) {
+    noteAiUpstreamError(response);
+    // Transient upstream failure (rate limited / server error) → serve stale if
+    // we have a recent-enough forecast rather than surfacing an error.
+    if (cached && (response.status === 429 || response.status >= 500)) {
+      return { data: cached.value, stale: true };
+    }
+    const errorDetails = await safeUpstreamErrorDetails(response);
+    if (response.status === 429) {
+      return {
+        error: new ApiError(
+          'Forecast service is busy, please try again shortly',
+          429,
+          'AI_RATE_LIMITED',
+          errorDetails,
+        ),
+      };
+    }
+    return {
+      error: new ApiError(
+        'Error communicating with AI service',
+        response.status,
+        'AI_UPSTREAM_ERROR',
+        errorDetails,
+      ),
+    };
+  }
+
+  const data = await response.json();
+  forecastCache.set(key, data);
+  return { data, stale: false };
+}
+
+async function callAiBatchForecastCached({ key, body }) {
+  const cached = forecastCache.get(key);
+
+  let response;
+  try {
+    response = await callAiBatchForecast(body);
+  } catch (error) {
+    noteAiUnreachable(error);
+    if (cached) return { data: cached.value, stale: true };
+    return {
+      error: new ApiError(
+        'AI service unavailable',
+        503,
+        'AI_UNAVAILABLE',
+        isProduction ? null : error.message,
+      ),
+    };
+  }
+
+  if (!response.ok) {
+    noteAiUpstreamError(response);
+    if (cached && (response.status === 429 || response.status >= 500)) {
+      return { data: cached.value, stale: true };
+    }
+    const errorDetails = await safeUpstreamErrorDetails(response);
+    if (response.status === 429) {
+      return {
+        error: new ApiError(
+          'Forecast service is busy, please try again shortly',
+          429,
+          'AI_RATE_LIMITED',
+          errorDetails,
+        ),
+      };
+    }
+    return {
+      error: new ApiError(
+        'Error communicating with AI service',
+        response.status,
+        'AI_UPSTREAM_ERROR',
+        errorDetails,
+      ),
+    };
+  }
+
+  const data = await response.json();
+  forecastCache.set(key, data);
+  return { data, stale: false };
+}
+
 async function shouldUseDummyData(forceDummy, nodeId = null) {
   if (forceDummy) return true;
   const query = nodeId ? { nodeId } : {};
@@ -198,26 +318,13 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy, horizon, m
   if (horizon) aiBody.horizon = horizon;
   if (modelScope) aiBody.model_scope = modelScope;
 
-  let response;
-  try {
-    response = await callAiBatchForecast(aiBody);
-  } catch (error) {
-    noteAiUnreachable(error);
-    throw new ApiError('AI service unavailable', 503, 'AI_UNAVAILABLE', isProduction ? null : error.message);
-  }
+  const result = await callAiBatchForecastCached({
+    key: cacheKey(['batch', [...nodeIds].sort().join(','), daysToPredict, horizon, modelScope, useDummyData ? 1 : 0]),
+    body: aiBody,
+  });
+  if (result.error) throw result.error;
 
-  if (!response.ok) {
-    noteAiUpstreamError(response);
-    const errorDetails = await safeUpstreamErrorDetails(response);
-    throw new ApiError(
-      'Error communicating with AI service',
-      response.status,
-      'AI_UPSTREAM_ERROR',
-      errorDetails,
-    );
-  }
-
-  const data = await response.json();
+  const data = result.data;
   const forecasts = (data.forecasts || []).map((entry) => ({
     nodeId: entry.node_id,
     nodeName: nodeMap.get(entry.node_id),
@@ -228,8 +335,9 @@ async function runBatchForecast({ nodeIds, daysToPredict, forceDummy, horizon, m
 
   return {
     forecasts,
-    modelStatus: data.model_status,
+    modelStatus: result.stale ? `${data.model_status || MODEL_STATUS} (stale)` : data.model_status,
     useDummyData,
+    stale: result.stale,
   };
 }
 
@@ -249,7 +357,7 @@ const getForecast = asyncHandler(async (req, res) => {
   if (allNodes || nodeIds.length > 0) {
     nodeIds = await resolveBatchNodeIds(req, { allNodes, nodeIdsParam: nodeIds.join(',') });
 
-    const { forecasts, modelStatus, useDummyData } = await runBatchForecast({
+    const { forecasts, modelStatus, useDummyData, stale } = await runBatchForecast({
       nodeIds,
       daysToPredict,
       forceDummy,
@@ -260,7 +368,7 @@ const getForecast = asyncHandler(async (req, res) => {
     return res.status(200).json({
       forecasts,
       model_status: modelStatus,
-      warning: buildDummyWarning(useDummyData),
+      warning: stale ? STALE_WARNING : buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
         daysToPredict,
@@ -268,6 +376,7 @@ const getForecast = asyncHandler(async (req, res) => {
         modelScope,
         nodeCount: forecasts.length,
         mode: 'multi',
+        stale: !!stale,
       },
     });
   }
@@ -295,35 +404,25 @@ const getForecast = asyncHandler(async (req, res) => {
     if (horizon) aiBody.horizon = horizon;
     if (modelScope) aiBody.model_scope = modelScope;
 
-    let response;
-    try {
-      response = await callAiForecast(aiBody);
-    } catch (error) {
-      noteAiUnreachable(error);
-      return res.status(503).json({
+    const result = await callAiForecastCached({
+      key: cacheKey(['node', nodeId, daysToPredict, horizon, modelScope, useDummyData ? 1 : 0]),
+      body: aiBody,
+    });
+    if (result.error) {
+      return res.status(result.error.statusCode).json({
         success: false,
-        message: 'AI service unavailable',
-        ...(!isProduction ? { details: error.message } : {}),
+        message: result.error.message,
+        ...(result.error.details ? { details: result.error.details } : {}),
       });
     }
 
-    if (!response.ok) {
-      noteAiUpstreamError(response);
-      const errorDetails = await safeUpstreamErrorDetails(response);
-      return res.status(response.status).json({
-        success: false,
-        message: 'Error communicating with AI service',
-        ...(errorDetails ? { details: errorDetails } : {}),
-      });
-    }
-
-    const data = await response.json();
+    const data = result.data;
 
     return res.status(200).json({
       ...data,
       nodeId,
       nodeName: node.name,
-      warning: buildDummyWarning(useDummyData),
+      warning: result.stale ? STALE_WARNING : buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
         daysToPredict,
@@ -332,13 +431,14 @@ const getForecast = asyncHandler(async (req, res) => {
         nodeId,
         nodeName: node.name,
         mode: 'single',
+        stale: !!result.stale,
       },
     });
   }
 
   if (!privileged) {
     const ownedNodeIds = await getOwnedNodeIds(req.user._id);
-    const { forecasts, modelStatus, useDummyData } = await runBatchForecast({
+    const { forecasts, modelStatus, useDummyData, stale } = await runBatchForecast({
       nodeIds: ownedNodeIds,
       daysToPredict,
       forceDummy,
@@ -351,7 +451,7 @@ const getForecast = asyncHandler(async (req, res) => {
     return res.status(200).json({
       predictions,
       model_status: modelStatus,
-      warning: buildDummyWarning(useDummyData),
+      warning: stale ? STALE_WARNING : buildDummyWarning(useDummyData),
       meta: {
         useDummyData,
         daysToPredict,
@@ -360,6 +460,7 @@ const getForecast = asyncHandler(async (req, res) => {
         nodeCount: forecasts.length,
         mode: 'aggregate',
         scopedToUser: true,
+        stale: !!stale,
       },
     });
   }
@@ -373,37 +474,30 @@ const getForecast = asyncHandler(async (req, res) => {
   if (horizon) aggregateAiBody.horizon = horizon;
   if (modelScope) aggregateAiBody.model_scope = modelScope;
 
-  let response;
-  try {
-    response = await callAiForecast(aggregateAiBody);
-  } catch (error) {
-    return res.status(503).json({
+  const result = await callAiForecastCached({
+    key: cacheKey(['agg', daysToPredict, horizon, modelScope, useDummyData ? 1 : 0]),
+    body: aggregateAiBody,
+  });
+  if (result.error) {
+    return res.status(result.error.statusCode).json({
       success: false,
-      message: 'AI service unavailable',
-      ...(!isProduction ? { details: error.message } : {}),
+      message: result.error.message,
+      ...(result.error.details ? { details: result.error.details } : {}),
     });
   }
 
-  if (!response.ok) {
-    const errorDetails = await safeUpstreamErrorDetails(response);
-    return res.status(response.status).json({
-      success: false,
-      message: 'Error communicating with AI service',
-      ...(errorDetails ? { details: errorDetails } : {}),
-    });
-  }
-
-  const data = await response.json();
+  const data = result.data;
 
   res.status(200).json({
     ...data,
-    warning: buildDummyWarning(useDummyData),
+    warning: result.stale ? STALE_WARNING : buildDummyWarning(useDummyData),
     meta: {
       useDummyData,
       daysToPredict,
       horizon,
       modelScope,
       mode: 'aggregate',
+      stale: !!result.stale,
     },
   });
 });

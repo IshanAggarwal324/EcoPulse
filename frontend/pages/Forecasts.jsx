@@ -88,10 +88,14 @@ const Forecasts = () => {
       } catch (err) {
         if (err instanceof ApiError) {
           const detailsText = JSON.stringify(err.details || {});
+          // Rate limiting / 4xx client errors are not model-unavailable — don't
+          // retry (a 429 retry only doubles load on an already-throttled path).
+          const isClientError = err.status === 429 || (err.status >= 400 && err.status < 500);
           const shouldFallback =
-            err.code === 'MODEL_UNAVAILABLE'
+            !isClientError &&
+            (err.code === 'MODEL_UNAVAILABLE'
             || detailsText.includes('MODEL_UNAVAILABLE')
-            || /error communicating with ai service/i.test(err.message || '');
+            || (err.status === 503 && /error communicating with ai service/i.test(err.message || '')));
 
           if (shouldFallback) {
             const fallbackData = await forecastApi.get(horizon, { ...options, useDummy: true, horizon });
