@@ -31,6 +31,7 @@ from models.model_registry import (
     _assert_safe_component,
     _safe_mkdir,
     get_latest,
+    load_keras_model,
     set_latest,
 )
 
@@ -194,15 +195,12 @@ def load_node_bundle(
     resolved = version or get_latest(node_root)
 
     if resolved:
-        # Lazy import keeps the module importable without TensorFlow.
-        from tensorflow.keras.models import load_model  # type: ignore
-
         _assert_safe_component(resolved, "version")
         version_dir = os.path.join(node_root, resolved)
         model_path = os.path.join(version_dir, "model.keras")
         scaler_path = os.path.join(version_dir, "scaler.joblib")
         meta_path = os.path.join(version_dir, "metadata.json")
-        model = load_model(model_path)
+        model = load_keras_model(model_path)
         scaler = joblib.load(scaler_path)
         metadata: Dict[str, Any] = {}
         try:

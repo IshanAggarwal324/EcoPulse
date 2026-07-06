@@ -1,5 +1,9 @@
 import json
+import logging
 import os
+import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -7,9 +11,18 @@ from typing import Any, Dict, Optional, Tuple
 import joblib
 
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_REGISTRY_DIR = os.getenv("ECOPULSE_MODEL_REGISTRY_DIR", "models/registry")
 DEFAULT_MODEL_NAME = os.getenv("ECOPULSE_MODEL_NAME", "lstm_energy_forecast")
 ANOMALY_MODEL_NAME = os.getenv("ECOPULSE_ANOMALY_MODEL_NAME", "meter_anomaly_detector")
+
+# Config keys newer Keras versions write into each layer's config that older
+# serving builds reject with "Unrecognized keyword arguments". Stripping them
+# (they default to None / disabled) keeps a saved model loadable across
+# train/serve version skew — e.g. a model saved with keras 3.14 loaded by the
+# keras bundled with tensorflow 2.21 (3.10).
+_KERAS_FORWARD_COMPAT_KEYS = ("quantization_config",)
 
 
 def _assert_safe_component(value: str, label: str) -> str:
@@ -180,6 +193,90 @@ def list_versions(
     return summaries
 
 
+def _strip_forward_compat_keys(obj: Any) -> Any:
+    """Recursively drop forward-compat config keys from a parsed Keras config."""
+    if isinstance(obj, dict):
+        return {
+            k: _strip_forward_compat_keys(v)
+            for k, v in obj.items()
+            if k not in _KERAS_FORWARD_COMPAT_KEYS
+        }
+    if isinstance(obj, list):
+        return [_strip_forward_compat_keys(v) for v in obj]
+    return obj
+
+
+def _is_version_skew_deserialization_error(exc: BaseException) -> bool:
+    text = str(exc)
+    return (
+        "Unrecognized keyword arguments" in text
+        or "could not be deserialized" in text
+    )
+
+
+def load_keras_model(model_path: str):
+    """Load a ``.keras`` model, tolerant of train/serve Keras version skew.
+
+    The TensorFlow/Keras bundled with the service can be older than the Keras
+    that produced a saved model. Newer Keras writes extra keys (e.g.
+    ``quantization_config``) into each layer's config that the older build's
+    ``Layer.__init__`` rejects, making ``load_model`` raise
+    "Unrecognized keyword arguments". We first try a plain ``load_model``; on
+    that specific failure we rebuild the archive with those keys stripped
+    (weights untouched) and load the sanitized copy.
+    """
+    try:
+        from tensorflow.keras.models import load_model  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(
+            "TensorFlow/Keras is required to load the saved model. "
+            "Run in a compatible Python environment with TensorFlow installed."
+        ) from e
+
+    try:
+        return load_model(model_path)
+    except Exception as exc:
+        if not _is_version_skew_deserialization_error(exc):
+            raise
+
+    logger.info(
+        "Standard Keras load failed (%s). Retrying with forward-compat "
+        "config keys stripped.",
+        exc,
+    )
+    workdir = tempfile.mkdtemp(prefix="ecopulse_keras_")
+    sanitized_archive: Optional[str] = None
+    try:
+        with zipfile.ZipFile(model_path, "r") as zin:
+            zin.extractall(workdir)
+
+        config_path = os.path.join(workdir, "config.json")
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(_strip_forward_compat_keys(config), f)
+
+        fd, sanitized_archive = tempfile.mkstemp(
+            suffix=".keras", prefix="ecopulse_keras_"
+        )
+        os.close(fd)
+        with zipfile.ZipFile(sanitized_archive, "w", zipfile.ZIP_DEFLATED) as zout:
+            for root, _dirs, files in os.walk(workdir):
+                for name in files:
+                    full = os.path.join(root, name)
+                    arcname = os.path.relpath(full, workdir).replace(os.sep, "/")
+                    zout.write(full, arcname)
+
+        return load_model(sanitized_archive)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+        if sanitized_archive:
+            try:
+                os.remove(sanitized_archive)
+            except OSError:
+                pass
+
+
 def load_bundle(
     *,
     registry_dir: str = DEFAULT_REGISTRY_DIR,
@@ -204,15 +301,7 @@ def load_bundle(
     scaler_path = os.path.join(version_dir, "scaler.joblib")
     meta_path = os.path.join(version_dir, "metadata.json")
 
-    try:
-        from tensorflow.keras.models import load_model  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise RuntimeError(
-            "TensorFlow/Keras is required to load the saved model. "
-            "Run in a compatible Python environment with TensorFlow installed."
-        ) from e
-
-    model = load_model(model_path)
+    model = load_keras_model(model_path)
     scaler = joblib.load(scaler_path)
 
     metadata: Dict[str, Any] = {}

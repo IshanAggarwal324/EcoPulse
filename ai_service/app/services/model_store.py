@@ -1,11 +1,14 @@
 import logging
 import time
 import joblib
-from tensorflow.keras.models import load_model
 
 from app.config import Settings
 from app.exceptions import ModelUnavailableError
-from models.model_registry import _assert_safe_component, load_bundle
+from models.model_registry import (
+    _assert_safe_component,
+    load_bundle,
+    load_keras_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +79,7 @@ class ModelStore:
         primary_error = None
         try:
             logger.info("Loading model from %s", self._settings.model_path)
-            self._model = load_model(self._settings.model_path)
+            self._model = load_keras_model(self._settings.model_path)
             self._scaler = joblib.load(self._settings.scaler_path)
             self._metadata = {}
             self._version = None
