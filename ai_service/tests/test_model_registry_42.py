@@ -1,7 +1,10 @@
+import json
 import os
 import sys
 import tempfile
+import types
 import unittest
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -77,6 +80,94 @@ class SaveBundlePromoteTests(unittest.TestCase):
     def test_read_metadata_missing_raises(self):
         with self.assertRaises(FileNotFoundError):
             mr.read_metadata(registry_dir=self.registry, model_name=self.model_name, version="nope")
+
+
+class LoadKerasModelTolerantTests(unittest.TestCase):
+    """The tolerant loader must survive train/serve Keras version skew
+    ("Unrecognized keyword arguments" -> strip ``quantization_config``) and
+    must not trip on an out-of-scope exception variable after the except block.
+    """
+
+    _TF_MODULES = ("tensorflow", "tensorflow.keras", "tensorflow.keras.models")
+
+    def setUp(self):
+        self._saved = {k: sys.modules.get(k) for k in self._TF_MODULES}
+        self.tmp = tempfile.mkdtemp()
+        self.keras_path = os.path.join(self.tmp, "model.keras")
+        with zipfile.ZipFile(self.keras_path, "w") as z:
+            z.writestr(
+                "config.json",
+                json.dumps({
+                    "class_name": "Sequential",
+                    "config": {
+                        "name": "seq",
+                        "layers": [
+                            {"class_name": "Dense",
+                             "config": {"units": 2, "quantization_config": None}},
+                        ],
+                    },
+                }),
+            )
+            z.writestr("model.weights.h5", b"weights")
+            z.writestr("metadata.json", json.dumps({"keras_version": "3.14.1"}))
+
+    def tearDown(self):
+        for k, orig in self._saved.items():
+            if orig is not None:
+                sys.modules[k] = orig
+            else:
+                sys.modules.pop(k, None)
+
+    def _install_fake_tf(self, load_model):
+        tf = types.ModuleType("tensorflow")
+        keras = types.ModuleType("tensorflow.keras")
+        keras_models = types.ModuleType("tensorflow.keras.models")
+        keras_models.load_model = load_model
+        keras.models = keras_models
+        tf.keras = keras
+        sys.modules["tensorflow"] = tf
+        sys.modules["tensorflow.keras"] = keras
+        sys.modules["tensorflow.keras.models"] = keras_models
+
+    def test_strips_forward_compat_keys_on_version_skew(self):
+        calls = []
+
+        def fake_load_model(path, *a, **k):
+            calls.append(path)
+            if len(calls) == 1:
+                raise ValueError(
+                    "Unrecognized keyword arguments passed to Dense: "
+                    "{'quantization_config': None}"
+                )
+            # second call: the rebuilt archive must no longer carry the key
+            with zipfile.ZipFile(path) as z:
+                cfg = json.loads(z.read("config.json"))
+            self.assertNotIn("quantization_config", json.dumps(cfg))
+            return "MODEL_OK"
+
+        self._install_fake_tf(fake_load_model)
+        result = mr.load_keras_model(self.keras_path)
+
+        self.assertEqual(result, "MODEL_OK")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0], self.keras_path)
+        self.assertNotEqual(calls[1], self.keras_path)
+
+    def test_non_skew_error_is_reraised(self):
+        self._install_fake_tf(lambda path, *a, **k: (_ for _ in ()).throw(FileNotFoundError("nope")))
+        with self.assertRaises(FileNotFoundError):
+            mr.load_keras_model(self.keras_path)
+
+    def test_happy_path_no_retry(self):
+        calls = []
+
+        def fake_load_model(path, *a, **k):
+            calls.append(path)
+            return "MODEL_OK"
+
+        self._install_fake_tf(fake_load_model)
+        self.assertEqual(mr.load_keras_model(self.keras_path), "MODEL_OK")
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

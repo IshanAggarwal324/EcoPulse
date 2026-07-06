@@ -233,16 +233,18 @@ def load_keras_model(model_path: str):
             "Run in a compatible Python environment with TensorFlow installed."
         ) from e
 
+    version_skew_error: Optional[BaseException] = None
     try:
         return load_model(model_path)
     except Exception as exc:
         if not _is_version_skew_deserialization_error(exc):
             raise
+        version_skew_error = exc
 
     logger.info(
         "Standard Keras load failed (%s). Retrying with forward-compat "
         "config keys stripped.",
-        exc,
+        version_skew_error,
     )
     workdir = tempfile.mkdtemp(prefix="ecopulse_keras_")
     sanitized_archive: Optional[str] = None
