@@ -9,9 +9,22 @@ const ESCROW_STATES = new Set(escrowService.STATE_INDEX);
  */
 const listEscrows = asyncHandler(async (req, res) => {
   const isAdmin = req.user?.role === 'admin' || req.user?.role === 'moderator';
+  const ownWallet = String(req.user?.walletAddress || '').toLowerCase() || null;
+
+  // Ownership scoping: admins may inspect any wallet via ?wallet; non-admins are
+  // hard-scoped to their own linked wallet and the param is ignored. A non-admin
+  // with no linked wallet has nothing to show (never an unfiltered dump).
   const wallet = isAdmin
-    ? req.query.wallet || req.user?.walletAddress || null
-    : req.user?.walletAddress || req.query.wallet || null;
+    ? (req.query.wallet ? String(req.query.wallet).toLowerCase() : ownWallet)
+    : ownWallet;
+
+  if (!isAdmin && !wallet) {
+    return res.status(200).json({
+      success: true,
+      data: [],
+      meta: { page: 1, limit: 0, total: 0, pages: 1 },
+    });
+  }
 
   const state = req.query.state && ESCROW_STATES.has(req.query.state) ? req.query.state : null;
 
@@ -57,10 +70,14 @@ const getEscrow = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Escrow not found' });
   }
 
-  // Enforce wallet scoping for non-admins.
+  // Enforce wallet scoping for non-admins. A wallet-less user (wallet == '') is
+  // denied outright rather than bypassing the party check via short-circuit.
   const isAdmin = req.user?.role === 'admin' || req.user?.role === 'moderator';
   const wallet = String(req.user?.walletAddress || '').toLowerCase();
-  if (!isAdmin && wallet && escrow.buyer !== wallet && escrow.seller !== wallet) {
+  if (
+    !isAdmin &&
+    (!wallet || (escrow.buyer !== wallet && escrow.seller !== wallet))
+  ) {
     return res.status(403).json({ success: false, message: 'Not authorized to view this escrow' });
   }
 

@@ -63,12 +63,12 @@ def _parse_chat_response(
         if _SCRIPT_RE.search(raw_reply or ""):
             logger.warning("Stripped script-bearing model reply")
             raw_reply = fallback_reply
+        # The demo/live disclaimer is an authoritative trust signal derived from
+        # the backend's own data flags — never from the model's JSON output, which
+        # is prompt-influenceable and could otherwise flip the indicator.
         return AssistantChatResponse(
             reply=_sanitize_reply(raw_reply),
-            disclaimer=parsed.get(
-                "disclaimer",
-                _DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
-            ),
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
         )
     except Exception:
         logger.warning("Chat response validation failed — using fallback reply")

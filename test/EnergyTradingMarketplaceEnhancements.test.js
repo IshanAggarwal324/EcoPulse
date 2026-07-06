@@ -130,4 +130,28 @@ describe("EnergyTrading 2.4.3 — expiration + partial fills", function () {
     await energyTrading.unpause();
     expect(await energyTrading.paused()).to.equal(false);
   });
+
+  it("enforces a per-seller active-listing cap and frees slots on cancel/sell (L-3)", async function () {
+    // Accounting: two listings → count 2.
+    await energyTrading.connect(seller).listEnergy(ENERGY, PRICE);
+    await energyTrading.connect(seller).listEnergyWithExpiry(ENERGY, PRICE, 60n);
+    expect(await energyTrading.activeListingsCount(seller.address)).to.equal(2);
+
+    // A full fill frees a slot.
+    await energyTrading.connect(buyer).purchaseEnergy(0);
+    expect(await energyTrading.activeListingsCount(seller.address)).to.equal(1);
+    // A cancel frees a slot.
+    await energyTrading.connect(seller).cancelListing(1);
+    expect(await energyTrading.activeListingsCount(seller.address)).to.equal(0);
+
+    // The cap itself: fill up to the limit, then the next listing reverts.
+    const cap = await energyTrading.MAX_ACTIVE_LISTINGS_PER_SELLER();
+    for (let i = 0; i < Number(cap); i++) {
+      await energyTrading.connect(seller).listEnergy(ENERGY, PRICE);
+    }
+    expect(await energyTrading.activeListingsCount(seller.address)).to.equal(cap);
+    await expect(
+      energyTrading.connect(seller).listEnergy(ENERGY, PRICE),
+    ).to.be.revertedWithCustomError(energyTrading, "TooManyActiveListings");
+  });
 });

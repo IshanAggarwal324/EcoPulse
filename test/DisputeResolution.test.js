@@ -65,4 +65,11 @@ describe("DisputeResolution (Module 5.1)", function () {
       disputeResolution.connect(admin).resolve(99, 0, 0),
     ).to.be.revertedWithCustomError(disputeResolution, "DisputeNotFound");
   });
+
+  it("rejects construction with a zero admin (I-3)", async function () {
+    const DisputeResolution = await ethers.getContractFactory("DisputeResolution");
+    await expect(
+      DisputeResolution.deploy(await escrow.getAddress(), ethers.ZeroAddress),
+    ).to.be.revertedWithCustomError(DisputeResolution, "InvalidAdmin");
+  });
 });

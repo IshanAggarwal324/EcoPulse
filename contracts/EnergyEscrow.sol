@@ -13,8 +13,9 @@ import "./interfaces/IEnergyEscrow.sol";
 /// @notice Conditional settlement layer for the energy marketplace. Holds
 ///         CarbonCredit tokens until the buyer confirms delivery (release) or
 ///         disputes. Funds auto-refund to the buyer after the dispute window
-///         if left unactioned. Opt-in: does not alter the existing instant
-///         transfer path in EnergyTrading.
+///         if left unactioned, even if the seller has attested delivery.
+///         Opt-in: does not alter the existing instant transfer path in
+///         EnergyTrading.
 /// @custom:security-contact security@ecopulse.example
 /// @dev AUDIT REQUIRED (C8): Not formally audited. Do not deploy to mainnet
 ///      without a professional security review. See contracts/SECURITY.md.
@@ -58,6 +59,12 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
     mapping(uint256 => Escrow) public escrows;
     uint256 public nextEscrowId;
 
+    /// @dev Number of escrows currently in the `Disputed` state. Used to freeze
+    ///      `setDisputeResolution` while in-flight disputes exist, so the resolver
+    ///      pointer can never be re-pointed (or zeroed) in a way that strands an
+    ///      open dispute in an unrecoverable state.
+    uint256 public disputedCount;
+
     event EscrowCreated(
         uint256 indexed escrowId,
         uint256 indexed listingId,
@@ -91,6 +98,8 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
     error DisputeWindowOpen();
     error DisputeWindowClosed();
     error DisputeResolutionNotSet();
+    error InvalidResolver();
+    error DisputesInFlight();
     error InvalidOutcome();
     error InvalidShare();
     error NotDisputed();
@@ -107,10 +116,17 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
         disputeWindow = disputeWindowSeconds;
     }
 
-    /// @notice Owner-only one-time-style link to the dispute contract. Breaking
-    ///         the constructor circular dependency. Callable while paused too,
-    ///         so wiring can be fixed during an emergency.
+    /// @notice Owner-only link to the dispute contract. Breaks the constructor
+    ///         circular dependency. Callable while paused too, so wiring can be
+    ///         fixed during an emergency.
+    /// @dev Hardening (M-2): the new resolver may not be address(0), and the
+    ///      pointer may not be changed while any escrow is in the `Disputed`
+    ///      state — otherwise those disputes could never be resolved (the old
+    ///      resolver is rejected and the new one has no record of them). Resolve
+    ///      all in-flight disputes first.
     function setDisputeResolution(address newResolver) external onlyOwner {
+        if (newResolver == address(0)) revert InvalidResolver();
+        if (disputedCount != 0) revert DisputesInFlight();
         address old = disputeResolution;
         disputeResolution = newResolver;
         emit DisputeResolutionSet(old, newResolver);
@@ -193,6 +209,7 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
         if (resolver == address(0)) revert DisputeResolutionNotSet();
 
         e.state = State.Disputed;
+        disputedCount += 1;
         uint256 disputeId = IDisputeResolution(resolver).openDispute(
             escrowId, e.buyer, e.seller, e.amount, evidenceHash
         );
@@ -200,11 +217,14 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
     }
 
     /// @notice Buyer claims a timeout refund once the dispute window has elapsed
-    ///         and the escrow was neither released nor disputed.
+    ///         and the escrow was neither released nor disputed. Allowed from both
+    ///         `Funded` and `Delivered` so a seller's `confirmDelivery` attestation
+    ///         can never strand the buyer's funds or coerce a release — the buyer
+    ///         retains an exit as long as they have not released or disputed.
     function claimTimeoutRefund(uint256 escrowId) external nonReentrant {
         Escrow storage e = _load(escrowId);
         if (msg.sender != e.buyer) revert NotBuyer();
-        if (e.state != State.Funded) revert InvalidState();
+        if (e.state != State.Funded && e.state != State.Delivered) revert InvalidState();
         if (block.timestamp <= e.createdAt + disputeWindow) revert DisputeWindowOpen();
 
         e.state = State.Refunded;
@@ -225,6 +245,10 @@ contract EnergyEscrow is ReentrancyGuard, Pausable, Ownable2Step, IEnergyEscrow 
         Escrow storage e = _load(escrowId);
         if (e.state != State.Disputed) revert NotDisputed();
         if (outcome > uint8(IDisputeResolution.Outcome.Split)) revert InvalidOutcome();
+
+        // Every branch below transitions out of `Disputed`, so the in-flight
+        // counter decrements exactly once per resolved dispute.
+        disputedCount -= 1;
 
         IDisputeResolution.Outcome result = IDisputeResolution.Outcome(outcome);
         address buyer = e.buyer;

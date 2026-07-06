@@ -211,4 +211,49 @@ describe("EnergyEscrow (Module 5.1)", function () {
       EnergyEscrow.deploy(await carbonCredit.getAddress(), 60), // < 1 hour
     ).to.be.revertedWithCustomError(EnergyEscrow, "InvalidDisputeWindow");
   });
+
+  it("refunds the buyer from Delivered state once the dispute window elapses", async function () {
+    // Regression: a seller's confirmDelivery (Funded -> Delivered) must NOT
+    // strand the buyer. Previously claimTimeoutRefund required Funded, so a
+    // buyer whose funds were in Delivered after the window had no exit.
+    await escrow.connect(buyer).createEscrow(20, seller.address, AMOUNT);
+    await escrow.connect(seller).confirmDelivery(0);
+    expect((await escrow.getEscrow(0)).state).to.equal(1); // Delivered
+
+    // Within the window the buyer still cannot claim a timeout refund.
+    await expect(escrow.connect(buyer).claimTimeoutRefund(0))
+      .to.be.revertedWithCustomError(escrow, "DisputeWindowOpen");
+
+    const window = await escrow.disputeWindow();
+    await ethers.provider.send("evm_increaseTime", [Number(window) + 1]);
+    await ethers.provider.send("evm_mine", []);
+
+    const buyerBefore = await carbonCredit.balanceOf(buyer.address);
+    await expect(escrow.connect(buyer).claimTimeoutRefund(0))
+      .to.emit(escrow, "EscrowRefunded");
+    expect(await carbonCredit.balanceOf(buyer.address)).to.equal(buyerBefore + AMOUNT);
+    expect((await escrow.getEscrow(0)).state).to.equal(4); // Refunded
+  });
+
+  it("freezes the resolver pointer while a dispute is in-flight, releases after", async function () {
+    // Regression (M-2): re-pointing / zeroing the resolver could strand an
+    // open Disputed escrow. The pointer is frozen while disputedCount > 0.
+    await escrow.connect(buyer).createEscrow(30, seller.address, AMOUNT);
+    await escrow.connect(buyer).openDispute(0, ethers.id("e"));
+    expect(await escrow.disputedCount()).to.equal(1);
+
+    await expect(escrow.setDisputeResolution(await disputeResolution.getAddress()))
+      .to.be.revertedWithCustomError(escrow, "DisputesInFlight");
+    // Zero address is rejected outright (checked before the freeze).
+    await expect(escrow.setDisputeResolution(ethers.ZeroAddress))
+      .to.be.revertedWithCustomError(escrow, "InvalidResolver");
+
+    // Resolve the dispute (owner is the arbiter) → counter returns to 0.
+    await disputeResolution.resolve(0, 1, 0); // Refund
+    expect(await escrow.disputedCount()).to.equal(0);
+
+    // Now re-pointing is allowed again.
+    await expect(escrow.setDisputeResolution(await disputeResolution.getAddress()))
+      .to.emit(escrow, "DisputeResolutionSet");
+  });
 });

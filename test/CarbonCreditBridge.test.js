@@ -28,6 +28,9 @@ describe("CarbonCreditBridge (Module 5.3.3)", function () {
     carbonCredit = await deployCarbonCredit(admin);
     bridge = await deployBridge(admin, await carbonCredit.getAddress(), { admin: admin.address });
     await bridge.setSupportedChain(TARGET, true);
+    // Inbound source chain must also be whitelisted: mintFor/releaseBack now
+    // validate sourceChainId against supportedChains (security hardening).
+    await bridge.setSupportedChain(SRC, true);
     await carbonCredit.mint(sender.address, ethers.parseEther("1000000"));
   });
 
@@ -135,6 +138,77 @@ describe("CarbonCreditBridge (Module 5.3.3)", function () {
     await expect(
       smallBridge.connect(sender).lock(ethers.parseEther("100"), TARGET, recipient.address),
     ).to.be.revertedWithCustomError(smallBridge, "ExceedsDailyCap");
+  });
+
+  it("inbound mintFor is bounded by the rolling 24h daily cap", async function () {
+    // Regression (H-4): previously mintFor/releaseBack counted only against
+    // maxPerTx, so a relayer could mint up to maxSupply within a day. Inbound
+    // volume now shares the same dailyCap via a separate dailyInbound bucket.
+    const smallBridge = await deployBridge(admin, await carbonCredit.getAddress(), {
+      admin: admin.address,
+      maxPerTx: ethers.parseEther("100"),
+      dailyCap: ethers.parseEther("150"),
+    });
+    await smallBridge.setSupportedChain(SRC, true);
+
+    await expect(
+      smallBridge.connect(admin).mintFor(recipient.address, ethers.parseEther("100"), SRC, 1),
+    ).to.emit(smallBridge, "Minted");
+    expect(await smallBridge.dailyInboundRemaining()).to.equal(ethers.parseEther("50"));
+
+    // A second inbound mint would exceed the 150 / 24h inbound cap.
+    await expect(
+      smallBridge.connect(admin).mintFor(recipient.address, ethers.parseEther("100"), SRC, 2),
+    ).to.be.revertedWithCustomError(smallBridge, "ExceedsDailyCap");
+  });
+
+  it("mintFor / releaseBack reject an un-whitelisted inbound source chain", async function () {
+    // Regression (H-5 route check): inbound sourceChainId must be in
+    // supportedChains (lock() already enforced this outbound). 888 is unknown.
+    await expect(bridge.connect(admin).mintFor(recipient.address, AMOUNT, 888, 1))
+      .to.be.revertedWithCustomError(bridge, "UnsupportedChain");
+    await expect(bridge.connect(admin).releaseBack(recipient.address, AMOUNT, 888, 1))
+      .to.be.revertedWithCustomError(bridge, "UnsupportedChain");
+  });
+
+  it("releaseBack cannot drain tokens sent directly to the bridge (custody bound, L-4)", async function () {
+    // Lock AMOUNT → releasable custody is exactly AMOUNT.
+    await carbonCredit.connect(sender).approve(await bridge.getAddress(), AMOUNT);
+    await bridge.connect(sender).lock(AMOUNT, TARGET, recipient.address);
+    expect(await bridge.totalLockedIn()).to.equal(AMOUNT);
+
+    // A direct/accidental send inflates balance but NOT releasable custody.
+    await carbonCredit.mint(await bridge.getAddress(), ethers.parseEther("9999"));
+    expect((await bridge.totalLockedIn()) - (await bridge.totalReleasedBack())).to.equal(AMOUNT);
+
+    // Relayer cannot release more than actual custody even though balance is higher.
+    await expect(
+      bridge.connect(admin).releaseBack(recipient.address, AMOUNT + ethers.parseEther("1"), SRC, 7),
+    ).to.be.revertedWithCustomError(bridge, "InsufficientCustody");
+
+    // A release within custody still succeeds and decrements remaining custody.
+    await expect(bridge.connect(admin).releaseBack(recipient.address, AMOUNT, SRC, 8))
+      .to.emit(bridge, "Released");
+    expect((await bridge.totalLockedIn()) - (await bridge.totalReleasedBack())).to.equal(0);
+  });
+
+  it("rescueToken recovers the accidental excess but never active custody (L-4)", async function () {
+    await carbonCredit.connect(sender).approve(await bridge.getAddress(), AMOUNT);
+    await bridge.connect(sender).lock(AMOUNT, TARGET, recipient.address);
+    await carbonCredit.mint(await bridge.getAddress(), ethers.parseEther("9999")); // excess
+
+    // Rescuing more than the excess would eat custody → rejected.
+    await expect(
+      bridge.rescueToken(await carbonCredit.getAddress(), attacker.address, ethers.parseEther("10000")),
+    ).to.be.revertedWithCustomError(bridge, "InsufficientCustody");
+
+    // Rescuing exactly the excess succeeds; custody is untouched.
+    const before = await carbonCredit.balanceOf(attacker.address);
+    await expect(
+      bridge.rescueToken(await carbonCredit.getAddress(), attacker.address, ethers.parseEther("9999")),
+    ).to.emit(bridge, "Rescued");
+    expect(await carbonCredit.balanceOf(attacker.address)).to.equal(before + ethers.parseEther("9999"));
+    expect((await bridge.totalLockedIn()) - (await bridge.totalReleasedBack())).to.equal(AMOUNT);
   });
 
   it("pause blocks all movement; unpause restores it", async function () {

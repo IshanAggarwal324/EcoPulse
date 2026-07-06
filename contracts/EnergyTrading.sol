@@ -30,6 +30,10 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
     /// Minimum lifetime for an explicitly-expiring listing (guards accidental
     /// zero-length listings that would expire in the same block).
     uint256 public constant MIN_LISTING_DURATION = 1 minutes;
+    /// Maximum number of concurrently-active listings a single seller may hold.
+    /// Bounds contract-storage griefing (never-expiring listings otherwise bloat
+    /// storage at gas cost with no per-seller limit). Generous for normal use.
+    uint256 public constant MAX_ACTIVE_LISTINGS_PER_SELLER = 256;
 
     struct EnergyListing {
         address seller;
@@ -44,6 +48,10 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
 
     mapping(uint256 => EnergyListing) public listings;
     uint256 public nextListingId;
+
+    /// @dev Active-listing counter per seller, kept in sync on list / full-fill /
+    ///      cancel / expire to enforce MAX_ACTIVE_LISTINGS_PER_SELLER.
+    mapping(address => uint256) public activeListingsCount;
 
     event EnergyListed(
         uint256 indexed listingId,
@@ -85,6 +93,7 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
     error ListingNotFound();
     error ListingExpiredStatus();
     error FillExceedsRemaining();
+    error TooManyActiveListings();
 
     constructor(address carbonCreditTokenAddress) Ownable(msg.sender) {
         if (carbonCreditTokenAddress == address(0)) {
@@ -107,6 +116,7 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
     function listEnergy(uint256 energyAmount, uint256 price) external whenNotPaused {
         if (energyAmount == 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
+        _enforceListingCap(msg.sender);
 
         uint256 listingId = nextListingId;
         listings[listingId] = EnergyListing({
@@ -134,6 +144,7 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
         if (durationSeconds < MIN_LISTING_DURATION || durationSeconds > MAX_LISTING_DURATION) {
             revert InvalidDuration();
         }
+        _enforceListingCap(msg.sender);
 
         uint256 listingId = nextListingId;
         uint256 expiresAt = block.timestamp + durationSeconds;
@@ -158,6 +169,7 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
         if (listing.seller != msg.sender) revert NotListingSeller();
 
         listing.status = ListingStatus.Cancelled;
+        activeListingsCount[msg.sender] -= 1;
         emit ListingCancelled(listingId, msg.sender);
     }
 
@@ -209,6 +221,7 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
 
         if (listing.energyAmount == 0) {
             listing.status = ListingStatus.Sold;
+            activeListingsCount[seller] -= 1;
         }
 
         carbonCreditToken.safeTransferFrom(msg.sender, seller, fillPrice);
@@ -242,6 +255,15 @@ contract EnergyTrading is ReentrancyGuard, Pausable, Ownable2Step {
         }
 
         listing.status = ListingStatus.Expired;
+        activeListingsCount[listing.seller] -= 1;
         emit ListingExpired(listingId, listing.seller);
+    }
+
+    /// @dev Enforces the per-seller active-listing cap before creating a listing.
+    function _enforceListingCap(address seller) internal {
+        if (activeListingsCount[seller] >= MAX_ACTIVE_LISTINGS_PER_SELLER) {
+            revert TooManyActiveListings();
+        }
+        activeListingsCount[seller] += 1;
     }
 }

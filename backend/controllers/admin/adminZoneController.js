@@ -7,6 +7,7 @@ const auditService = require('../../services/auditService');
 const { ROLES } = require('../../auth/roles');
 const { ZONE_CODE_RE } = require('../../models/GridZone');
 const { getUserZoneIds, invalidateActiveZoneCache } = require('../../utils/nodeOwnership');
+const { escapeRegex } = require('../../utils/validators');
 
 const MAX_ZONES_PER_USER = 50;
 
@@ -29,9 +30,12 @@ const listZones = asyncHandler(async (req, res) => {
     if (ZONE_CODE_RE.test(term)) {
       filter.code = term;
     } else {
+      // Escape regex metacharacters so a crafted search term cannot inject
+      // regex behavior (consistent with adminUserController / reputationService).
+      const safe = escapeRegex(term);
       filter.$or = [
-        { code: { $regex: term, $options: 'i' } },
-        { name: { $regex: term, $options: 'i' } },
+        { code: { $regex: safe, $options: 'i' } },
+        { name: { $regex: safe, $options: 'i' } },
       ];
     }
   }

@@ -8,9 +8,22 @@ const OUTCOMES = new Set(Object.keys(disputeService.OUTCOME_MAP));
  */
 const listDisputes = asyncHandler(async (req, res) => {
   const isAdmin = req.user?.role === 'admin' || req.user?.role === 'moderator';
+  const ownWallet = String(req.user?.walletAddress || '').toLowerCase() || null;
+
+  // Ownership scoping: admins may inspect any wallet via ?wallet; non-admins are
+  // hard-scoped to their own linked wallet and the param is ignored. A non-admin
+  // with no linked wallet has nothing to show (never an unfiltered dump).
   const wallet = isAdmin
-    ? req.query.wallet || req.user?.walletAddress || null
-    : req.user?.walletAddress || req.query.wallet || null;
+    ? (req.query.wallet ? String(req.query.wallet).toLowerCase() : ownWallet)
+    : ownWallet;
+
+  if (!isAdmin && !wallet) {
+    return res.status(200).json({
+      success: true,
+      data: [],
+      meta: { page: 1, limit: 0, total: 0, pages: 1 },
+    });
+  }
 
   const resolved =
     req.query.resolved === 'true' ? true :
@@ -43,7 +56,12 @@ const getDispute = asyncHandler(async (req, res) => {
 
   const isAdmin = req.user?.role === 'admin' || req.user?.role === 'moderator';
   const wallet = String(req.user?.walletAddress || '').toLowerCase();
-  if (!isAdmin && wallet && dispute.buyer !== wallet && dispute.seller !== wallet) {
+  // A wallet-less user (wallet == '') is denied outright rather than bypassing
+  // the party check via short-circuit.
+  if (
+    !isAdmin &&
+    (!wallet || (dispute.buyer !== wallet && dispute.seller !== wallet))
+  ) {
     return res.status(403).json({ success: false, message: 'Not authorized to view this dispute' });
   }
 

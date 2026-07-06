@@ -51,6 +51,11 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
     uint256 public nextLockId;
     uint256 public nextReturnId;
     uint256 public totalLockedIn;
+    /// @dev Cumulative custody released back via `releaseBack`. Bounded by
+    ///      `totalLockedIn` so a relayer can never release more than was actually
+    ///      locked — including tokens sent directly to the bridge (which used to
+    ///      inflate `getBridgeBalance()` into a spoofable releasable balance).
+    uint256 public totalReleasedBack;
 
     /// @dev Whitelist of chains the bridge will lock *to* (outbound).
     mapping(uint256 => bool) public supportedChains;
@@ -58,6 +63,11 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
     mapping(bytes32 => bool) public processedNonces;
     /// @dev Rolling daily locked volume keyed by day bucket (block.timestamp / 1 days).
     mapping(uint256 => uint256) public dailyLocked;
+    /// @dev Rolling daily INBOUND volume (mintFor + releaseBack) keyed by day
+    ///      bucket. Bounded by the same `dailyCap` so a compromised relayer cannot
+    ///      mint/release unboundedly within 24h (the outbound-only `dailyLocked`
+    ///      bucket does not cover inbound minting, which creates new supply).
+    mapping(uint256 => uint256) public dailyInbound;
 
     event Locked(
         uint256 indexed lockId,
@@ -88,6 +98,8 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
     );
     event SupportedChainSet(uint256 indexed chainId, bool enabled);
     event DailyCapConsumed(uint256 indexed dayBucket, uint256 consumed);
+    event DailyInboundConsumed(uint256 indexed dayBucket, uint256 consumed);
+    event Rescued(address indexed token, address indexed to, uint256 amount);
 
     error ZeroAddress();
     error ZeroAmount();
@@ -98,6 +110,8 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
     error ExceedsDailyCap(uint256 requested, uint256 remaining);
     error NonceAlreadyProcessed();
     error DailyCapConfigTooSmall();
+    error InsufficientCustody(uint256 requested, uint256 available);
+    error NothingToRescue();
 
     /// @param token_   CarbonCredit (or a wrapped equivalent) the bridge custodies/mints.
     /// @param _maxPerTx Per-transaction cap. Must be > 0 and ≤ dailyCap.
@@ -147,6 +161,34 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
         _revokeRole(RELAYER_ROLE, account);
     }
 
+    /// @notice Recover tokens sent to the bridge by mistake (e.g. direct CC
+    ///         transfers that are not active locks). Admin only.
+    /// @dev For the custodied CC, only the accidental EXCESS over
+    ///      `(totalLockedIn - totalReleasedBack)` may be rescued — never the
+    ///      tokens backing active locks/returns, which would break the custody
+    ///      invariant releaseBack relies on.
+    function rescueToken(address token_, address to, uint256 amount)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        nonReentrant
+    {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+
+        uint256 balance = IERC20(token_).balanceOf(address(this));
+        if (token_ == address(token)) {
+            uint256 custody = totalLockedIn - totalReleasedBack;
+            if (balance < custody) revert InsufficientCustody(amount, 0);
+            uint256 excess = balance - custody;
+            if (amount > excess) revert InsufficientCustody(amount, excess);
+        } else if (amount > balance) {
+            revert InsufficientCustody(amount, balance);
+        }
+
+        IERC20(token_).safeTransfer(to, amount);
+        emit Rescued(token_, to, amount);
+    }
+
     // ---------------------------------------------------------------- outbound
 
     /// @notice Lock CC to be bridged to `targetChainId` for `recipient`.
@@ -185,6 +227,15 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
 
     /// @notice Burn bridged CC to retrieve the originally locked CC on the source
     ///         chain. Emits `ReturnedToSource`; a relayer there calls `releaseBack`.
+    /// @dev KNOWN LIMITATION (M-3, couples to the H-5 trust model): recovery of the
+    ///      source-chain custody depends solely on a relayer calling `releaseBack`.
+    ///      There is no on-chain self-recovery fallback because any local re-mint
+    ///      could double-pay if the source-chain relayer also releases — preventing
+    ///      that requires a verifiable cross-chain message proving the source did
+    ///      NOT release (the same threshold/Merkle infrastructure tracked for H-5).
+    ///      Do not deploy to mainnet until that message layer + multisig relayer
+    ///      set exist; treat a relayer withholding service as a fund-loss vector
+    ///      until then.
     function returnToSource(uint256 amount, uint256 sourceChainId)
         external
         nonReentrant
@@ -247,6 +298,13 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
         if (recipient == address(0)) revert ZeroAddress();
         _ingest(recipient, amount, sourceChainId, nonce, OP_RELEASE);
 
+        // Custody bound (L-4): a release may never exceed the tokens actually
+        // locked on this chain. Direct sends to the bridge do NOT increase the
+        // releasable balance, so they cannot be drained via releaseBack.
+        uint256 available = totalLockedIn - totalReleasedBack;
+        if (amount > available) revert InsufficientCustody(amount, available);
+        totalReleasedBack += amount;
+
         // Return custody of originally locked tokens.
         token.safeTransfer(recipient, amount);
 
@@ -264,17 +322,49 @@ contract CarbonCreditBridge is ReentrancyGuard, Pausable, AccessControl {
         return used >= dailyCap ? 0 : dailyCap - used;
     }
 
+    /// @notice Remaining INBOUND (mintFor + releaseBack) volume for the rolling
+    ///         24h window. Mirrors `dailyRemaining()` (outbound) so monitors and
+    ///         the relayer can observe inbound headroom against the same cap.
+    function dailyInboundRemaining() external view returns (uint256) {
+        uint256 used = dailyInbound[block.timestamp / 1 days];
+        return used >= dailyCap ? 0 : dailyCap - used;
+    }
+
     // ---------------------------------------------------------------- internal
 
     /// @dev Shared idempotency + bounds check for inbound relayer operations.
     ///      Marks the nonce consumed BEFORE the external call (CEI).
+    ///
+    ///      Hardening (vs. the pre-audit version):
+    ///      - Inbound `sourceChainId` MUST be in `supportedChains` (the outbound
+    ///        `lock()` already enforced this; inbound did not). Stops a relayer
+    ///        from minting against arbitrary/unsupported chains. NOTE: this is a
+    ///        bounds/route check only — a full trust fix still requires that every
+    ///        `mintFor`/`releaseBack` be backed by a cryptographically verifiable
+    ///        bridge message (e.g. threshold/M-of-N relayer signature or a Merkle
+    ///        proof against a signed lock root). That is tracked as a separate,
+    ///        pre-mainnet design+audit item; do NOT deploy to mainnet relying on
+    ///        a single relayer key.
+    ///      - Inbound volume counts against a rolling 24h `dailyCap` (separate
+    ///        `dailyInbound` bucket) so a compromised relayer cannot mint/release
+    ///        unboundedly within a day.
     function _ingest(address recipient, uint256 amount, uint256 sourceChainId, uint256 nonce, uint8 op)
         internal
     {
         if (recipient == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         if (sourceChainId == block.chainid) revert SameChainBridge();
+        if (!supportedChains[sourceChainId]) revert UnsupportedChain(sourceChainId);
         if (amount > maxPerTx) revert ExceedsPerTxCap(amount, maxPerTx);
+
+        uint256 dayBucket = block.timestamp / 1 days;
+        uint256 used = dailyInbound[dayBucket];
+        uint256 capDay = dailyCap;
+        if (used + amount > capDay) {
+            revert ExceedsDailyCap(amount, capDay > used ? capDay - used : 0);
+        }
+        dailyInbound[dayBucket] = used + amount;
+        emit DailyInboundConsumed(dayBucket, used + amount);
 
         bytes32 key = keccak256(abi.encodePacked(op, sourceChainId, nonce));
         if (processedNonces[key]) revert NonceAlreadyProcessed();

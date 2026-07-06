@@ -27,10 +27,13 @@ def _parse_narrate_response(text: str, fallback_summary: str, meta_is_demo: bool
         )
 
     try:
+        # The demo/live disclaimer is an authoritative trust signal derived from
+        # the backend's own data flags — never from the model's JSON output, which
+        # is prompt-influenceable and could otherwise flip the indicator.
         return ReportNarrateResponse(
             summary=parsed.get("summary", fallback_summary),
             highlights=parsed.get("highlights", ["See detailed summary above."]),
-            disclaimer=parsed.get("disclaimer", "Based on simulated demo data." if meta_is_demo else "Based on live platform data."),
+            disclaimer="Based on simulated demo data." if meta_is_demo else "Based on live platform data.",
         )
     except Exception:
         logger.warning("Narrate response validation failed — using fallback summary")

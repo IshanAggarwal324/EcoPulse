@@ -51,15 +51,16 @@ contract DisputeResolution is AccessControl, IDisputeResolution {
     error DisputeNotFound();
     error AlreadyResolved();
     error InvalidShare();
+    error InvalidAdmin();
 
     constructor(address escrowAddress, address admin) {
         if (escrowAddress == address(0)) revert DisputeNotFound();
-        if (admin == address(0)) {
-            _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        } else {
-            _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        }
-        _grantRole(ARBITER_ROLE, admin == address(0) ? msg.sender : admin);
+        // Reject an unset admin rather than silently granting DEFAULT_ADMIN_ROLE
+        // + ARBITER_ROLE to the deployer (the old fallback), which was a quiet
+        // privilege footgun. Callers must pass an explicit admin.
+        if (admin == address(0)) revert InvalidAdmin();
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(ARBITER_ROLE, admin);
         escrow = IEnergyEscrow(escrowAddress);
     }
 

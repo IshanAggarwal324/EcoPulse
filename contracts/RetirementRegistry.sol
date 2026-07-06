@@ -62,6 +62,7 @@ contract RetirementRegistry is AccessControl, IRetirementRegistry {
     error NotToken();
     error RetirementNotFound();
     error AlreadyAttested();
+    error AlreadyRecorded();
 
     /// @param token_ The CarbonCredit contract authorized to record retirements.
     /// @param admin  Receives DEFAULT_ADMIN_ROLE + ATTESTER_ROLE.
@@ -82,6 +83,10 @@ contract RetirementRegistry is AccessControl, IRetirementRegistry {
         address initiator
     ) external override {
         if (msg.sender != token) revert NotToken();
+        // Defense-in-depth: a retirementId must be recorded at most once. Safety
+        // currently relies on the token's monotonic ids, but reject an explicit
+        // duplicate so a token regression cannot double-count retired supply.
+        if (retirements[retirementId].retiree != address(0)) revert AlreadyRecorded();
 
         retirements[retirementId] = Retirement({
             retiree: retiree,

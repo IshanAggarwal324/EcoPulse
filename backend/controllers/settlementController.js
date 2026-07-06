@@ -75,9 +75,13 @@ const getSettlement = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Settlement not found' });
   }
 
-  // Ownership check for non-admins.
+  // Ownership check for non-admins. A wallet-less user (wallet == '') is denied
+  // outright rather than bypassing the party check via short-circuit.
   const wallet = String(req.user?.walletAddress || '').toLowerCase();
-  if (!isAdmin(req) && wallet && settlement.buyer !== wallet && settlement.seller !== wallet) {
+  if (
+    !isAdmin(req) &&
+    (!wallet || (settlement.buyer !== wallet && settlement.seller !== wallet))
+  ) {
     return res.status(403).json({ success: false, message: 'Not authorized to view this settlement' });
   }
 

@@ -270,8 +270,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\EnergyTrading.sol": {
-      "lastModificationDate": 1782035596622,
-      "contentHash": "6941f58689824c3232ac5ad0ae4dca16",
+      "lastModificationDate": 1783335717344,
+      "contentHash": "765e6dee98711c5181d3b646b5312447",
       "sourceName": "contracts/EnergyTrading.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -762,8 +762,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\EnergyEscrow.sol": {
-      "lastModificationDate": 1782503380163,
-      "contentHash": "892b541584282f788feb1b0f3238b2b0",
+      "lastModificationDate": 1783335192127,
+      "contentHash": "0205f2abef36ebfa86eac9f8dde5be7e",
       "sourceName": "contracts/EnergyEscrow.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -878,8 +878,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\DisputeResolution.sol": {
-      "lastModificationDate": 1782503528564,
-      "contentHash": "4f0f140b325a7bf893c38401a180da72",
+      "lastModificationDate": 1783335224444,
+      "contentHash": "e955fdd0c09bf3965322a482d6b6af07",
       "sourceName": "contracts/DisputeResolution.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -954,8 +954,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\CarbonCreditBridge.sol": {
-      "lastModificationDate": 1782556250186,
-      "contentHash": "37bca6061ea0837cb897bfd9e8444852",
+      "lastModificationDate": 1783335759051,
+      "contentHash": "6bf30c399376903e6873dcaa3984b1c3",
       "sourceName": "contracts/CarbonCreditBridge.sol",
       "solcConfig": {
         "version": "0.8.28",
@@ -997,8 +997,8 @@
       ]
     },
     "C:\\Users\\iagga\\ecopulse\\EcoPulse\\contracts\\RetirementRegistry.sol": {
-      "lastModificationDate": 1782550217025,
-      "contentHash": "54fea54940e4c961b9062cf5efa89ec2",
+      "lastModificationDate": 1783335316449,
+      "contentHash": "bb2836334230ba61fce8fe5f3c1110ee",
       "sourceName": "contracts/RetirementRegistry.sol",
       "solcConfig": {
         "version": "0.8.28",
