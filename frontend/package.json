@@ -5,6 +5,19 @@
   "type": "module",
   "description": "EcoPulse React frontend sources. Type marker so these ESM modules are runnable under node (tests); the app is built by the Vite project in ../ecopulse.",
   "scripts": {
-    "test": "node --test hooks/__tests__/settlementSocket.test.js"
+    "test": "node --test hooks/__tests__/settlementSocket.test.js",
+    "test:vitest": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10",
+    "jsdom": "29.1.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/user-event": "14.6.1",
+    "@vitejs/plugin-react": "4.7.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-router-dom": "7.15.1",
+    "lucide-react": "1.16.0"
   }
 }

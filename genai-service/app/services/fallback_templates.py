@@ -1,6 +1,17 @@
 from typing import Any
 
 
+def is_explanation_only(retrieved_data: dict[str, Any] | None) -> bool:
+    """True when retrieved_data's only meaningful content is an `explanation`
+    string (e.g. `{ walletConnected: false, explanation: '...' }`), in which
+    case a live LLM call adds no value over the deterministic explanation
+    text itself.
+    """
+    if not retrieved_data:
+        return False
+    return bool(retrieved_data.get("explanation")) and len(retrieved_data) <= 2
+
+
 def render_report_summary(metrics: dict[str, Any]) -> str:
     lines: list[str] = []
     period = metrics.get("meta", {}).get("period", "N/A")
@@ -61,9 +72,8 @@ def render_chat_reply(
         )
 
     # Explanation-only payloads (e.g. "no wallet connected", "no nodes yet").
-    explanation = retrieved_data.get("explanation")
-    if explanation and len(retrieved_data) <= 2:
-        return str(explanation)
+    if is_explanation_only(retrieved_data):
+        return str(retrieved_data.get("explanation"))
 
     # Sub-module 3.2/3.3 — bill analysis & recent readings shapes.
     if "totalConsumedKwh" in retrieved_data:

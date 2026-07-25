@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { authApi } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [status, setStatus] = useState(token ? 'loading' : 'missing');
   const [message, setMessage] = useState('');
+  const { refreshUser, broadcastEmailVerified } = useAuth();
 
   useEffect(() => {
     if (!token) return undefined;
@@ -20,6 +22,9 @@ const VerifyEmail = () => {
         if (cancelled) return;
         setStatus('success');
         setMessage(data.message || 'Email verified successfully.');
+        await refreshUser();
+        if (cancelled) return;
+        broadcastEmailVerified();
       } catch (error) {
         if (cancelled) return;
         setStatus('error');

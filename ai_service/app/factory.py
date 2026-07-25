@@ -12,6 +12,7 @@ from app.internal_auth import internal_auth_response
 from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
 from app.routers import anomaly, forecast, health, metrics, models
+from models.tf_runtime_env import configure_tf_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings)
+    tf_runtime_info = configure_tf_runtime()
+    logger.info(
+        "TensorFlow runtime configured: mode=%s cuda_visible_devices=%s",
+        tf_runtime_info["mode"],
+        tf_runtime_info["cuda_visible_devices"],
+    )
     store = get_model_store()
     store.load()
     # Anomaly model is optional on startup (non-fatal if not yet trained).

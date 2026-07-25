@@ -36,6 +36,8 @@ const FAQ_PATTERN = /\b(how\s+(?:do(?:es)?|can|to|should|is|are|will)|what\s+(?:
 
 const FAQ_KEYWORD_PATTERN = /\b(ecopulse|platform|assistant|dashboard|wallet|metamask|blockchain|smart\s*contract|erc[\s-]?20|hardhat|simulator|demo|register|sign\s*up|login|password|settings|page|pages)\b/i;
 
+const OWN_DATA_PATTERN = /\b(my|mine|our|i'?ve|i\s+have|i\s+own)\b/i;
+
 function matchGridEnergyIntent(message) {
   if (!message || typeof message !== 'string') return false;
   return GRID_ENERGY_PATTERN.test(message);
@@ -89,6 +91,11 @@ function matchFaqIntent(message) {
   return FAQ_PATTERN.test(message) || FAQ_KEYWORD_PATTERN.test(message);
 }
 
+function mentionsOwnData(message) {
+  if (!message || typeof message !== 'string') return false;
+  return OWN_DATA_PATTERN.test(message);
+}
+
 const INTENT_MATCHERS = [
   { intent: 'bill_analysis', matcher: matchBillAnalysisIntent },
   { intent: 'node_detail', matcher: matchNodeDetailIntent },
@@ -107,13 +114,21 @@ function classifyIntent(message) {
     return { intent: 'general', period: null, nodeId: null };
   }
 
-  for (const { intent, matcher } of INTENT_MATCHERS) {
-    if (matcher(message)) {
-      return {
-        intent,
-        period: detectPeriodFromMessage(message),
-        nodeId: detectNodeIdFromMessage(message),
-      };
+  // FAQ-phrased conceptual questions (e.g. "what is carbon credit") should win
+  // over a keyword-based data intent, unless the message also carries an
+  // own-data cue ("my", "our", ...) indicating the user wants their own data
+  // (e.g. "what is my profit?" should still route to wallet_profit).
+  const isConceptualFaq = matchFaqIntent(message) && !mentionsOwnData(message);
+
+  if (!isConceptualFaq) {
+    for (const { intent, matcher } of INTENT_MATCHERS) {
+      if (matcher(message)) {
+        return {
+          intent,
+          period: detectPeriodFromMessage(message),
+          nodeId: detectNodeIdFromMessage(message),
+        };
+      }
     }
   }
 
@@ -136,5 +151,6 @@ module.exports = {
   matchBillAnalysisIntent,
   matchNodeDetailIntent,
   matchFaqIntent,
+  mentionsOwnData,
   classifyIntent,
 };

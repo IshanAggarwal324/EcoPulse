@@ -26,6 +26,7 @@ class Settings:
     genai_enabled: bool = True
     genai_max_tokens: int = 800
     genai_max_input_chars: int = 12000
+    genai_call_timeout_seconds: int = 8
 
     embedding_model: str = "text-embedding-004"
     docs_dir: str = ""
@@ -55,6 +56,7 @@ def get_settings() -> Settings:
         in ("1", "true", "yes"),
         genai_max_tokens=int(os.getenv("GENAI_MAX_TOKENS", "800")),
         genai_max_input_chars=int(os.getenv("GENAI_MAX_INPUT_CHARS", "12000")),
+        genai_call_timeout_seconds=int(os.getenv("GENAI_CALL_TIMEOUT_SECONDS", "8")),
         embedding_model=os.getenv("EMBEDDING_MODEL", "text-embedding-004"),
         docs_dir=os.getenv("DOCS_DIR", ""),
         embedding_cache_path=os.getenv("EMBEDDING_CACHE_PATH", ""),

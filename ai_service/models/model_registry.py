@@ -226,6 +226,8 @@ def load_keras_model(model_path: str):
     (weights untouched) and load the sanitized copy.
     """
     try:
+        from models.tf_runtime_env import configure_tf_runtime
+        configure_tf_runtime()
         from tensorflow.keras.models import load_model  # type: ignore
     except Exception as e:  # pragma: no cover
         raise RuntimeError(

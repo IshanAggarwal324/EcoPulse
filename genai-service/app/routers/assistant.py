@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from app.schemas.genai import AssistantChatRequest, AssistantChatResponse
-from app.services.fallback_templates import render_chat_reply
+from app.services.fallback_templates import is_explanation_only, render_chat_reply
 from app.services.llm_service import LlmService
 from app.services.prompts import build_assistant_chat_prompt, trim_history
 
@@ -106,6 +106,13 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
 
     if not llm.is_available():
         logger.info("Gemini unavailable — returning fallback chat reply")
+        return AssistantChatResponse(
+            reply=fallback_reply,
+            disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
+        )
+
+    if is_explanation_only(request.retrieved_data):
+        logger.info("Explanation-only retrieved_data — skipping LLM call")
         return AssistantChatResponse(
             reply=fallback_reply,
             disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",

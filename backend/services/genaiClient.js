@@ -5,6 +5,15 @@ const { scrubMessage } = require('../utils/scrubLog');
 
 const TARGET_SERVICE = 'genai-service';
 
+// Chat gets a shorter, dedicated upstream timeout than the shared
+// UPSTREAM_FETCH_TIMEOUT_MS default (20000ms), so it leaves margin under the
+// frontend's 20000ms budget for a fallback reply to win the race instead of a
+// bare timeout. See frontend/utils/api.js for the full coordinated budget chain.
+const CHAT_UPSTREAM_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.GENAI_CHAT_TIMEOUT_MS ?? '12000', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
+})();
+
 const GENAI_SERVICE_URL = getGenaiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 const isProduction = process.env.NODE_ENV === 'production';
@@ -28,21 +37,25 @@ const sanitizeDetails = (details) => {
   return String(details).slice(0, 500);
 };
 
-async function postToGenaiService(path, body) {
+async function postToGenaiService(path, body, timeoutMs) {
   const url = `${GENAI_SERVICE_URL}${path}`;
   logger.debug('outbound request to genai-service', {
     targetService: TARGET_SERVICE,
     path,
     method: 'POST',
   });
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(INTERNAL_SERVICE_API_KEY ? { 'x-internal-api-key': INTERNAL_SERVICE_API_KEY } : {}),
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    timeoutMs,
+  );
   return response;
 }
 
@@ -96,7 +109,7 @@ async function postNarrate(metrics, meta) {
 }
 
 async function postChat(payload) {
-  return sendGenaiRequest(() => postToGenaiService('/assistant/chat', payload));
+  return sendGenaiRequest(() => postToGenaiService('/assistant/chat', payload, CHAT_UPSTREAM_TIMEOUT_MS));
 }
 
 async function fetchDocChunks(query, topK = 3) {

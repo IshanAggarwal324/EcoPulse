@@ -7,6 +7,8 @@ def _keras():
     (e.g. unsupported Python versions).
     """
     try:
+        from models.tf_runtime_env import configure_tf_runtime
+        configure_tf_runtime()
         from tensorflow.keras.models import Sequential  # type: ignore
         from tensorflow.keras.layers import LSTM, Dense, Dropout  # type: ignore
         return Sequential, LSTM, Dense, Dropout

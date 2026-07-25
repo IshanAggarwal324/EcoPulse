@@ -9,6 +9,12 @@ const AuthContext = createContext(null);
 const API_URL = API_BASE;
 const parseAuthResponse = (data) => (data.data || data);
 
+// email-verification-banner-sync bugfix — dedicated localStorage key used
+// purely as a cross-tab "something relevant changed, please refetch" signal.
+// The value itself carries no PII (just a timestamp); the actual
+// verification state always comes from GET /auth/me.
+const EMAIL_VERIFIED_SYNC_KEY = 'ecopulse.auth.emailVerifiedAt';
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -166,6 +172,32 @@ export const AuthProvider = ({ children }) => {
     return fetchCurrentUser();
   }, [fetchCurrentUser]);
 
+  // email-verification-banner-sync bugfix — best-effort cross-tab signal.
+  // Writing to localStorage can throw in private-browsing/storage-disabled
+  // contexts; that must never propagate to the caller (VerifyEmail.jsx's
+  // success path), so it's swallowed here.
+  const broadcastEmailVerified = useCallback(() => {
+    try {
+      localStorage.setItem(EMAIL_VERIFIED_SYNC_KEY, String(Date.now()));
+    } catch {
+      // Best-effort only — storage may be unavailable (e.g. private browsing).
+    }
+  }, []);
+
+  // email-verification-banner-sync bugfix — other same-origin tabs/windows
+  // learn that verification succeeded elsewhere via the native `storage`
+  // event, which browsers fire only in *other* tabs (never the tab that
+  // performed the write), so the originating tab never double-fetches.
+  useEffect(() => {
+    const handleStorageEvent = (event) => {
+      if (event.key !== EMAIL_VERIFIED_SYNC_KEY || !event.newValue) return;
+      fetchCurrentUser();
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
+  }, [fetchCurrentUser]);
+
   const updatePassword = async ({ currentPassword, newPassword }) => {
     try {
       const data = await authApi.updatePassword({ currentPassword, newPassword });
@@ -209,6 +241,7 @@ export const AuthProvider = ({ children }) => {
       updatePassword,
       refreshUser,
       refreshSession,
+      broadcastEmailVerified,
     }),
     [
       user,
@@ -223,6 +256,7 @@ export const AuthProvider = ({ children }) => {
       updatePassword,
       refreshUser,
       refreshSession,
+      broadcastEmailVerified,
     ],
   );
 

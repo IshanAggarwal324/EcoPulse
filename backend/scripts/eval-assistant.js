@@ -41,10 +41,14 @@ const MOCK_DOC_CHUNKS = [
 
 const GOLDEN = [
   { q: 'Why is my bill high this week?', expectIntent: 'bill_analysis', expectType: 'bill' },
-  { q: 'How do I list energy for sale?', expectIntent: 'trades', expectType: 'trade' },
+  // FAQ-phrased ("how do I") + a data keyword ("list") with no own-data cue:
+  // classifies as faq (bugfix: assistant-chat-faq-misroute-timeout, Property 1).
+  { q: 'How do I list energy for sale?', expectIntent: 'faq', expectType: 'doc' },
   { q: "What's my wallet profit?", expectIntent: 'wallet_profit', expectType: 'wallet' },
   { q: 'Show me the 7-day forecast', expectIntent: 'forecast', expectType: 'forecast' },
-  { q: 'What are carbon credits?', expectIntent: 'carbon', expectType: 'carbon' },
+  // FAQ-phrased ("what are") + a data keyword ("carbon") with no own-data cue:
+  // classifies as faq (bugfix: assistant-chat-faq-misroute-timeout, Property 1).
+  { q: 'What are carbon credits?', expectIntent: 'faq', expectType: 'doc' },
   { q: 'How much energy did I use this week?', expectIntent: 'bill_analysis', expectType: 'bill' },
   { q: 'Give me details for my solar node', expectIntent: 'node_detail', expectType: 'reading' },
 ];

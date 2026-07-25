@@ -61,6 +61,7 @@ class LlmService:
             generation_config=genai.types.GenerationConfig(
                 max_output_tokens=self._max_tokens,
             ),
+            request_options={"timeout": self._settings.genai_call_timeout_seconds},
         )
 
         text = response.text

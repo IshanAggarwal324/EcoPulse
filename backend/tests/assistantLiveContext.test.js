@@ -1,5 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fc = require('fast-check');
 
 // Sub-module 3.2 — pure-logic invariants for the live-context layer.
 // (DB-backed retrievers are integration-tested elsewhere; these cover the
@@ -36,7 +37,87 @@ test('classifyIntent keeps existing intents intact', () => {
   assert.strictEqual(classifyIntent('what is my profit?').intent, 'wallet_profit');
   assert.strictEqual(classifyIntent('show me the forecast').intent, 'forecast');
   assert.strictEqual(classifyIntent('how many trades today?').intent, 'trades');
-  assert.strictEqual(classifyIntent('what are carbon credits?').intent, 'carbon');
+  assert.strictEqual(classifyIntent('what are carbon credits?').intent, 'faq');
+});
+
+/* ------------------------------------------------------------------ */
+/* Bug Condition A exploration — FAQ-phrased questions colliding with   */
+/* a data-intent keyword MUST classify as 'faq' (Property 1).          */
+/* NOTE: on unfixed intentClassifier.js these assertions FAIL because   */
+/* the keyword-based INTENT_MATCHERS loop runs before matchFaqIntent(), */
+/* so the messages below are misclassified into a data intent instead  */
+/* of 'faq'. The failure itself is the counterexample confirming the   */
+/* bug (see documented counterexamples below).                         */
+/* ------------------------------------------------------------------ */
+
+test('classifyIntent routes FAQ-phrased questions with a data keyword to faq (Property 1: Bug Condition)', () => {
+  // Counterexample observed on unfixed code: intent === 'carbon' (bug), expected 'faq'.
+  assert.strictEqual(classifyIntent('what is carbon credit').intent, 'faq');
+  // Counterexample observed on unfixed code: intent === 'carbon' (bug), expected 'faq'.
+  assert.strictEqual(classifyIntent('what are carbon credits?').intent, 'faq');
+  // Counterexample observed on unfixed code: intent === 'trades' (bug, TRADES_PATTERN
+  // matches "trading" before GRID_ENERGY_PATTERN is ever reached), expected 'faq'.
+  assert.strictEqual(classifyIntent('how does energy trading work?').intent, 'faq');
+  // Counterexample observed on unfixed code: intent === 'nodes' (bug), expected 'faq'.
+  assert.strictEqual(classifyIntent('explain node status').intent, 'faq');
+});
+
+/* ------------------------------------------------------------------ */
+/* Preservation tests (Property 2) — genuine data-intent classification */
+/* must be unchanged by the FAQ-priority fix. Observed on UNFIXED code  */
+/* first; these must PASS both before and after the fix.               */
+/* ------------------------------------------------------------------ */
+
+test('classifyIntent preserves genuine data-intent classification (Property 2: example observations)', () => {
+  // Own-data cue ("my") present alongside FAQ phrasing -> stays wallet_profit.
+  assert.strictEqual(classifyIntent('what is my profit?').intent, 'wallet_profit');
+  // Not FAQ-phrased at all ("how much" is not in FAQ_PATTERN) -> stays bill_analysis.
+  assert.strictEqual(classifyIntent('how much energy did I use this week?').intent, 'bill_analysis');
+  // Not FAQ-phrased at all -> stays carbon.
+  assert.strictEqual(classifyIntent('show me my carbon credit balance').intent, 'carbon');
+});
+
+test('classifyIntent property: FAQ-phrased + data keyword + own-data cue never classifies as faq (Property 2: fast-check)', () => {
+  const faqFragments = [
+    'what is',
+    'what are',
+    'how does',
+    'how do',
+    'how can',
+    'explain',
+    'tell me about',
+    'describe',
+    'help me understand',
+    'what will',
+  ];
+  const dataKeywordPhrases = [
+    'carbon credit',
+    'energy trading',
+    'node status',
+    'profit',
+    'trades',
+    'forecast',
+    'grid power',
+    'wallet balance',
+  ];
+  const ownDataCues = ['my', 'mine', 'our', "i've", 'i have', 'i own'];
+
+  fc.assert(
+    fc.property(
+      fc.constantFrom(...faqFragments),
+      fc.constantFrom(...dataKeywordPhrases),
+      fc.constantFrom(...ownDataCues),
+      (faqFragment, keywordPhrase, ownDataCue) => {
+        const message = `${faqFragment} ${ownDataCue} ${keywordPhrase}`;
+        const result = classifyIntent(message);
+        // Baseline to preserve: when an own-data cue IS present, the keyword
+        // matcher wins — the message is NEVER classified as 'faq', even
+        // though it is also FAQ-phrased.
+        return result.intent !== 'faq';
+      },
+    ),
+    { numRuns: 200 },
+  );
 });
 
 test('classifyIntent always returns a nodeId field (null when absent)', () => {

@@ -36,6 +36,13 @@ export function configureApiAuth(handlers) {
   authHandlers = { ...authHandlers, ...handlers };
 }
 
+// Coordinated chat timeout budget chain (each inner hop leaves the outer one
+// margin to receive/surface a fallback reply instead of a bare timeout):
+// frontend DEFAULT_TIMEOUT_MS 20000ms > backend-to-genai chat hop
+// CHAT_UPSTREAM_TIMEOUT_MS 12000ms (backend/services/genaiClient.js) >
+// Gemini SDK per-call genai_call_timeout_seconds 8000ms
+// (genai-service/app/services/llm_service.py). Non-chat requests are
+// unaffected and keep using this same default.
 const DEFAULT_TIMEOUT_MS = 20000;
 const COLD_START_RETRY_DELAY_MS = 2000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
