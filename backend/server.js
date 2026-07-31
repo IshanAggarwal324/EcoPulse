@@ -13,6 +13,7 @@ const metricsMiddleware = require('./middleware/metricsMiddleware');
 const { metricsHandler } = require('./routes/metrics');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
+const { buildCorsOptions } = require('./config/cors');
 const { issueCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { getHealth, toPublicStatus, isReadyForTraffic } = require('./services/healthService');
 const { createRateLimiter } = require('./middleware/rateLimit');
@@ -54,27 +55,7 @@ const startServer = async () => {
   const server = http.createServer(app);
   initSocket(server, app);
 
-  const parseCorsOrigins = () =>
-    String(process.env.CORS_ORIGIN || process.env.FRONTEND_URL || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-  const configuredOrigins = parseCorsOrigins();
-  const corsOptions = {
-    origin(origin, callback) {
-      if (!origin) return callback(null, true);
-      if (configuredOrigins.length === 0 && !isProduction) {
-        return callback(null, true);
-      }
-      if (configuredOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error('CORS blocked for this origin'));
-    },
-    credentials: true,
-    exposedHeaders: ['X-CSRF-Token'],
-  };
+  const corsOptions = buildCorsOptions({ isProduction });
 
   app.use(cors(corsOptions));
   app.use(compression());
@@ -169,6 +150,8 @@ const startServer = async () => {
 
   const startBackgroundSync = () => {
     const intervalMs = parseInt(process.env.BLOCKCHAIN_SYNC_INTERVAL_MS || '60000', 10);
+    blockchainSyncService.setSyncIntervalMs(intervalMs);
+    let consecutiveFailures = 0;
 
     const runSync = async () => {
       if (shuttingDown) return;
@@ -181,8 +164,19 @@ const startServer = async () => {
           logger.warn('post-sync reconciliation skipped', { err: e, component: 'reconciliation' });
         });
         await socketBroadcastService.flushAnalytics('full');
+        consecutiveFailures = 0;
       } catch (err) {
-        logger.warn('background blockchain sync skipped', { err, component: 'blockchain-sync' });
+        consecutiveFailures += 1;
+        blockchainSyncService.recordSyncFailure(err);
+        // A failing background sync makes every on-chain-derived view (trades,
+        // wallet, credits, analytics rollups) go stale, so it is logged at
+        // error level — a permanently degraded sync must not be silent.
+        logger.error('background blockchain sync failed', {
+          err,
+          consecutiveFailures,
+          intervalMs,
+          component: 'blockchain-sync',
+        });
       }
     };
 

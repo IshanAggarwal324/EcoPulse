@@ -1,6 +1,18 @@
 {
   "headers": [
     {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
@@ -8,11 +20,14 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com https://js.hcaptcha.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'self' https://challenges.cloudflare.com https://www.google.com https://recaptcha.google.com https://newassets.hcaptcha.com; connect-src 'self' https: wss:; upgrade-insecure-requests" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' https://challenges.cloudflare.com https://www.google.com https://www.gstatic.com https://js.hcaptcha.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'self' https://challenges.cloudflare.com https://www.google.com https://recaptcha.google.com https://newassets.hcaptcha.com; connect-src 'self' https://ecopulse-83lb.onrender.com wss://ecopulse-83lb.onrender.com https://challenges.cloudflare.com https://api.hcaptcha.com https://www.google.com https://va.vercel-scripts.com https://vitals.vercel-insights.com; upgrade-insecure-requests" }
       ]
     }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!_vercel/|assets/|robots\\.txt|sitemap\\.xml|favicon\\.svg|icons\\.svg|manifest\\.webmanifest).*)",
+      "destination": "/index.html"
+    }
   ]
 }

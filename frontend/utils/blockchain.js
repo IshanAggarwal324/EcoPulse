@@ -3,7 +3,15 @@ import { logClientError } from "./clientLogger";
 
 const isProd = import.meta.env.PROD;
 const envChainId = import.meta.env.VITE_CHAIN_ID;
-const envRpcUrl = import.meta.env.VITE_RPC_URL;
+
+// SECURITY (audit #1): `VITE_RPC_URL` is deliberately NOT read here. Vite
+// replaces every `import.meta.env.VITE_*` reference with its literal value at
+// build time, so merely *reading* a keyed provider URL publishes the key in
+// the bundle — a guard at runtime is too late. The keyed provider stays
+// server-side only (backend `RPC_URL`).
+//
+// A keyless override can be supplied via `VITE_PUBLIC_RPC_URL`.
+const envPublicRpcUrl = import.meta.env.VITE_PUBLIC_RPC_URL;
 
 if (isProd && !envChainId) {
   throw new Error("VITE_CHAIN_ID must be configured in production");
@@ -11,6 +19,47 @@ if (isProd && !envChainId) {
 
 export const EXPECTED_CHAIN_ID = Number(envChainId || "31337");
 export const DEV_MINT_ENABLED = import.meta.env.DEV && EXPECTED_CHAIN_ID === 31337;
+
+// Public, keyless RPC endpoints used for the MetaMask `wallet_addEthereumChain`
+// prompt. This URL is handed to the user's wallet and shipped in the client
+// bundle, so it must never carry a provider API key.
+const PUBLIC_RPC_URLS = {
+  1: "https://ethereum-rpc.publicnode.com",
+  11155111: "https://ethereum-sepolia-rpc.publicnode.com",
+  137: "https://polygon-bor-rpc.publicnode.com",
+  80002: "https://polygon-amoy-bor-rpc.publicnode.com",
+  31337: "http://127.0.0.1:8545",
+};
+
+// Hosts that only work with an embedded API key. Such a URL is rejected so a
+// misconfigured VITE_PUBLIC_RPC_URL cannot leak a credential to end users.
+const KEYED_RPC_HOST_PATTERN =
+  /(alchemy\.com|infura\.io|quiknode\.pro|blastapi\.io|ankr\.com\/[^/]+\/[^/]|getblock\.io|nodereal\.io|chainstack\.com)/i;
+
+const looksLikeKeyedRpcUrl = (url) => KEYED_RPC_HOST_PATTERN.test(String(url || ""));
+
+/**
+ * RPC URL advertised to the wallet when adding the expected network.
+ *
+ * Order: the built-in public endpoint for the chain, then a keyless
+ * VITE_PUBLIC_RPC_URL override.
+ */
+export const getWalletRpcUrl = () => {
+  const publicUrl = PUBLIC_RPC_URLS[EXPECTED_CHAIN_ID];
+  if (publicUrl) return publicUrl;
+
+  if (envPublicRpcUrl && looksLikeKeyedRpcUrl(envPublicRpcUrl)) {
+    if (import.meta.env.DEV) {
+      console.warn(
+        "[blockchain] Ignoring VITE_PUBLIC_RPC_URL: it looks like a keyed " +
+          "provider URL and would be published in the client bundle."
+      );
+    }
+    return "";
+  }
+
+  return envPublicRpcUrl || "";
+};
 
 export const getProvider = () => {
   if (window.ethereum) {
@@ -43,9 +92,13 @@ export const ensureCorrectNetwork = async () => {
     });
   } catch (switchError) {
     if (switchError.code === 4902) {
-      const rpcUrl = envRpcUrl || "";
-      if (isProd && !rpcUrl) {
-        throw new Error("VITE_RPC_URL must be configured in production");
+      const rpcUrl = getWalletRpcUrl();
+      if (!rpcUrl) {
+        throw new Error(
+          `No public RPC endpoint is known for chain ${EXPECTED_CHAIN_ID}. ` +
+            "Add the network manually in your wallet, or configure a keyless " +
+            "wallet, or configure a keyless VITE_PUBLIC_RPC_URL."
+        );
       }
 
       await window.ethereum.request({
@@ -54,7 +107,7 @@ export const ensureCorrectNetwork = async () => {
           chainId: chainIdHex,
           chainName: import.meta.env.VITE_CHAIN_NAME || "EVM Network",
           nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-          rpcUrls: [rpcUrl || "http://127.0.0.1:8545"],
+          rpcUrls: [rpcUrl],
         }],
       });
     } else {

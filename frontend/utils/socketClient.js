@@ -1,8 +1,11 @@
 import { SOCKET_URL } from './api';
 
-const parseIntEnv = (key, fallback) => {
-  const raw = import.meta.env[key];
-  if (raw === undefined || raw === '') return fallback;
+// NOTE: read each env var with a STATIC `import.meta.env.VITE_*` expression.
+// Dynamic access (`import.meta.env[key]`) forces Vite to inline the entire env
+// object into the bundle, which published every Vercel system variable
+// (committer name, project/deployment IDs, internal preview hostnames).
+const parseIntEnv = (raw, fallback) => {
+  if (raw === undefined || raw === null || raw === '') return fallback;
   const n = parseInt(raw, 10);
   return Number.isFinite(n) ? n : fallback;
 };
@@ -18,10 +21,10 @@ export const getSocketClientOptions = () => ({
   transports: ['websocket', 'polling'],
   withCredentials: true,
   reconnection: true,
-  reconnectionAttempts: parseIntEnv('VITE_SOCKET_RECONNECT_ATTEMPTS', 20),
-  reconnectionDelay: parseIntEnv('VITE_SOCKET_RECONNECT_DELAY_MS', 1000),
-  reconnectionDelayMax: parseIntEnv('VITE_SOCKET_RECONNECT_DELAY_MAX_MS', 10000),
-  timeout: parseIntEnv('VITE_SOCKET_CONNECT_TIMEOUT_MS', 20000),
+  reconnectionAttempts: parseIntEnv(import.meta.env.VITE_SOCKET_RECONNECT_ATTEMPTS, 20),
+  reconnectionDelay: parseIntEnv(import.meta.env.VITE_SOCKET_RECONNECT_DELAY_MS, 1000),
+  reconnectionDelayMax: parseIntEnv(import.meta.env.VITE_SOCKET_RECONNECT_DELAY_MAX_MS, 10000),
+  timeout: parseIntEnv(import.meta.env.VITE_SOCKET_CONNECT_TIMEOUT_MS, 20000),
 });
 
 export { SOCKET_URL };

@@ -24,6 +24,87 @@ let lastSyncDebug = {
 const blockTimestampCache = new Map();
 let eventListenerContract = null;
 
+/* ------------------------------------------------------------------ */
+/* Background-sync health tracker                                      */
+/* ------------------------------------------------------------------ */
+// The trade sync catches its own errors and returns `{ skipped: true }`, so a
+// permanently failing sync used to be invisible to callers and to the health
+// probe (which only saw "lag > threshold" without a reason). This tracker
+// records the outcome of every run so `getChainStatus()` can report WHY the
+// sync is unhealthy instead of just that it is.
+const DEFAULT_SYNC_INTERVAL_MS = 60000;
+const MIN_STALE_AFTER_MS = 180000; // never flag "stalled" faster than 3 min
+
+let syncHealth = {
+  lastSuccessAt: null,
+  lastFailureAt: null,
+  lastFailureMessage: null,
+  consecutiveFailures: 0,
+  successCount: 0,
+  intervalMs: (() => {
+    const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_INTERVAL_MS || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SYNC_INTERVAL_MS;
+  })(),
+};
+
+// Called by the server once the background scheduler is started so the
+// staleness window tracks the interval actually in use.
+const setSyncIntervalMs = (ms) => {
+  if (Number.isFinite(ms) && ms > 0) syncHealth.intervalMs = ms;
+};
+
+const getStaleAfterMs = () => Math.max(MIN_STALE_AFTER_MS, syncHealth.intervalMs * 3);
+
+const recordSyncSuccess = () => {
+  syncHealth.lastSuccessAt = new Date().toISOString();
+  syncHealth.consecutiveFailures = 0;
+  syncHealth.lastFailureMessage = null;
+  syncHealth.successCount += 1;
+};
+
+const recordSyncFailure = (error) => {
+  syncHealth.lastFailureAt = new Date().toISOString();
+  syncHealth.lastFailureMessage = String(error?.message || error || 'unknown error').slice(0, 300);
+  syncHealth.consecutiveFailures += 1;
+};
+
+const getSyncHealth = () => ({
+  ...syncHealth,
+  staleAfterMs: getStaleAfterMs(),
+  lastSuccessAgeMs: syncHealth.lastSuccessAt
+    ? Date.now() - Date.parse(syncHealth.lastSuccessAt)
+    : null,
+});
+
+// Coarse, non-sensitive reason codes for an unhealthy sync. Safe to surface on
+// the public health endpoint: they carry no hosts, keys or block numbers.
+const SYNC_REASONS = {
+  OK: 'ok',
+  NOT_CONFIGURED: 'not_configured',
+  RPC_ERROR: 'rpc_error',
+  NEVER_SYNCED: 'never_synced',
+  STALLED: 'stalled',
+  LAGGING: 'lagging',
+};
+
+const deriveSyncReason = ({ lastSyncedBlock, syncLagBlocks, lagThreshold }) => {
+  const health = getSyncHealth();
+  const staleAfterMs = health.staleAfterMs;
+  const hasSucceeded = Boolean(health.lastSuccessAt);
+  const successIsStale =
+    hasSucceeded && health.lastSuccessAgeMs !== null && health.lastSuccessAgeMs > staleAfterMs;
+
+  // The background job is erroring and has not completed a run recently.
+  if (health.consecutiveFailures > 0 && (!hasSucceeded || successIsStale)) {
+    return SYNC_REASONS.STALLED;
+  }
+  // Ran successfully at some point, but not within the expected window.
+  if (successIsStale) return SYNC_REASONS.STALLED;
+  if (!lastSyncedBlock) return SYNC_REASONS.NEVER_SYNCED;
+  if (Number.isFinite(syncLagBlocks) && syncLagBlocks > lagThreshold) return SYNC_REASONS.LAGGING;
+  return SYNC_REASONS.OK;
+};
+
 const stopListeningToBlockchainEvents = () => {
   if (!eventListenerContract) return;
 
@@ -494,6 +575,7 @@ const syncBlockchainTrades = async () => {
         indexed: 0,
         lastSyncedBlock: syncState.lastSyncedBlock,
       });
+      recordSyncSuccess();
       return result;
     }
 
@@ -558,6 +640,7 @@ const syncBlockchainTrades = async () => {
       indexed,
       lastSyncedBlock: toBlock,
     });
+    recordSyncSuccess();
     await invalidateActiveListingsCache().catch((err) => {
       logBackgroundError('blockchainSync.invalidateListingCache', err);
     });
@@ -579,9 +662,19 @@ const syncBlockchainTrades = async () => {
     }
     return result;
   } catch (error) {
-    console.error('[Sync] Blockchain trade sync failed:', error.message);
+    recordSyncFailure(error);
+    // Escalated from console.error: this path is the reason a permanently
+    // degraded sync could stay quiet — the error was swallowed here and the
+    // caller only received `{ skipped: true }`.
+    logger.error('blockchain trade sync failed', {
+      err: error,
+      indexed,
+      consecutiveFailures: getSyncHealth().consecutiveFailures,
+      component: 'blockchain-sync',
+    });
     const result = {
       skipped: true,
+      failed: true,
       message: error.message,
       indexed,
       activeListings: 0,
@@ -626,6 +719,19 @@ const getSyncLagThreshold = () => {
 };
 
 const getChainStatus = async () => {
+  if (!process.env.ENERGY_TRADING_ADDRESS) {
+    return {
+      connected: false,
+      chainName: null,
+      syncLagBlocks: null,
+      isSyncHealthy: false,
+      syncReason: SYNC_REASONS.NOT_CONFIGURED,
+      error: 'ENERGY_TRADING_ADDRESS not configured',
+      lastSync: lastSyncDebug,
+      syncHealth: getSyncHealth(),
+    };
+  }
+
   try {
     const contract = BlockchainService.getEnergyTradingContractReadOnly();
     const provider = contract.runner.provider;
@@ -640,6 +746,7 @@ const getChainStatus = async () => {
     const lastSyncedBlock = syncState?.lastSyncedBlock ?? 0;
     const syncLagBlocks = Math.max(0, blockNumber - lastSyncedBlock);
     const lagThreshold = getSyncLagThreshold();
+    const syncReason = deriveSyncReason({ lastSyncedBlock, syncLagBlocks, lagThreshold });
 
     return {
       connected: true,
@@ -649,7 +756,11 @@ const getChainStatus = async () => {
       nextListingId: Number(nextListingId),
       lastSyncedBlock,
       syncLagBlocks,
-      isSyncHealthy: syncLagBlocks <= lagThreshold,
+      // Unchanged semantics for the healthy case, but now derived from a single
+      // reason code so the *cause* is reportable instead of being guessed at.
+      isSyncHealthy: syncReason === SYNC_REASONS.OK,
+      syncReason,
+      syncHealth: getSyncHealth(),
       tradeCount: await Trade.estimatedDocumentCount(),
       lastSync: lastSyncDebug,
     };
@@ -659,8 +770,10 @@ const getChainStatus = async () => {
       chainName: null,
       syncLagBlocks: null,
       isSyncHealthy: false,
+      syncReason: SYNC_REASONS.RPC_ERROR,
       error: error.message,
       lastSync: lastSyncDebug,
+      syncHealth: getSyncHealth(),
     };
   }
 };
@@ -1021,6 +1134,13 @@ module.exports = {
   syncBlockchainTrades,
   getChainStatus,
   getLastSyncDebug: () => lastSyncDebug,
+  // Background-sync health tracking (see startBackgroundSync in server.js).
+  setSyncIntervalMs,
+  recordSyncFailure,
+  recordSyncSuccess,
+  getSyncHealth,
+  deriveSyncReason,
+  SYNC_REASONS,
   listenToBlockchainEvents,
   stopListeningToBlockchainEvents,
   syncEscrowEvents,

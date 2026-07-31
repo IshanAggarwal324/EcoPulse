@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /register
+
+# Authenticated application surface — nothing here is crawlable and every route
+# redirects to /login, so keep crawlers out of it.
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /trading
+Disallow: /auto-trading
+Disallow: /transactions
+Disallow: /wallet
+Disallow: /forecasts
+Disallow: /credits
+Disallow: /settings
+Disallow: /verify-email
+
+Sitemap: https://eco-pulse-front.vercel.app/sitemap.xml

@@ -180,11 +180,24 @@ const projectSafeDetails = (id, details) => {
   const d = details || {};
   switch (id) {
     case 'ai_service':
-      return pickDefined({ model_loaded: boolOrNull(d.model_loaded) });
+      return pickDefined({
+        model_loaded: boolOrNull(d.model_loaded),
+        coldStart: boolOrNull(d.coldStart),
+      });
     case 'genai_service':
-      return pickDefined({ available: boolOrNull(d.available) });
+      return pickDefined({
+        available: boolOrNull(d.available),
+        coldStart: boolOrNull(d.coldStart),
+      });
     case 'blockchain':
-      return pickDefined({ isSyncHealthy: boolOrNull(d.isSyncHealthy) });
+      // `syncReason` is a coarse enum (ok | lagging | stalled | rpc_error |
+      // never_synced | not_configured) with no hosts, keys or block numbers,
+      // so it is safe to publish and makes a degraded sync diagnosable
+      // without an admin session.
+      return pickDefined({
+        isSyncHealthy: boolOrNull(d.isSyncHealthy),
+        syncReason: typeof d.syncReason === 'string' ? d.syncReason : null,
+      });
     default:
       return {};
   }
@@ -219,42 +232,79 @@ const toPublicStatus = (health) => {
   };
 };
 
+// Cold-start budget. Free-tier hosts (Render, Fly, etc.) suspend idle
+// instances, so the FIRST request after an idle period can take far longer
+// than the steady-state probe timeout. Without this the health page reports a
+// perfectly healthy service as `down` purely because it was asleep.
+const getColdStartTimeoutMs = () => {
+  const parsed = parseInt(process.env.HEALTH_PROBE_COLD_START_TIMEOUT_MS || '20000', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 20000;
+  return Math.max(parsed, getProbeTimeoutMs());
+};
+
+const isColdStartRetryEnabled = () =>
+  String(process.env.HEALTH_PROBE_COLD_START_RETRY || 'true').toLowerCase() !== 'false';
+
 // Probe an HTTP service health route with timeout + latency capture.
 // Tries {path} (default "/health") and falls back to "/" on 404 so services
 // that only expose a root route still report correctly.
+//
+// On a first-attempt timeout the probe retries once on the (longer) cold-start
+// budget and reports `details.coldStart = true`, so a woken instance reads as
+// `degraded` (slow but alive) instead of `down`.
 const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
-  const timeout = getProbeTimeoutMs();
   const startedAt = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
 
-  const attempt = async (url) => {
-    // Module 7.4 — forward the active correlation id so health probes are
-    // traceable on the downstream Python service. Already-sanitized upstream.
-    const cid = getCorrelationId();
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        ...(cid ? { 'x-request-id': cid } : {}),
-      },
-    });
-    let body = null;
+  const fetchWithTimeout = async (url, timeoutMs) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      body = await res.json();
-    } catch {
-      body = null;
+      // Module 7.4 — forward the active correlation id so health probes are
+      // traceable on the downstream Python service. Already-sanitized upstream.
+      const cid = getCorrelationId();
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+          ...(cid ? { 'x-request-id': cid } : {}),
+        },
+      });
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      return { res, body };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const attempt = async (timeoutMs) => {
+    let { res, body } = await fetchWithTimeout(`${baseUrl}${path}`, timeoutMs);
+    if (res.status === 404 && path !== '/') {
+      ({ res, body } = await fetchWithTimeout(`${baseUrl}/`, timeoutMs));
     }
     return { res, body };
   };
 
-  try {
-    let { res, body } = await attempt(`${baseUrl}${path}`);
+  const isTimeout = (error) => error?.name === 'AbortError';
+  let coldStart = false;
 
-    if (res.status === 404 && path !== '/') {
-      ({ res, body } = await attempt(`${baseUrl}/`));
+  try {
+    let result;
+    try {
+      result = await attempt(getProbeTimeoutMs());
+    } catch (error) {
+      if (!isTimeout(error) || !isColdStartRetryEnabled()) throw error;
+      // Second chance on the cold-start budget: the instance was very likely
+      // suspended and is now spinning up.
+      coldStart = true;
+      result = await attempt(getColdStartTimeoutMs());
     }
 
+    const { res, body } = result;
     const latencyMs = Date.now() - startedAt;
 
     if (!res.ok) {
@@ -262,7 +312,7 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
         status: 'down',
         latencyMs,
         url: maskUrlHost(baseUrl),
-        details: body || { httpStatus: res.status },
+        details: { ...(body || { httpStatus: res.status }), coldStart },
         error: `HTTP ${res.status}`,
         checkedAt: nowIso(),
       };
@@ -279,7 +329,10 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
     const contractChecks = Array.isArray(body?.checks) ? body.checks : null;
 
     return {
-      status: isDegraded ? 'degraded' : 'up',
+      // A service that answered only after a cold start is alive, so it must
+      // not read as `down`; `degraded` keeps it visible without firing a false
+      // outage alert.
+      status: isDegraded || coldStart ? 'degraded' : 'up',
       latencyMs,
       url: maskUrlHost(baseUrl),
       details: {
@@ -289,27 +342,28 @@ const probeHttpService = async (baseUrl, { path = '/health', label } = {}) => {
         model_loaded: body?.model_loaded ?? null,
         // genai-service readiness (Gemini configured/enabled).
         available: body?.available ?? null,
+        // True when the first probe timed out and the retry succeeded, i.e. the
+        // instance was suspended rather than broken.
+        coldStart,
         // v1 contract checks[] when the downstream service returns them.
         ...(contractChecks ? { checks: contractChecks } : {}),
         version: body?.version ?? null,
       },
-      error: null,
+      error: coldStart ? 'Recovered after cold start' : null,
       checkedAt: nowIso(),
     };
   } catch (error) {
+    const budget = coldStart ? getColdStartTimeoutMs() : getProbeTimeoutMs();
     return {
       status: 'down',
       latencyMs: Date.now() - startedAt,
       url: maskUrlHost(baseUrl),
-      details: null,
-      error:
-        error.name === 'AbortError'
-          ? `Timed out after ${timeout}ms`
-          : scrubMessage(error.message) || `${label || 'Service'} unreachable`,
+      details: { coldStart },
+      error: isTimeout(error)
+        ? `Timed out after ${budget}ms${coldStart ? ' (including cold-start retry)' : ''}`
+        : scrubMessage(error.message) || `${label || 'Service'} unreachable`,
       checkedAt: nowIso(),
     };
-  } finally {
-    clearTimeout(timer);
   }
 };
 
@@ -380,6 +434,7 @@ const probeBlockchain = async () => {
         details: {
           rpcHost,
           syncLagThreshold: getSyncLagThreshold(),
+          syncReason: 'rpc_error',
         },
         error: result.error
           ? scrubMessage(result.error.message)
@@ -398,6 +453,7 @@ const probeBlockchain = async () => {
         details: {
           rpcHost,
           syncLagThreshold: getSyncLagThreshold(),
+          syncReason: chain.syncReason || 'rpc_error',
         },
         error: scrubMessage(chain.error) || 'Blockchain provider unreachable',
         checkedAt: nowIso(),
@@ -415,12 +471,19 @@ const probeBlockchain = async () => {
         syncLagBlocks: chain.syncLagBlocks,
         syncLagThreshold: getSyncLagThreshold(),
         isSyncHealthy: chain.isSyncHealthy,
+        // Coarse cause of an unhealthy sync (ok | lagging | stalled |
+        // never_synced | rpc_error | not_configured) — the field the audit
+        // flagged as missing, so a degraded sync no longer needs guesswork.
+        syncReason: chain.syncReason || null,
+        syncHealth: chain.syncHealth || null,
         tradeCount: chain.tradeCount,
         nextListingId: chain.nextListingId,
         rpcHost,
         lastSync: chain.lastSync || null,
       },
-      error: null,
+      error: chain.isSyncHealthy
+        ? null
+        : `Blockchain sync unhealthy (${chain.syncReason || 'unknown'})`,
       checkedAt: nowIso(),
     };
   } catch (error) {
@@ -430,6 +493,7 @@ const probeBlockchain = async () => {
       details: {
         rpcHost,
         syncLagThreshold: getSyncLagThreshold(),
+        syncReason: 'rpc_error',
       },
       error: scrubMessage(error.message) || 'Blockchain probe failed',
       checkedAt: nowIso(),

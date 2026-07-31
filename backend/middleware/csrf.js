@@ -22,6 +22,10 @@ const usesCookieAuth = (req) => {
   return Boolean(getCookieValue(req.headers.cookie, 'accessToken'));
 };
 
+// Exempt routes are matched as ANCHORED path suffixes, never as substrings.
+// `path.includes(prefix)` previously let any future route containing one of
+// these strings (e.g. `/admin/telemetry-settings`) silently inherit a CSRF
+// exemption.
 const CSRF_EXEMPT_PREFIXES = [
   '/auth/login',
   '/auth/register',
@@ -30,9 +34,21 @@ const CSRF_EXEMPT_PREFIXES = [
   '/telemetry',
 ];
 
+const normalizePath = (value) => {
+  const path = String(value || '/');
+  // Strip a single trailing slash so `/telemetry/` matches `/telemetry`.
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+};
+
 const isCsrfExempt = (req) => {
-  const path = req.baseUrl ? `${req.baseUrl}${req.path}` : req.path;
-  return CSRF_EXEMPT_PREFIXES.some((prefix) => path.endsWith(prefix) || path.includes(prefix));
+  const path = normalizePath(req.baseUrl ? `${req.baseUrl}${req.path}` : req.path);
+  return CSRF_EXEMPT_PREFIXES.some(
+    // Each entry starts with '/', which anchors the LEFT boundary to a path
+    // segment ('/device-telemetry' can never match '/telemetry'). The RIGHT
+    // boundary is either end-of-path or a '/', which anchors the other side
+    // ('/telemetry-settings' can never match either).
+    (prefix) => path.endsWith(prefix) || path.includes(`${prefix}/`)
+  );
 };
 
 const issueCsrfToken = (req, res, next) => {
@@ -74,4 +90,7 @@ module.exports = {
   CSRF_HEADER,
   issueCsrfToken,
   csrfProtection,
+  // exported for testing
+  isCsrfExempt,
+  CSRF_EXEMPT_PREFIXES,
 };

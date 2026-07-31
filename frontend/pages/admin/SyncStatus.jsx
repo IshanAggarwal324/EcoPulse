@@ -81,6 +81,22 @@ const SyncStatus = () => {
   const connected = status?.connected;
   const healthy = status?.isSyncHealthy;
   const lag = status?.syncLagBlocks;
+  const syncHealth = status?.syncHealth;
+
+  // Human-readable cause of a degraded sync. `syncReason` is produced by
+  // blockchainSyncService.getChainStatus() so the UI no longer has to guess
+  // between "RPC unreachable" and "indexer not keeping up".
+  const SYNC_REASON_LABELS = {
+    ok: 'Indexer is keeping up with the chain head.',
+    lagging: 'Indexer is running but falling behind the chain head.',
+    stalled: 'Background sync job is failing or has not completed recently.',
+    never_synced: 'No blocks have been indexed yet (first run or reset cursor).',
+    rpc_error: 'RPC provider is unreachable or erroring.',
+    not_configured: 'ENERGY_TRADING_ADDRESS is not configured on the backend.',
+  };
+  const reasonLabel = status?.syncReason
+    ? SYNC_REASON_LABELS[status.syncReason] || status.syncReason
+    : null;
 
   const overallTone = !connected
     ? { label: 'Disconnected', cls: 'text-rose-400 bg-rose-500/10 border-rose-500/30' }
@@ -139,6 +155,11 @@ const SyncStatus = () => {
                 ? `${status.chainName || 'Blockchain'} · chainId ${status.chainId ?? '—'}`
                 : status?.error || 'Unable to reach the blockchain provider.'}
             </p>
+            {!healthy && reasonLabel && (
+              <p className="text-xs opacity-90 mt-1">
+                Reason: <span className="font-semibold">{status.syncReason}</span> — {reasonLabel}
+              </p>
+            )}
           </div>
         </div>
         {mutate && (
@@ -197,6 +218,23 @@ const SyncStatus = () => {
             <DetailRow label="Events indexed" value={String(status.lastSync.indexed ?? 0)} />
             <DetailRow label="Synced to block" value={String(status.lastSync.lastSyncedBlock ?? 0)} />
             <DetailRow label="Completed at" value={status.lastSync.at ? formatDateTime(status.lastSync.at) : '—'} />
+            {syncHealth && (
+              <>
+                <DetailRow
+                  label="Consecutive failures"
+                  value={String(syncHealth.consecutiveFailures ?? 0)}
+                />
+                <DetailRow
+                  label="Last successful run"
+                  value={syncHealth.lastSuccessAt ? formatDateTime(syncHealth.lastSuccessAt) : 'Never'}
+                />
+                <DetailRow
+                  label="Last failure"
+                  value={syncHealth.lastFailureAt ? formatDateTime(syncHealth.lastFailureAt) : '—'}
+                />
+                <DetailRow label="Last failure message" value={syncHealth.lastFailureMessage || '—'} />
+              </>
+            )}
           </dl>
         </div>
       )}

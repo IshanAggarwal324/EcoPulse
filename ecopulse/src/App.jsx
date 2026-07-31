@@ -13,6 +13,7 @@ import GuestRoute from '../../frontend/components/GuestRoute';
 import Login from '../../frontend/pages/Login';
 import Register from '../../frontend/pages/Register';
 import VerifyEmail from '../../frontend/pages/VerifyEmail';
+import NotFound from '../../frontend/pages/NotFound';
 
 const AssistantChat = lazy(() => import('../../frontend/components/assistant/AssistantChat'));
 
@@ -62,6 +63,12 @@ function AuthenticatedApp() {
             <Route path="/admin/health" element={<AdminHealth />} />
             <Route path="/admin/simulator" element={<AdminSimulator />} />
             <Route path="/admin/ingestion" element={<AdminIngestion />} />
+            {/* Unknown /admin/* URL — render 404 inside the admin chrome
+                instead of falling through to a blank user page. */}
+            <Route
+              path="/admin/*"
+              element={<NotFound homeTo="/admin" homeLabel="Back to admin home" />}
+            />
           </Route>
 
           {/* User section */}
@@ -80,6 +87,9 @@ function AuthenticatedApp() {
                       <Route path="/forecasts" element={<Forecasts />} />
                       <Route path="/credits" element={<Credits />} />
                       <Route path="/settings" element={<Settings />} />
+                      {/* Catch-all: an unmatched URL previously rendered the
+                          nav + chrome with an empty content area. */}
+                      <Route path="*" element={<NotFound />} />
                     </Routes>
                   </Suspense>
                 </AppLayout>
