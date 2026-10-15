@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.0",
+    "@tailwindcss/vite": "^4.3.1",
     "ethers": "^6.16.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.16.0",
