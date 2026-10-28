@@ -48,7 +48,8 @@ const getChallenge = asyncHandler(async (req, res) => {
  */
 const linkWallet = asyncHandler(async (req, res) => {
   const { wallet, signature } = req.body || {};
-  const updated = await walletLink.linkWallet(req.user, { wallet, signature });
+  // walletLink.linkWallet resolves to { user, signer }, not the user document.
+  const { user: updated } = await walletLink.linkWallet(req.user, { wallet, signature });
 
   await auditService.log({
     actor: updated,

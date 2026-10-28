@@ -135,10 +135,14 @@ const userSchema = new mongoose.Schema(
       default: 0,
       select: false,
     },
+    // Not select:false — these are non-sensitive flags that every user payload
+    // (login, refresh, profile update, wallet link) reports to the client. With
+    // select:false, any query that forgot to add `+isEmailVerified` serialized
+    // `isEmailVerified: undefined ?? false`, so verified users saw the
+    // "Verify your email" banner again after login/refresh/profile saves.
     isEmailVerified: {
       type: Boolean,
       default: false,
-      select: false,
     },
     emailVerificationToken: {
       type: String,
@@ -155,10 +159,11 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    // Same reasoning as isEmailVerified: it is echoed in every user payload, and
+    // refresh/profile/wallet responses were reporting `false` for flagged users.
     mustChangePassword: {
       type: Boolean,
       default: false,
-      select: false,
     },
   },
   {
