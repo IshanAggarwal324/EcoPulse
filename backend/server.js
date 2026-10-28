@@ -13,6 +13,7 @@ const metricsMiddleware = require('./middleware/metricsMiddleware');
 const { metricsHandler } = require('./routes/metrics');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
+const notFound = require('./middleware/notFound');
 const { buildCorsOptions } = require('./config/cors');
 const { issueCsrfToken, csrfProtection } = require('./middleware/csrf');
 const { getHealth, toPublicStatus, isReadyForTraffic } = require('./services/healthService');
@@ -125,11 +126,7 @@ const startServer = async () => {
     res.send('EcoPulse Backend API');
   });
 
-  app.use((req, res, next) => {
-    const error = new Error(`Not Found - ${req.originalUrl}`);
-    res.status(404);
-    next(error);
-  });
+  app.use(notFound);
 
   app.use(errorHandler);
 
