@@ -31,9 +31,14 @@ const protect = async (req, res, next) => {
         });
       }
 
-      req.user = await User.findById(decoded.id).select(
-        '-password +isEmailVerified +mustChangePassword +accessTokenVersion',
-      );
+      // isEmailVerified / mustChangePassword are selected by default (see the
+      // User model). Do NOT write `+isEmailVerified` here: in an exclusion
+      // projection like `-password`, Mongoose only strips the `+` for paths
+      // that are schema-level select:false, so a `+` on a default-selected path
+      // is sent to MongoDB as a literal "+isEmailVerified" key. MongoDB rejects
+      // that mixed projection and every authenticated request fell into the
+      // catch below as "Not authorized, token invalid".
+      req.user = await User.findById(decoded.id).select('-password +accessTokenVersion');
 
       if (!req.user) {
         return res.status(401).json({
