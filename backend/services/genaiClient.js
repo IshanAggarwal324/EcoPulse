@@ -14,6 +14,20 @@ const CHAT_UPSTREAM_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 12000;
 })();
 
+// Doc-chunk RAG retrieval is OPTIONAL prompt enrichment: fetchDocChunks()
+// swallows every failure and returns [], so a slow/asleep genai-service must
+// never be allowed to spend the caller's whole budget here. It previously took
+// no timeout argument, silently inheriting the shared 20000ms
+// UPSTREAM_FETCH_TIMEOUT_MS default. Because the chat handler awaits doc-chunks
+// and THEN awaits postChat (12000ms), the worst case was 20000+12000=32000ms —
+// past the frontend's 20000ms abort, so a cold genai-service surfaced as a raw
+// "Request timed out after 20000ms" instead of the intended graceful 503.
+// A short budget keeps 3000+12000=15000ms comfortably inside that 20000ms.
+const DOC_CHUNKS_UPSTREAM_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.GENAI_DOC_CHUNKS_TIMEOUT_MS ?? '3000', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;
+})();
+
 const GENAI_SERVICE_URL = getGenaiServiceUrl();
 const INTERNAL_SERVICE_API_KEY = process.env.INTERNAL_SERVICE_API_KEY || '';
 const isProduction = process.env.NODE_ENV === 'production';
@@ -114,7 +128,11 @@ async function postChat(payload) {
 
 async function fetchDocChunks(query, topK = 3) {
   try {
-    const response = await postToGenaiService('/assistant/doc-chunks', { query, top_k: topK });
+    const response = await postToGenaiService(
+      '/assistant/doc-chunks',
+      { query, top_k: topK },
+      DOC_CHUNKS_UPSTREAM_TIMEOUT_MS,
+    );
     if (!response.ok) return [];
     const data = await response.json();
     return data.chunks || [];

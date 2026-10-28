@@ -269,52 +269,108 @@ def _save_cache_to_disk(cache: EmbeddingCache, cache_path: str) -> None:
         logger.exception("Failed to save embedding cache to %s", cache_path)
 
 
-def _embed_texts(texts: list[str], model: str) -> list[list[float]]:
-    import google.generativeai as genai
+_clients: dict[str, object] = {}
 
-    task_type = "retrieval_document"
-    result = genai.embed_content(
-        model=f"models/{model}",
-        content=texts,
-        task_type=task_type,
+
+def _get_client(api_key: str):
+    """Return a cached google-genai client for ``api_key``."""
+    client = _clients.get(api_key)
+    if client is None:
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+        _clients[api_key] = client
+    return client
+
+
+def _embed_texts(
+    texts: list[str],
+    model: str,
+    api_key: str,
+    *,
+    task_type: str = "RETRIEVAL_DOCUMENT",
+    dimensions: int = 768,
+    timeout_ms: int | None = None,
+) -> list[list[float]]:
+    from google.genai import types
+
+    config_kwargs: dict = {
+        "task_type": task_type,
+        "output_dimensionality": dimensions,
+    }
+    if timeout_ms:
+        config_kwargs["http_options"] = types.HttpOptions(timeout=timeout_ms)
+
+    result = _get_client(api_key).models.embed_content(
+        model=model,
+        contents=texts,
+        config=types.EmbedContentConfig(**config_kwargs),
     )
-    return result["embedding"]
+    embeddings = [list(e.values) for e in (result.embeddings or [])]
+    if len(embeddings) != len(texts):
+        raise RuntimeError(
+            f"Gemini embedding count mismatch: expected {len(texts)}, got {len(embeddings)}"
+        )
+    return embeddings
+
+
+def _cache_is_reusable(
+    disk_cache: EmbeddingCache,
+    chunks: list[DocChunk],
+    model: str,
+    dimensions: int,
+) -> bool:
+    """A cached embedding set is valid only for the model/size that built it.
+
+    Vectors from different embedding models (or dimensions) live in unrelated
+    spaces, so reusing a cache built with a retired model would make every
+    query score against garbage - or fail outright when querying.
+    """
+    if disk_cache.model != model:
+        logger.info(
+            "Embedding cache built with model %r, need %r - rebuilding",
+            disk_cache.model,
+            model,
+        )
+        return False
+    if disk_cache.chunks and len(disk_cache.chunks[0].embedding) != dimensions:
+        logger.info("Embedding cache dimension mismatch - rebuilding")
+        return False
+    if len(disk_cache.chunks) != len(chunks):
+        logger.info(
+            "Embedding cache stale (%d cached vs %d current), rebuilding",
+            len(disk_cache.chunks),
+            len(chunks),
+        )
+        return False
+    if not all(dc.content == c.content for dc, c in zip(disk_cache.chunks, chunks)):
+        logger.info("Embedding cache stale (content changed), rebuilding")
+        return False
+    return True
 
 
 def buildEmbeddingCache(
     chunks: list[DocChunk],
     gemini_api_key: str,
-    model: str = "text-embedding-004",
+    model: str = "gemini-embedding-001",
     cache_path: str = "",
+    dimensions: int = 768,
 ) -> EmbeddingCache:
     if cache_path:
         disk_cache = _load_cache_from_disk(cache_path)
-        if disk_cache is not None and len(disk_cache.chunks) == len(chunks):
-            content_match = all(
-                dc.content == c.content
-                for dc, c in zip(disk_cache.chunks, chunks)
-            )
-            if content_match:
-                logger.info(
-                    "Embedding cache hit: %d chunks from %s", len(chunks), cache_path
-                )
-                return disk_cache
-            logger.info("Embedding cache stale (content changed), rebuilding")
-        elif disk_cache is not None:
+        if disk_cache is not None and _cache_is_reusable(
+            disk_cache, chunks, model, dimensions
+        ):
             logger.info(
-                "Embedding cache stale (%d cached vs %d current), rebuilding",
-                len(disk_cache.chunks),
-                len(chunks),
+                "Embedding cache hit: %d chunks from %s", len(chunks), cache_path
             )
+            return disk_cache
 
     if not gemini_api_key:
         logger.warning("GEMINI_API_KEY not set — embedding cache will be empty")
         return EmbeddingCache(model=model)
 
-    import google.generativeai as genai
     from datetime import datetime, timezone
-
-    genai.configure(api_key=gemini_api_key)
 
     batch_size = 100
     all_embeddings: list[list[float]] = []
@@ -328,7 +384,14 @@ def buildEmbeddingCache(
             -(-len(chunks) // batch_size),
             len(batch),
         )
-        batch_embeddings = _embed_texts(texts, model)
+        batch_embeddings = _embed_texts(
+            texts,
+            model,
+            gemini_api_key,
+            task_type="RETRIEVAL_DOCUMENT",
+            dimensions=dimensions,
+            timeout_ms=60000,
+        )
         all_embeddings.extend(batch_embeddings)
 
     cached_chunks = [
@@ -437,6 +500,7 @@ class DocRagService:
             gemini_api_key=self._settings.gemini_api_key,
             model=self._settings.embedding_model,
             cache_path=self._settings.embedding_cache_path,
+            dimensions=self._settings.embedding_dimensions,
         )
         self._initialized = True
 
@@ -458,6 +522,7 @@ class DocRagService:
             gemini_api_key=self._settings.gemini_api_key,
             model=self._settings.embedding_model,
             cache_path=self._settings.embedding_cache_path,
+            dimensions=self._settings.embedding_dimensions,
         )
         self._initialized = True
         logger.info("Reindex complete: %d chunks", len(self._cache.chunks))
@@ -502,7 +567,14 @@ class DocRagService:
         if not self._settings.gemini_api_key:
             return []
         try:
-            embeddings = _embed_texts([text], self._cache.model)
+            embeddings = _embed_texts(
+                [text],
+                self._cache.model,
+                self._settings.gemini_api_key,
+                task_type="RETRIEVAL_QUERY",
+                dimensions=self._settings.embedding_dimensions,
+                timeout_ms=2500,
+            )
             return embeddings[0]
         except Exception:
             logger.exception("Failed to embed query: %s", text[:80])

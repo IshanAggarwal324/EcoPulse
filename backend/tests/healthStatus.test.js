@@ -310,3 +310,30 @@ test('toPublicStatus includes all tiers in services (incl. frontend + simulator)
     assert.ok(VALID_STATUSES.includes(pub.services[id].status));
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* genai_service: coarse Gemini probe reason on the public route       */
+/* ------------------------------------------------------------------ */
+
+test('projectSafeService exposes only the enumerated Gemini probe reason', () => {
+  const withReason = (reason) =>
+    projectSafeService({
+      id: 'genai_service',
+      status: 'degraded',
+      latencyMs: 9,
+      details: {
+        available: false,
+        checks: [{ id: 'gemini', status: 'degraded', details: { reason, model: 'gemini-3.6-flash' } }],
+      },
+    });
+
+  assert.deepEqual(withReason('model_not_found').details, {
+    available: false,
+    geminiReason: 'model_not_found',
+  });
+
+  // A free-form string (e.g. a leaked upstream message) must be dropped.
+  const leaked = withReason('API key AIzaSy-FAKE rejected by 10.0.0.5');
+  assert.deepEqual(leaked.details, { available: false });
+  assert.equal(JSON.stringify(leaked).includes('AIzaSy'), false);
+});

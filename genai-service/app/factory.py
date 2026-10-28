@@ -12,6 +12,7 @@ from app.logging_config import setup_logging
 from app.middleware import request_logging_middleware
 from app.routers import assistant, health, metrics, reports
 from app.services.doc_rag_service import DocRagService
+from app.services.gemini_health import GeminiHealthProbe
 from app.services.llm_service import LlmService
 
 logger = logging.getLogger(__name__)
@@ -84,9 +85,24 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _init_services():
         app.state.llm_service = LlmService(settings)
+        app.state.gemini_probe = (
+            GeminiHealthProbe(
+                app.state.llm_service,
+                ttl_seconds=settings.genai_health_probe_ttl_seconds,
+                timeout_seconds=settings.genai_health_probe_timeout_seconds,
+            )
+            if settings.genai_health_probe_enabled
+            else None
+        )
 
         rag = DocRagService(settings)
-        rag.initialize()
+        try:
+            rag.initialize()
+        except Exception:
+            # An embedding failure (retired model, bad key, network) must not
+            # stop the whole service from booting: chat still works without
+            # doc retrieval, and /assistant/reindex can retry later.
+            logger.exception("Doc RAG initialization failed - continuing without doc retrieval")
         app.state.doc_rag_service = rag
 
     app.include_router(health.router)

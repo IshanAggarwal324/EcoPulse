@@ -278,7 +278,7 @@ const Ingestion = () => {
         >
           {!publicApi?.available ? (
             <p className="text-xs text-slate-500">
-              The public-grid ingestion subsystem (Sub-module 1.5) is not deployed in this environment.
+              The public-grid ingestion subsystem is not deployed in this environment.
             </p>
           ) : (
             <>

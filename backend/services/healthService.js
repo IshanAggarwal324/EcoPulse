@@ -173,6 +173,23 @@ const pickDefined = (obj) => {
   return out;
 };
 
+const GEMINI_REASONS = new Set([
+  'ok',
+  'not_configured',
+  'model_not_found',
+  'auth_failed',
+  'rate_limited',
+  'timeout',
+  'upstream_unavailable',
+  'error',
+]);
+
+const geminiReasonFromChecks = (checks) => {
+  const gemini = Array.isArray(checks) ? checks.find((c) => c?.id === 'gemini') : null;
+  const reason = gemini?.details?.reason;
+  return typeof reason === 'string' && GEMINI_REASONS.has(reason) ? reason : null;
+};
+
 // Whitelist of NON-SENSITIVE detail fields exposed per service on the PUBLIC
 // /api/health/status endpoint. Everything else (hosts, ports, db names, RPC
 // hosts, block numbers, PIDs, versions, error messages) is stripped.
@@ -185,9 +202,14 @@ const projectSafeDetails = (id, details) => {
         coldStart: boolOrNull(d.coldStart),
       });
     case 'genai_service':
+      // `geminiReason` is a coarse enum reported by the GenAI service's live
+      // Gemini probe (ok | not_configured | model_not_found | auth_failed |
+      // rate_limited | timeout | upstream_unavailable | error). Anything else is
+      // dropped, so no raw upstream message can leak through this public route.
       return pickDefined({
         available: boolOrNull(d.available),
         coldStart: boolOrNull(d.coldStart),
+        geminiReason: geminiReasonFromChecks(d.checks),
       });
     case 'blockchain':
       // `syncReason` is a coarse enum (ok | lagging | stalled | rpc_error |

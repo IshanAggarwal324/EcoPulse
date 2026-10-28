@@ -28,63 +28,54 @@ const MODULE_CARDS = [
     label: 'Users',
     description: 'Roles, bans, and account management',
     icon: UsersIcon,
-    phase: 'Phase 4',
   },
   {
     to: '/admin/nodes',
     label: 'Nodes',
     description: 'Energy node inventory and status',
     icon: Server,
-    phase: 'Phase 4',
   },
   {
     to: '/admin/trades',
     label: 'Trades',
     description: 'On-chain trade history and explorer links',
     icon: ArrowRightLeft,
-    phase: 'Phase 4',
   },
   {
     to: '/admin/report-jobs',
     label: 'Report Jobs',
     description: 'Report generation queue and retries',
     icon: FileText,
-    phase: 'Phase 4',
   },
   {
     to: '/admin/sync',
     label: 'Sync Status',
     description: 'Blockchain indexer health and force sync',
     icon: RefreshCw,
-    phase: 'Phase 4',
   },
   {
     to: '/admin/simulator',
     label: 'Simulator',
     description: 'Grid profiles, schedules, and failure modes',
     icon: Gauge,
-    phase: 'Phase 6',
   },
   {
     to: '/admin/ingestion',
     label: 'Ingestion',
     description: 'Mode, telemetry sources, and backfill',
     icon: Database,
-    phase: 'Module 1.4',
   },
   {
     to: '/admin/audit-logs',
     label: 'Audit Logs',
     description: 'Immutable operational trail',
     icon: ScrollText,
-    phase: 'Phase 2',
   },
   {
     to: '/admin/health',
     label: 'System Health',
     description: 'AI, GenAI, MongoDB & Sepolia probes',
     icon: Activity,
-    phase: 'Phase 5',
   },
 ];
 
@@ -210,7 +201,7 @@ const AdminHome = () => {
       </section>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {MODULE_CARDS.map(({ to, label, description, icon: Icon, phase }) => (
+        {MODULE_CARDS.map(({ to, label, description, icon: Icon }) => (
           <Link
             key={to}
             to={to}
@@ -225,12 +216,7 @@ const AdminHome = () => {
                 className="text-slate-600 group-hover:text-emerald-400 transition-colors"
               />
             </div>
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="text-base font-semibold text-white">{label}</h4>
-              <span className="px-1.5 py-0.5 rounded-full bg-slate-800 border border-slate-700/50 text-slate-500 text-[10px] font-medium">
-                {phase}
-              </span>
-            </div>
+            <h4 className="text-base font-semibold text-white mb-1">{label}</h4>
             <p className="text-sm text-slate-400 leading-relaxed">{description}</p>
           </Link>
         ))}

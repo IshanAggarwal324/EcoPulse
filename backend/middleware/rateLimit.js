@@ -1,7 +1,35 @@
+const crypto = require('crypto');
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
 const { createMemoryStore } = require('./rateLimitMemory');
 
 const RATE_LIMIT_PREFIX = 'rl';
+
+/**
+ * Every limiter needs its OWN counter bucket.
+ *
+ * The Redis key used to be `rl:<userId>:<windowMs>`, which omitted the limiter's
+ * identity — so every limiter sharing a window silently shared one counter. With
+ * four limiters on a 60s window (api 120/min, chat 20/min, admin 200/min,
+ * health-status 30/min) the effective limit for all of them collapsed to the
+ * strictest max, consumed by traffic to any of them. Observed live: 25 ordinary
+ * GET /nodes calls made the next chat message return
+ * "Chat rate limit exceeded. Maximum 20 messages per minute."
+ * (The in-memory fallback store was never affected — createMemoryStore() is
+ * instantiated per limiter, so it was already isolated. Only Redis collided.)
+ *
+ * `name` is therefore part of the key. When a caller forgets it we derive a
+ * stable digest from the limiter's own config rather than falling back to a
+ * shared constant, so distinct limiters can never collide by omission.
+ */
+const deriveLimiterName = ({ name, message, maxRequests, windowMs }) => {
+  if (name) return String(name);
+  const digest = crypto
+    .createHash('sha1')
+    .update(`${message || ''}|${maxRequests}|${windowMs}`)
+    .digest('hex')
+    .slice(0, 10);
+  return `anon-${digest}`;
+};
 
 const INCREMENT_SCRIPT = `
 local current = redis.call('INCR', KEYS[1])
@@ -11,8 +39,9 @@ end
 return current
 `;
 
-function createRateLimiter({ windowMs, maxRequests, message }) {
+function createRateLimiter({ windowMs, maxRequests, message, name }) {
   const memoryStore = createMemoryStore(windowMs);
+  const limiterName = deriveLimiterName({ name, message, maxRequests, windowMs });
   let scriptSha = null;
   const redisClient = getRedisClient();
 
@@ -24,7 +53,7 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
   }
 
   async function redisIncrement(key) {
-    const redisKey = `${RATE_LIMIT_PREFIX}:${key}:${windowMs}`;
+    const redisKey = `${RATE_LIMIT_PREFIX}:${limiterName}:${key}:${windowMs}`;
     try {
       const count = await redisClient.rlIncrement(redisKey, windowMs);
       return count;

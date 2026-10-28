@@ -37,12 +37,19 @@ export function configureApiAuth(handlers) {
 }
 
 // Coordinated chat timeout budget chain (each inner hop leaves the outer one
-// margin to receive/surface a fallback reply instead of a bare timeout):
-// frontend DEFAULT_TIMEOUT_MS 20000ms > backend-to-genai chat hop
-// CHAT_UPSTREAM_TIMEOUT_MS 12000ms (backend/services/genaiClient.js) >
-// Gemini SDK per-call genai_call_timeout_seconds 8000ms
-// (genai-service/app/services/llm_service.py). Non-chat requests are
-// unaffected and keep using this same default.
+// margin to receive/surface a fallback reply instead of a bare timeout).
+// IMPORTANT: the chat handler makes TWO sequential genai hops, so the budget is
+// the SUM of both, not just the chat hop:
+//   frontend DEFAULT_TIMEOUT_MS                    20000ms
+//     > doc-chunks hop  GENAI_DOC_CHUNKS_TIMEOUT_MS  3000ms  (optional RAG)
+//     + chat hop        CHAT_UPSTREAM_TIMEOUT_MS    12000ms
+//     = 15000ms worst case, leaving 5000ms of headroom
+//       > Gemini SDK per-call genai_call_timeout_seconds 8000ms
+//         (genai-service/app/services/llm_service.py)
+// Both backend constants live in backend/services/genaiClient.js. Raising either
+// one past 20000ms combined re-breaks the chain: the browser aborts first and
+// the user sees "Request timed out" instead of the graceful 503 the backend
+// sends. Non-chat requests are unaffected and keep using this same default.
 const DEFAULT_TIMEOUT_MS = 20000;
 const COLD_START_RETRY_DELAY_MS = 2000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -461,6 +468,11 @@ export const assistantApi = {
         ...(context.nodeId ? { nodeId: context.nodeId } : {}),
         ...(context.pageContext ? { pageContext: context.pageContext } : {}),
       }),
+      // Chat is the single most cold-start-prone call in the app: genai-service
+      // sleeps on idle and takes ~40s to wake, which no timeout in the chain can
+      // absorb. Mutating calls do not auto-retry, so opt in explicitly — the
+      // first attempt warms the instance and the retry gets a real answer.
+      retryOnColdStart: true,
     }),
 
   generateReport: ({ period, scope, delivery }) =>

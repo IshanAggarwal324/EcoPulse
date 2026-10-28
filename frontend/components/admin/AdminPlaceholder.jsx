@@ -2,17 +2,10 @@ import React, { memo } from 'react';
 import { Wrench, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const PHASE_LABELS = {
-  'phase-4': 'Phase 4',
-  'phase-5': 'Phase 5',
-  'phase-6': 'Phase 6',
-};
-
 const AdminPlaceholder = memo(function AdminPlaceholder({
   title,
   description,
   features = [],
-  phase = 'phase-4',
   backTo = '/admin',
   backLabel = 'Back to overview',
 }) {
@@ -23,12 +16,7 @@ const AdminPlaceholder = memo(function AdminPlaceholder({
           <div className="p-2.5 bg-emerald-500/10 rounded-xl">
             <Wrench className="text-emerald-400" size={22} />
           </div>
-          <div>
-            <h3 className="text-xl font-bold text-white">{title}</h3>
-            <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[11px] font-semibold tracking-wide">
-              {PHASE_LABELS[phase] || 'Upcoming'} module
-            </span>
-          </div>
+          <h3 className="text-xl font-bold text-white">{title}</h3>
         </div>
 
         <p className="text-slate-400 text-sm leading-relaxed mb-6">{description}</p>

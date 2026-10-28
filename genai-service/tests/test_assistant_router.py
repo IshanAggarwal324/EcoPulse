@@ -152,15 +152,17 @@ class EndToEndFollowUpTests(unittest.TestCase):
         """
         settings = Settings(gemini_api_key="")
         service = LlmService(settings)
-        fake_model = types.SimpleNamespace(
+        fake_client = types.SimpleNamespace(
             calls=[],
-            generate_content=lambda *a, **kw: _record_and_respond(fake_model, a, kw),
+            models=types.SimpleNamespace(
+                generate_content=lambda *a, **kw: _record_and_respond(fake_client, a, kw)
+            ),
         )
-        service._model = fake_model
+        service._client = fake_client
 
         service.complete("system prompt", "user prompt")
 
-        self.assertEqual(len(fake_model.calls), 1)
+        self.assertEqual(len(fake_client.calls), 1)
 
 
 def _record_and_respond(fake_model, args, kwargs):
