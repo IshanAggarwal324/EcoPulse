@@ -213,15 +213,50 @@ const setLastSyncDebug = (payload) => {
   };
 };
 
-// Some providers state their limit in the error text, e.g. Alchemy's free tier:
-// "...eth_getLogs requests with up to a 10 block range...". Using it avoids
-// probing downwards by halving (which overshoots to ~half the real limit).
+// Some providers state their limit in the error text. Using it avoids probing
+// downwards by halving (which overshoots to ~half the real limit). Known forms:
+//   Alchemy free tier : "...eth_getLogs requests with up to a 10 block range..."
+//   PublicNode        : "exceed maximum block range: 50000"
+//   1RPC              : "eth_getLogs is limited to 0 - 50 blocks range"
+const RANGE_LIMIT_PATTERNS = [
+  /up to an?\s+([\d,]+)[\s-]*block/i,
+  /maximum block range:?\s*([\d,]+)/i,
+  /limited to\s+\d+\s*-\s*([\d,]+)\s*blocks?/i,
+];
+
 const extractRangeLimit = (error) => {
   const msg = String(error?.message || error);
-  const match = msg.match(/up to an?\s+([\d,]+)[\s-]*block/i);
-  if (!match) return null;
-  const parsed = parseInt(match[1].replace(/,/g, ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  for (const pattern of RANGE_LIMIT_PATTERNS) {
+    const match = msg.match(pattern);
+    if (!match) continue;
+    const parsed = parseInt(match[1].replace(/,/g, ''), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+};
+
+// Optional dedicated RPC for the indexers' eth_getLogs scans (SYNC_RPC_URL).
+// Free Alchemy plans cap eth_getLogs at 10 blocks per request, so catching up a
+// multi-day gap needs thousands of requests. Reading history from a provider
+// with a larger range limit (e.g. PublicNode allows 50,000 blocks) makes that
+// take seconds. Only log reads use it: writes, health probes and the realtime
+// listeners keep using RPC_URL. Unset = unchanged behaviour.
+let syncProviderCache = { url: null, provider: null };
+const getSyncProvider = () => {
+  const url = String(process.env.SYNC_RPC_URL || '').trim();
+  if (!url) return null;
+  if (!/^https?:\/\//i.test(url)) {
+    logger.warn('SYNC_RPC_URL ignored: must start with http(s)://', { component: 'blockchain-sync' });
+    return null;
+  }
+  if (syncProviderCache.url !== url) {
+    syncProviderCache = { url, provider: new ethers.JsonRpcProvider(url, undefined, { batchMaxCount: 1 }) };
+  }
+  return syncProviderCache.provider;
+};
+const forSyncReads = (contract) => {
+  const syncProvider = getSyncProvider();
+  return syncProvider ? contract.connect(syncProvider) : contract;
 };
 
 const fetchLogsForRange = async (contract, filter, start, end, rateLimitAttempt = 0) => {
@@ -579,7 +614,7 @@ const syncBlockchainTrades = async () => {
   let indexed = 0;
 
   try {
-    const contract = BlockchainService.getEnergyTradingContractReadOnly();
+    const contract = forSyncReads(BlockchainService.getEnergyTradingContractReadOnly());
     const provider = contract.runner.provider;
     const network = await provider.getNetwork();
     const chainId = Number(network.chainId);
@@ -1094,8 +1129,8 @@ const syncEscrowEvents = async () => {
   isEscrowSyncing = true;
   let indexed = 0;
   try {
-    const escrowContract = BlockchainService.getEnergyEscrowContractReadOnly();
-    const disputeContract = BlockchainService.getDisputeResolutionContractReadOnly();
+    const escrowContract = forSyncReads(BlockchainService.getEnergyEscrowContractReadOnly());
+    const disputeContract = forSyncReads(BlockchainService.getDisputeResolutionContractReadOnly());
     const provider = escrowContract.runner.provider;
     const network = await provider.getNetwork();
     const chainId = Number(network.chainId);
@@ -1217,6 +1252,8 @@ module.exports = {
     resetAdaptiveChunkCap: () => {
       adaptiveChunkCap = Infinity;
     },
+    extractRangeLimit,
+    forSyncReads,
   },
 };
 

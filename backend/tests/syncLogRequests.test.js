@@ -46,7 +46,7 @@ const makeLog = (eventName, args, blockNumber, index = 0) => {
   };
 };
 
-const stubEnvironment = async ({ head, cursor, getLogs, fn }) => {
+const stubEnvironment = async ({ head, cursor, getLogs, fn, chunkSize = 500 }) => {
   const originals = {
     factory: BlockchainService.getEnergyTradingContractReadOnly,
     findOneAndUpdate: SyncState.findOneAndUpdate,
@@ -70,7 +70,7 @@ const stubEnvironment = async ({ head, cursor, getLogs, fn }) => {
 
   process.env.ENERGY_TRADING_ADDRESS = ADDRESS;
   process.env.BLOCKCHAIN_SYNC_CHUNK_DELAY_MS = '0';
-  process.env.BLOCKCHAIN_SYNC_CHUNK_SIZE = '500';
+  process.env.BLOCKCHAIN_SYNC_CHUNK_SIZE = String(chunkSize);
 
   const provider = {
     getNetwork: async () => ({ chainId: 11155111n }),
@@ -218,4 +218,62 @@ test('a stated provider block-range limit is learned once and used exactly', asy
 
 test('an unstated block-range limit is found by halving and then remembered', async () => {
   await runRangeLimitScenario({ hinted: false, maxRequests: 80 });
+});
+/* ------------------------------------------------------------------ */
+/* Dedicated log-reading RPC (SYNC_RPC_URL) and limit message parsing  */
+/* ------------------------------------------------------------------ */
+
+test('block-range limits are read from the error messages of known providers', () => {
+  const { extractRangeLimit } = sync._testing;
+  assert.equal(
+    extractRangeLimit(new Error('Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range.')),
+    10,
+  );
+  assert.equal(extractRangeLimit(new Error('exceed maximum block range: 50000')), 50000);
+  assert.equal(extractRangeLimit(new Error('eth_getLogs is limited to 0 - 50 blocks range')), 50);
+  assert.equal(extractRangeLimit(new Error('connection reset')), null);
+});
+
+test('SYNC_RPC_URL routes log reads to a separate provider; unset keeps the original', () => {
+  const { forSyncReads } = sync._testing;
+  const mainProvider = { marker: 'main' };
+  const contract = new ethers.Contract(ADDRESS, ABI, { provider: mainProvider });
+  const original = process.env.SYNC_RPC_URL;
+  try {
+    delete process.env.SYNC_RPC_URL;
+    assert.equal(forSyncReads(contract), contract, 'unset must leave the contract untouched');
+
+    process.env.SYNC_RPC_URL = 'https://sync-rpc.example.org/sepolia';
+    const routed = forSyncReads(contract);
+    assert.notEqual(routed, contract);
+    assert.equal(routed.runner.provider._getConnection().url, 'https://sync-rpc.example.org/sepolia');
+    assert.equal(contract.runner.provider, mainProvider, 'the original contract must not be modified');
+
+    process.env.SYNC_RPC_URL = 'not-a-url';
+    assert.equal(forSyncReads(contract), contract, 'an invalid URL is ignored');
+  } finally {
+    if (original === undefined) delete process.env.SYNC_RPC_URL;
+    else process.env.SYNC_RPC_URL = original;
+  }
+});
+
+test('a 125,000-block gap is cleared in a handful of requests on a provider allowing 50,000 blocks', async () => {
+  sync._testing.resetAdaptiveChunkCap();
+  const LIMIT = 50000;
+  await stubEnvironment({
+    head: 12_025_568,
+    cursor: 11_900_366, // the real gap seen on the live site
+    chunkSize: 5000,
+    getLogs: async (filter) => {
+      if (rangeOf(filter) > LIMIT) throw new Error('exceed maximum block range: 50000');
+      return [];
+    },
+    fn: async ({ requests, state }) => {
+      const result = await sync.syncBlockchainTrades();
+      assert.equal(result.skipped, undefined, `sync failed: ${result.message}`);
+      assert.equal(state.lastSyncedBlock, 12_025_568, 'cursor should reach the chain head');
+      assert.ok(requests.length <= 30, `expected at most 30 requests, got ${requests.length}`);
+    },
+  });
+  sync._testing.resetAdaptiveChunkCap();
 });
