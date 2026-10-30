@@ -30,12 +30,38 @@ jobs:
         working-directory: ai_service
     steps:
       - uses: actions/checkout@v4
+
+      # The job needs a MongoDB connection string. When the MONGODB_URI repository
+      # secret is not set GitHub passes an empty string, and the script used to die
+      # in ~1s with a cryptic "ConfigurationError: Empty host". Fail clearly for a
+      # manual run; for the weekly schedule just skip with a notice instead of
+      # sending a red X every Monday.
+      - name: Check configuration
+        id: cfg
+        working-directory: .
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          if [ -z "$MONGODB_URI" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::The MONGODB_URI repository secret is not set (Settings > Secrets and variables > Actions)."
+              exit 1
+            fi
+            echo "::notice::Skipping scheduled retrain: MONGODB_URI repository secret is not set."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-python@v5
+        if: steps.cfg.outputs.configured == 'true'
         with:
           python-version: '3.11'
       - name: Install dependencies
+        if: steps.cfg.outputs.configured == 'true'
         run: pip install -r requirements.txt
       - name: Run retrain scheduler
+        if: steps.cfg.outputs.configured == 'true'
         env:
           NODE_ENV: production
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
@@ -45,6 +71,7 @@ jobs:
         run: python -m jobs.retrain_scheduler
 
       - name: Upload registry artifact
+        if: steps.cfg.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: model-registry-${{ github.run_id }}

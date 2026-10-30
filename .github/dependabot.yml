@@ -12,7 +12,9 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
 
-  - package-ecosystem: npm
+  # genai-service is a Python service: watch its pip requirements, not the
+  # leftover Node lockfile from its earlier implementation.
+  - package-ecosystem: pip
     directory: "/genai-service"
     schedule:
       interval: weekly

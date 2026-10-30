@@ -26,8 +26,14 @@ jobs:
     name: Node Dependency Audit
     runs-on: ubuntu-latest
     strategy:
+      # One failing audit must not cancel the others (the default fail-fast
+      # behaviour is why unrelated audit legs showed up as "cancelled").
+      fail-fast: false
       matrix:
-        dir: [backend, ecopulse, genai-service]
+        # genai-service is a Python service (covered by python-audit below). Its
+        # leftover package-lock.json described the old Node implementation and
+        # failed this audit with vulnerabilities in packages nothing uses.
+        dir: [backend, ecopulse]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
