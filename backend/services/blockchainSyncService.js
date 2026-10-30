@@ -195,6 +195,12 @@ const isLogRangeError = (error) => {
 };
 
 const MAX_RATE_LIMIT_RETRIES = 6;
+
+// Largest eth_getLogs block range the RPC provider has been seen to accept.
+// Starts unbounded; shrinks (process-wide) whenever the provider rejects a range.
+let adaptiveChunkCap = Infinity;
+const getEffectiveChunkSize = (configuredChunkSize) =>
+  Math.max(1, Math.min(configuredChunkSize, adaptiveChunkCap));
 const getInterChunkDelayMs = () => {
   const parsed = parseInt(process.env.BLOCKCHAIN_SYNC_CHUNK_DELAY_MS || '250', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 250;
@@ -205,6 +211,17 @@ const setLastSyncDebug = (payload) => {
     ...payload,
     at: new Date().toISOString(),
   };
+};
+
+// Some providers state their limit in the error text, e.g. Alchemy's free tier:
+// "...eth_getLogs requests with up to a 10 block range...". Using it avoids
+// probing downwards by halving (which overshoots to ~half the real limit).
+const extractRangeLimit = (error) => {
+  const msg = String(error?.message || error);
+  const match = msg.match(/up to an?\s+([\d,]+)[\s-]*block/i);
+  if (!match) return null;
+  const parsed = parseInt(match[1].replace(/,/g, ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
 const fetchLogsForRange = async (contract, filter, start, end, rateLimitAttempt = 0) => {
@@ -226,6 +243,13 @@ const fetchLogsForRange = async (contract, filter, start, end, rateLimitAttempt 
     // Genuinely oversized range: split and fetch the halves sequentially to
     // keep request concurrency low.
     if (isLogRangeError(error) && start < end) {
+      // Remember the limit so later chunks start at a size the provider
+      // accepts instead of failing and re-splitting from the full chunk every
+      // time (e.g. free-tier RPCs that cap eth_getLogs at ~10 blocks).
+      const size = end - start + 1;
+      const hinted = extractRangeLimit(error);
+      const learned = hinted && hinted < size ? hinted : Math.max(1, Math.floor(size / 2));
+      adaptiveChunkCap = Math.min(adaptiveChunkCap, learned);
       const mid = Math.floor((start + end) / 2);
       const left = await fetchLogsForRange(contract, filter, start, mid);
       const right = await fetchLogsForRange(contract, filter, mid + 1, end);
@@ -234,6 +258,43 @@ const fetchLogsForRange = async (contract, filter, start, end, rateLimitAttempt 
 
     throw error;
   }
+};
+
+/**
+ * Fetch several event types from one contract with a SINGLE eth_getLogs request
+ * per block range (topic0 is an OR-list) instead of one request per event.
+ * Every EnergyTrading sync chunk used to cost five requests and every escrow
+ * chunk six, which is what exhausts free-tier RPC throughput during catch-up.
+ *
+ * Returns `[{ name, logs }]` in the order of `entries`, so callers index events
+ * in exactly the same order as before.
+ */
+const fetchEventLogsGrouped = async (contract, entries, start, end) => {
+  const active = entries.filter((entry) => entry.filter);
+  if (active.length === 0) return [];
+
+  const topic0s = new Set();
+  for (const { filter } of active) {
+    const [topic0] = await filter.getTopicFilter();
+    for (const topic of Array.isArray(topic0) ? topic0 : [topic0]) {
+      if (topic) topic0s.add(topic);
+    }
+  }
+
+  const logs = await fetchLogsForRange(contract, [[...topic0s]], start, end);
+
+  const byName = new Map(active.map(({ name }) => [name, []]));
+  for (const log of logs) {
+    let name = null;
+    try {
+      name = contract.interface.parseLog(log)?.name ?? null;
+    } catch {
+      name = null;
+    }
+    if (name && byName.has(name)) byName.get(name).push(log);
+  }
+
+  return active.map(({ name }) => ({ name, logs: byName.get(name) }));
 };
 
 const getInitialFromBlock = async (provider, contractAddress, configuredFromBlock) => {
@@ -553,8 +614,11 @@ const syncBlockchainTrades = async () => {
 
     // Detect local blockchain reset (e.g. npx hardhat node restarted)
     if (toBlock < syncState.lastSyncedBlock && chainId === 31337) {
-      console.log('[Sync] Detected local blockchain reset. Clearing old trade history...');
-      await Trade.deleteMany({});
+      console.log('[Sync] Detected local blockchain reset. Clearing old local-chain trade history...');
+      // Scope the wipe to the local Hardhat chain. A bare deleteMany({}) would also
+      // erase trades indexed from other chains (e.g. Sepolia) whenever a dev
+      // backend and a deployed backend share one database.
+      await Trade.deleteMany({ chainId: 31337 });
       syncState.lastSyncedBlock = 0;
       await syncState.save();
       fromBlock = 0;
@@ -589,16 +653,13 @@ const syncBlockchainTrades = async () => {
 
     const interChunkDelayMs = getInterChunkDelayMs();
 
-    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
-      const end = Math.min(start + chunkSize - 1, toBlock);
+    // The effective chunk size is re-read every iteration: it can shrink
+    // mid-run if the provider reveals a smaller eth_getLogs block-range limit.
+    for (let start = fromBlock; start <= toBlock; ) {
+      const end = Math.min(start + getEffectiveChunkSize(chunkSize) - 1, toBlock);
 
-      // Query each event filter sequentially (not in parallel) to keep the
-      // instantaneous request rate low and avoid provider throttling.
-      const logGroups = [];
-      for (const { name, filter } of filters) {
-        const logs = await fetchLogsForRange(contract, filter, start, end);
-        logGroups.push({ name, logs });
-      }
+      // One eth_getLogs request covers all five event types for this range.
+      const logGroups = await fetchEventLogsGrouped(contract, filters, start, end);
 
       for (const { name, logs } of logGroups) {
         indexed += await indexLogs(
@@ -624,6 +685,8 @@ const syncBlockchainTrades = async () => {
       if (interChunkDelayMs > 0 && end < toBlock) {
         await sleep(interChunkDelayMs);
       }
+
+      start = end + 1;
     }
 
     const result = {
@@ -1059,12 +1122,12 @@ const syncEscrowEvents = async () => {
     const escrowFilters = ESCROW_EVENT_NAMES.map((name) => ({ name, filter: escrowContract.filters[name]?.() }));
     const disputeFilters = [{ name: 'DisputeResolved', filter: disputeContract.filters.DisputeResolved?.() }];
 
-    for (let start = fromBlock; start <= toBlock; start += chunkSize) {
-      const end = Math.min(start + chunkSize - 1, toBlock);
+    for (let start = fromBlock; start <= toBlock; ) {
+      const end = Math.min(start + getEffectiveChunkSize(chunkSize) - 1, toBlock);
 
-      for (const { name, filter } of escrowFilters) {
-        if (!filter) continue;
-        const logs = await fetchLogsForRange(escrowContract, filter, start, end);
+      // One eth_getLogs request for all escrow event types in this range.
+      const escrowGroups = await fetchEventLogsGrouped(escrowContract, escrowFilters, start, end);
+      for (const { name, logs } of escrowGroups) {
         for (const log of logs) {
           try {
             const parsed = escrowContract.interface.parseLog(log);
@@ -1094,6 +1157,8 @@ const syncEscrowEvents = async () => {
         { key: ESCROW_SYNC_STATE_KEY },
         { $set: { lastSyncedBlock: end, chainId, contractAddress: escrowAddress } },
       );
+
+      start = end + 1;
     }
 
     return { indexed, fromBlock, toBlock, lastSyncedBlock: toBlock, syncedAt: new Date().toISOString() };
@@ -1146,5 +1211,12 @@ module.exports = {
   syncEscrowEvents,
   listenToEscrowEvents,
   stopListeningToEscrowEvents,
+  // Exposed for tests only.
+  _testing: {
+    getAdaptiveChunkCap: () => adaptiveChunkCap,
+    resetAdaptiveChunkCap: () => {
+      adaptiveChunkCap = Infinity;
+    },
+  },
 };
 
