@@ -1,4 +1,5 @@
 const Trade = require('../models/Trade');
+const { currentTradingContractFilter } = require('../utils/currentContract');
 
 const DEFAULT_WINDOW_DAYS = 90;
 const MAX_WINDOW_DAYS = 365;
@@ -149,7 +150,14 @@ const getAggregatedTrades = async (params = {}) => {
   const safeLegLimit = Math.min(Math.max(Number(params.legLimit ?? params.limit ?? 50), 1), 100);
   const since = resolveSince(params.since, params.sinceDays);
   const baseFilter = buildAggregationFilter(params);
-  const purchaseQuery = { ...baseFilter, eventType: 'purchased', blockTimestamp: { $gte: since } };
+  // Legs are keyed by listing id, which restarts at 0 on every contract
+  // deployment, so only trades from the current marketplace contract are grouped.
+  const purchaseQuery = {
+    ...baseFilter,
+    ...currentTradingContractFilter(),
+    eventType: 'purchased',
+    blockTimestamp: { $gte: since },
+  };
 
   const purchases = await Trade.find(purchaseQuery)
     .sort({ blockTimestamp: -1, blockNumber: -1, logIndex: -1 })
@@ -161,7 +169,7 @@ const getAggregatedTrades = async (params = {}) => {
 
   const listingIds = [...new Set(bounded.map((p) => Number(p.listingId)).filter((n) => Number.isFinite(n)))];
   const listedRows = listingIds.length
-    ? await Trade.find({ listingId: { $in: listingIds }, eventType: 'listed' }).lean()
+    ? await Trade.find({ listingId: { $in: listingIds }, eventType: 'listed', ...currentTradingContractFilter() }).lean()
     : [];
 
   const legs = aggregateLegs(bounded, listedRows);

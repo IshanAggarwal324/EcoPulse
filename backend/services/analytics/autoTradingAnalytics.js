@@ -18,6 +18,7 @@
 
 const AuditLog = require('../../models/AuditLog');
 const Trade = require('../../models/Trade');
+const { currentTradingContractFilter } = require('../../utils/currentContract');
 const ListingIntent = require('../../models/ListingIntent');
 const AutoListingPolicy = require('../../models/AutoListingPolicy');
 
@@ -106,6 +107,8 @@ async function getRecommendationAccuracy({ sinceDays = 30 } = {}) {
     Trade.find({
       eventType: 'listed',
       listingId: { $in: listingIds },
+      // Listing ids restart at 0 on every contract deployment.
+      ...currentTradingContractFilter(),
     })
       .select('listingId energyAmount price')
       .lean()

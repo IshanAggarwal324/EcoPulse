@@ -1,5 +1,6 @@
 const Trade = require('../models/Trade');
 const BlockchainService = require('./blockchainService');
+const { currentTradingContractFilter } = require('../utils/currentContract');
 const { getCachedActiveListings } = require('./listingCache');
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
 const { attachReputationSnapshots } = require('./reputationService');
@@ -24,7 +25,7 @@ const parsePrice = (value) => {
 };
 
 const getListedEvent = async (listingId) =>
-  Trade.findOne({ listingId: Number(listingId), eventType: 'listed' })
+  Trade.findOne({ listingId: Number(listingId), eventType: 'listed', ...currentTradingContractFilter() })
     .sort({ blockNumber: -1 })
     .lean();
 
@@ -197,6 +198,7 @@ const getOrderById = async (listingId) => {
   const tradeEvents = await Trade.find({
     listingId: Number(listing.id),
     eventType: { $in: ['listed', 'purchased', 'cancelled'] },
+    ...currentTradingContractFilter(),
   })
     .sort({ blockNumber: -1 })
     .lean();

@@ -145,7 +145,7 @@ const etAbi = [
   "function cancelListing(uint256 listingId)",
   "function isListingActive(uint256 listingId) view returns (bool)",
   "function nextListingId() view returns (uint256)",
-  "function listings(uint256) view returns (address seller, uint256 energyAmount, uint256 price, uint8 status, uint256 createdAt)",
+  "function listings(uint256) view returns (address seller, uint256 energyAmount, uint256 price, uint8 status, uint256 createdAt, uint256 expiresAt)",
   "event EnergyListed(uint256 indexed listingId, address indexed seller, uint256 energyAmount, uint256 price)",
   "event EnergyPurchased(uint256 indexed listingId, address indexed buyer, address indexed seller, uint256 energyAmount, uint256 price)",
   "event ListingCancelled(uint256 indexed listingId, address indexed seller)",
