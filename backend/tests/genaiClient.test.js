@@ -4,11 +4,12 @@ const assert = require('node:assert/strict');
 const { postNarrate, fetchDocChunks, reindexAssistantDocs, postChat } = require('../services/genaiClient');
 
 /**
- * Property 4: Preservation — postNarrate(), fetchDocChunks(), and
- * reindexAssistantDocs() must keep scheduling their abort timer at the
- * shared UPSTREAM_FETCH_TIMEOUT_MS default (20000ms), unaffected by any
- * chat-specific timeout change. Observed on UNFIXED code first (task 5);
- * these must continue to pass after task 6.3's fix.
+ * Property 4: Preservation — postNarrate() and reindexAssistantDocs() must keep
+ * scheduling their abort timer at the shared UPSTREAM_FETCH_TIMEOUT_MS default
+ * (20000ms), unaffected by any chat-specific timeout change. fetchDocChunks()
+ * deliberately uses its own shorter DOC_CHUNKS_UPSTREAM_TIMEOUT_MS (3000ms) and
+ * postChat() uses CHAT_UPSTREAM_TIMEOUT_MS (12000ms). Observed on UNFIXED code
+ * first (task 5); these must continue to pass after task 6.3's fix.
  *
  * Technique: spy on global.setTimeout (used internally by fetchWithTimeout's
  * AbortController wiring) and capture the `ms` argument passed at call time,
@@ -49,12 +50,22 @@ test('postNarrate schedules the default UPSTREAM_FETCH_TIMEOUT_MS (20000ms) abor
   }
 });
 
-test('fetchDocChunks schedules the default UPSTREAM_FETCH_TIMEOUT_MS (20000ms) abort timer', async () => {
+test('fetchDocChunks schedules its dedicated DOC_CHUNKS_UPSTREAM_TIMEOUT_MS (3000ms) abort timer, not the 20000ms shared default', async () => {
+  // Doc retrieval is optional prompt enrichment that swallows every failure, so
+  // it gets a short budget (see genaiClient.js): doc-chunks 3000ms + chat 12000ms
+  // = 15000ms, which fits inside the frontend's 20000ms abort. With the shared
+  // 20000ms default a cold genai-service could push the total to 32000ms.
+  const parsed = parseInt(process.env.GENAI_DOC_CHUNKS_TIMEOUT_MS ?? '3000', 10);
+  const expectedMs = Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;
+
   const originalFetch = global.fetch;
   global.fetch = async () => okResponse({ chunks: [] });
   try {
     const calls = await captureSetTimeoutMs(() => fetchDocChunks('what is carbon credit', 3));
-    assert.ok(calls.includes(20000), `expected a 20000ms timer, got: ${calls.join(', ')}`);
+    assert.ok(calls.includes(expectedMs), `expected a ${expectedMs}ms timer, got: ${calls.join(', ')}`);
+    if (expectedMs !== 20000) {
+      assert.ok(!calls.includes(20000), `fetchDocChunks should not use the 20000ms shared default, got: ${calls.join(', ')}`);
+    }
   } finally {
     global.fetch = originalFetch;
   }
