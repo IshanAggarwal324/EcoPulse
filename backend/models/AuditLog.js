@@ -2,7 +2,15 @@ const mongoose = require('mongoose');
 const crypto = require('crypto');
 
 const VALID_SEVERITIES = ['info', 'warn', 'critical'];
-const VALID_RESOURCE_TYPES = ['user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator', 'device', 'auto_trading', 'notification', 'settlement'];
+// Every resourceType passed to auditService.log() anywhere in the backend MUST be
+// listed here: an unlisted value fails schema validation and the entry is
+// silently dropped (auditService.log only console.errors). The static scan in
+// tests/auditResourceTypes.test.js enforces this.
+const VALID_RESOURCE_TYPES = [
+  'user', 'node', 'trade', 'report_job', 'api', 'sync', 'auth', 'simulator', 'device',
+  'auto_trading', 'notification', 'settlement',
+  'buyOrder', 'dispute', 'grid_zone', 'ingestion', 'listing_intent', 'public_grid',
+];
 
 const auditLogSchema = new mongoose.Schema(
   {
@@ -137,7 +145,11 @@ auditLogSchema.statics.verifyChain = async function (limit = 1000) {
     .lean();
 
   const broken = [];
-  let expectedPrev = null;
+  // The TTL index expires old entries, so the oldest retained entry's predecessor
+  // may legitimately be gone. Anchor the chain on that entry's own prevHash
+  // instead of reporting a false "chain_broken" for it. Its own hash is still
+  // verified below, and every later link is checked against the previous entry.
+  let expectedPrev = entries.length ? entries[0].prevHash ?? null : null;
 
   for (const entry of entries) {
     const computed = this.computeHash(entry, entry.prevHash);

@@ -74,6 +74,10 @@ export const STATUS_PILL_CLASSES = {
   cancelled: `${BASE_PILL} bg-slate-500/10 border-slate-500/30 text-slate-400`,
   pending: `${BASE_PILL} bg-amber-500/10 border-amber-500/30 text-amber-400`,
   sent: `${BASE_PILL} bg-emerald-500/10 border-emerald-500/30 text-emerald-400`,
+  // Audit log severities
+  info: `${BASE_PILL} bg-blue-500/10 border-blue-500/30 text-blue-400`,
+  warn: `${BASE_PILL} bg-amber-500/10 border-amber-500/30 text-amber-400`,
+  critical: `${BASE_PILL} bg-rose-500/10 border-rose-500/30 text-rose-400`,
 };
 
 export const StatusPill = ({ value, label }) => {

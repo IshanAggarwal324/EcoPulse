@@ -525,6 +525,7 @@ export const adminApi = {
 
   // Audit logs
   listAuditLogs: (params = {}) => fetchApi(`/admin/audit-logs${buildQuery(params)}`),
+  verifyAuditLogs: (params = {}) => fetchApi(`/admin/audit-logs/verify${buildQuery(params)}`),
 
   // System health (Phase 5)
   getSystemHealth: () => fetchApi('/admin/health'),
