@@ -33,7 +33,11 @@ def _mongo_client_options() -> dict:
 
 
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI, **_mongo_client_options())
-db = client.ecopulse
+# Read from the same database the backend writes to: the one named in the
+# connection string. MONGO_DB_NAME overrides it; "ecopulse" is only the last
+# resort when the URI names no database.
+_DB_NAME_OVERRIDE = os.getenv("MONGO_DB_NAME", "").strip()
+db = client[_DB_NAME_OVERRIDE] if _DB_NAME_OVERRIDE else client.get_default_database(default="ecopulse")
 # Mongoose default collection name for EnergyReading model
 readings_collection = db.energyreadings
 # Sub-module 1.3.5 — MongoDB time-series collection + hourly rollup.
@@ -52,6 +56,8 @@ USE_TIMESERIES = os.getenv("USE_TIMESERIES", "false").lower() == "true"
 FORECAST_LOOKBACK_DAYS = int(os.getenv("FORECAST_LOOKBACK_DAYS", "60"))
 # Raw readings expire after this many days (must match backend TIMESERIES_RAW_TTL_DAYS).
 RAW_TTL_DAYS = int(os.getenv("TIMESERIES_RAW_TTL_DAYS", "90"))
+# Daily energy (kWh) = mean power (kW) * 24 h.
+HOURS_PER_DAY = 24
 
 def _dummy_seed(node_id: Optional[str]) -> int:
     if not node_id:
@@ -183,8 +189,11 @@ async def get_historical_data(
         {
             "$group": {
                 "_id": {"$dateTrunc": {"date": "$timestamp", "unit": "day", "timezone": "UTC"}},
-                "generation": {"$sum": "$energyGenerated"},
-                "consumption": {"$sum": "$energyConsumed"},
+                # Mean power (kW) for the day, scaled to daily energy (kWh). Using the
+                # mean instead of the sum keeps the series on the same scale however
+                # often readings arrive (live ticks vs. backfilled history).
+                "generation": {"$avg": "$energyGenerated"},
+                "consumption": {"$avg": "$energyConsumed"},
             }
         },
         {"$sort": {"_id": 1}},
@@ -198,8 +207,8 @@ async def get_historical_data(
     daily = pd.DataFrame([
         {
             "timestamp": row["_id"],
-            "generation": row.get("generation", 0),
-            "consumption": row.get("consumption", 0),
+            "generation": (row.get("generation") or 0) * HOURS_PER_DAY,
+            "consumption": (row.get("consumption") or 0) * HOURS_PER_DAY,
         }
         for row in rows
     ])

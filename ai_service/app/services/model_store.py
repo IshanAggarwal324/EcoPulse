@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 class ModelStore:
     """Loads and holds the LSTM model and scaler artifacts.
 
-    The default model (no explicit version) follows the existing dual-path
-    strategy: the configured ``model.keras``/``scaler.save`` files, falling
-    back to the registry LATEST. Explicit versions are loaded on demand from
+    The default model (no explicit version) loads the registry LATEST bundle
+    first, falling back to the configured ``model.keras``/``scaler.save`` files.
+    Explicit versions are loaded on demand from
     the registry and cached, so two registry versions can serve traffic
     simultaneously (Module 4.2.3 / 4.2.6).
     """
@@ -76,25 +76,9 @@ class ModelStore:
         if self._next_retry_at_monotonic is not None and now < self._next_retry_at_monotonic:
             return
 
-        primary_error = None
-        try:
-            logger.info("Loading model from %s", self._settings.model_path)
-            self._model = load_keras_model(self._settings.model_path)
-            self._scaler = joblib.load(self._settings.scaler_path)
-            self._metadata = {}
-            self._version = None
-            self._load_error = None
-            self._next_retry_at_monotonic = None
-            logger.info("Model artifacts loaded successfully")
-            return
-        except Exception as exc:
-            primary_error = str(exc)
-            logger.warning(
-                "Primary model artifacts not found/invalid (%s). "
-                "Falling back to registry model loading.",
-                exc,
-            )
-
+        # The registry (LATEST) is the primary source so a freshly trained and
+        # promoted model is served; the legacy saved files are the fallback.
+        registry_error = None
         try:
             model, scaler, metadata = load_bundle(
                 registry_dir=self._settings.registry_dir,
@@ -112,6 +96,23 @@ class ModelStore:
                 metadata.get("model_name", self._settings.registry_model_name),
                 metadata.get("version", self._settings.registry_version or "LATEST"),
             )
+            return
+        except Exception as exc:
+            registry_error = str(exc)
+            logger.warning(
+                "Registry model not available (%s). Falling back to saved model files.",
+                exc,
+            )
+
+        try:
+            logger.info("Loading model from %s", self._settings.model_path)
+            self._model = load_keras_model(self._settings.model_path)
+            self._scaler = joblib.load(self._settings.scaler_path)
+            self._metadata = {}
+            self._version = None
+            self._load_error = None
+            self._next_retry_at_monotonic = None
+            logger.info("Model artifacts loaded successfully")
         except Exception as exc:
             self._model = None
             self._scaler = None
@@ -119,16 +120,16 @@ class ModelStore:
             self._version = None
             fallback_error = str(exc)
             self._load_error = (
-                f"Primary load failed: {primary_error}. "
-                f"Registry fallback failed: {fallback_error}"
+                f"Registry load failed: {registry_error}. "
+                f"Saved-file fallback failed: {fallback_error}"
             )
             retry_after = max(1, int(self._settings.model_load_retry_backoff_seconds))
             self._next_retry_at_monotonic = now + retry_after
             logger.error(
-                "Failed to load model artifacts from primary and fallback paths. "
-                "Retrying in %ss. primary_error=%s registry_error=%s",
+                "Failed to load model artifacts from registry and saved files. "
+                "Retrying in %ss. registry_error=%s saved_error=%s",
                 retry_after,
-                primary_error,
+                registry_error,
                 fallback_error,
             )
 

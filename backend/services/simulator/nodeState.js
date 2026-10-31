@@ -88,6 +88,13 @@ class NodeSimulatorState {
     energyConsumed = after.energyConsumed;
 
     const alpha = this.smoothing;
+    if (!this.initialized) {
+      // Start from the current target so the first readings after a (re)start
+      // are realistic instead of ramping up from zero.
+      this.smoothedGen = energyGenerated;
+      this.smoothedCon = energyConsumed;
+      this.initialized = true;
+    }
     this.smoothedGen = this.smoothedGen * (1 - alpha) + energyGenerated * alpha;
     this.smoothedCon = this.smoothedCon * (1 - alpha) + energyConsumed * alpha;
 

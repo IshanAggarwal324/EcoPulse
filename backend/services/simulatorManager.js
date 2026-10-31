@@ -18,7 +18,7 @@ let readingsEmitted = 0;
  */
 const isEmbeddedEnabled = () =>
   process.env.SIMULATOR_EMBEDDED === 'true' &&
-  process.env.NODE_ENV !== 'production' &&
+  (process.env.NODE_ENV !== 'production' || process.env.SIMULATOR_ALLOW_IN_PRODUCTION === 'true') &&
   ingestionMode.isSimulatorAllowed();
 
 const pushRecent = (reading) => {
