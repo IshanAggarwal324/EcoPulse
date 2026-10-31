@@ -103,3 +103,35 @@ test('embedded simulator is allowed in production only with the explicit opt-in'
     delete require.cache[require.resolve('../services/simulatorManager')];
   }
 });
+
+test('embedded transport passes database ObjectId node ids to ingest as strings', async () => {
+  const mongoose = require('mongoose');
+  const readingService = require('../services/readingService');
+  const original = readingService.ingestSimulatedReading;
+  const seen = [];
+  readingService.ingestSimulatedReading = async (payload) => {
+    seen.push(payload);
+    // Same check the real pipeline performs (validateReadingInput).
+    if (typeof payload.nodeId !== 'string') throw new Error('nodeId must be a valid identifier');
+  };
+  try {
+    delete require.cache[require.resolve('../services/simulatorManager')];
+    const { createEmbeddedTransport } = require('../services/simulatorManager');
+    const id = new mongoose.Types.ObjectId();
+    const result = await createEmbeddedTransport().send({
+      nodeId: id,
+      name: 'Rooftop Solar Array',
+      sourceType: 'solar',
+      energyGenerated: 12.5,
+      energyConsumed: 1.1,
+      timestamp: new Date().toISOString(),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(seen.length, 1);
+    assert.equal(typeof seen[0].nodeId, 'string');
+    assert.equal(seen[0].nodeId, String(id));
+  } finally {
+    readingService.ingestSimulatedReading = original;
+    delete require.cache[require.resolve('../services/simulatorManager')];
+  }
+});

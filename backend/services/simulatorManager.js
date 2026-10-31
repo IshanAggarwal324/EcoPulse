@@ -35,7 +35,9 @@ const createEmbeddedTransport = () => ({
   async send(reading) {
     try {
       await readingService.ingestSimulatedReading({
-        nodeId: reading.nodeId,
+        // Node ids from the database are ObjectId objects; the ingest pipeline
+        // validates them as strings (they arrive as text over socket/REST).
+        nodeId: String(reading.nodeId),
         energyGenerated: reading.energyGenerated,
         energyConsumed: reading.energyConsumed,
       });
@@ -149,4 +151,5 @@ module.exports = {
   getStatus,
   getRecentReadings,
   isEmbeddedEnabled,
+  createEmbeddedTransport,
 };
