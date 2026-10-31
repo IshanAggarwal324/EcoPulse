@@ -78,6 +78,10 @@ def _parse_chat_response(
         )
 
 
+def _is_no_lookup_placeholder(retrieved_data) -> bool:
+    return bool(retrieved_data) and retrieved_data.get("intent") == "general"
+
+
 @router.post("/chat", response_model=AssistantChatResponse)
 async def post_assistant_chat(request: AssistantChatRequest, http_request: Request):
     llm: LlmService = http_request.app.state.llm_service
@@ -111,7 +115,14 @@ async def post_assistant_chat(request: AssistantChatRequest, http_request: Reque
             disclaimer=_DEFAULT_DISCLAIMER if is_demo else "Based on live platform data.",
         )
 
-    if is_explanation_only(request.retrieved_data):
+    # Skip the LLM only when a data intent came back with just an explanation
+    # (e.g. "no wallet connected"). When the backend looked nothing up at all
+    # (faq/general questions) its payload is only a placeholder marked
+    # intent="general"; Gemini must answer those from doc excerpts and general
+    # platform knowledge instead of echoing the placeholder.
+    if is_explanation_only(request.retrieved_data) and not _is_no_lookup_placeholder(
+        request.retrieved_data
+    ):
         logger.info("Explanation-only retrieved_data — skipping LLM call")
         return AssistantChatResponse(
             reply=fallback_reply,

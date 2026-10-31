@@ -79,6 +79,26 @@ class ExplanationOnlyShortCircuitTests(unittest.TestCase):
         self.assertIn("No wallet connected", response.reply)
 
 
+class FaqIntentReachesLlmTests(unittest.TestCase):
+    """faq/general questions carry only a placeholder explanation; Gemini must
+    still answer them instead of echoing the placeholder."""
+
+    def test_faq_intent_with_placeholder_explanation_invokes_llm(self):
+        llm = _StubLlmService(available=True, reply_text='{"reply": "Energy is the capacity to do work."}')
+        request = AssistantChatRequest(
+            message="what is energy",
+            intent="faq",
+            retrieved_data={
+                "intent": "general",
+                "explanation": "No structured data retrieved for this query.",
+            },
+        )
+        response = _run(post_assistant_chat(request, _fake_request(llm)))
+
+        self.assertEqual(len(llm.complete_calls), 1)
+        self.assertIn("capacity to do work", response.reply)
+
+
 class StructuredDataPreservationTests(unittest.TestCase):
     """Property 4: Preservation — structured (non-trivial) retrieved_data
     must continue to invoke the LLM exactly as before.

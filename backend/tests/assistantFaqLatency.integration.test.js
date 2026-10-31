@@ -48,3 +48,10 @@ test('end-to-end: FAQ-phrased questions across data-keyword collisions never hit
     assert.strictEqual(intent, 'faq', `expected faq for "${message}"`);
   }
 });
+
+test('live-data cues ("total", "how much", "today") route to the data intent even when phrased "what is ..."', () => {
+  assert.strictEqual(classifyIntent('What is the total grid energy generated?').intent, 'grid_energy');
+  assert.strictEqual(classifyIntent('how much energy is generated right now').intent, 'grid_energy');
+  // Pure definition questions stay faq.
+  assert.strictEqual(classifyIntent('what is energy').intent, 'faq');
+});

@@ -38,6 +38,10 @@ const FAQ_KEYWORD_PATTERN = /\b(ecopulse|platform|assistant|dashboard|wallet|met
 
 const OWN_DATA_PATTERN = /\b(my|mine|our|i'?ve|i\s+have|i\s+own)\b/i;
 
+// Cues that the user wants a live number rather than a definition, e.g.
+// "what is the total grid energy generated?" must reach the grid_energy retriever.
+const LIVE_DATA_CUE_PATTERN = /\b(total|how\s+much|so\s+far|right\s+now|currently|today)\b/i;
+
 function matchGridEnergyIntent(message) {
   if (!message || typeof message !== 'string') return false;
   return GRID_ENERGY_PATTERN.test(message);
@@ -96,6 +100,11 @@ function mentionsOwnData(message) {
   return OWN_DATA_PATTERN.test(message);
 }
 
+function mentionsLiveDataCue(message) {
+  if (!message || typeof message !== 'string') return false;
+  return LIVE_DATA_CUE_PATTERN.test(message);
+}
+
 const INTENT_MATCHERS = [
   { intent: 'bill_analysis', matcher: matchBillAnalysisIntent },
   { intent: 'node_detail', matcher: matchNodeDetailIntent },
@@ -118,7 +127,8 @@ function classifyIntent(message) {
   // over a keyword-based data intent, unless the message also carries an
   // own-data cue ("my", "our", ...) indicating the user wants their own data
   // (e.g. "what is my profit?" should still route to wallet_profit).
-  const isConceptualFaq = matchFaqIntent(message) && !mentionsOwnData(message);
+  const isConceptualFaq =
+    matchFaqIntent(message) && !mentionsOwnData(message) && !mentionsLiveDataCue(message);
 
   if (!isConceptualFaq) {
     for (const { intent, matcher } of INTENT_MATCHERS) {
