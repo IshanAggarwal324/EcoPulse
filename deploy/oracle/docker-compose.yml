@@ -71,7 +71,12 @@ services:
       NODE_ENV: production
       PORT: "8001"
       WEB_CONCURRENCY: "1"
+      # Assistant knowledge base (docs/assistant/*.md), embedded at startup so the
+      # chatbot can answer platform questions from the docs.
+      DOCS_DIR: /app/docs
       INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:?Set INTERNAL_SERVICE_API_KEY in deploy/oracle/.env}
+    volumes:
+      - ../../docs/assistant:/app/docs:ro
     expose:
       - "8001"
 
