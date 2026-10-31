@@ -1,0 +1,88 @@
+# EcoPulse production stack for a single server (Oracle Cloud Always Free Arm VM).
+#
+# Runs: Caddy (HTTPS) -> backend -> ai-service, genai-service, redis.
+# Frontend stays on Vercel; MongoDB stays on Atlas.
+#
+# Only Caddy publishes ports (80/443). Everything else is reachable only inside the
+# compose network, so the AI/GenAI services and Redis are never exposed publicly.
+#
+# Usage (from this folder):  docker compose up -d --build
+# See README.md for the full step-by-step setup.
+
+name: ecopulse
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?Set API_DOMAIN in deploy/oracle/.env (e.g. myapp.duckdns.org)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # keeps the HTTPS certificate across restarts
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ../../backend
+    restart: unless-stopped
+    env_file: .env.backend
+    environment:
+      NODE_ENV: production
+      PORT: "5000"
+      # Internal addresses on the compose network. These override anything in .env.backend.
+      REDIS_URL: redis://redis:6379
+      AI_SERVICE_URL: http://ai-service:8000
+      GENAI_SERVICE_URL: http://genai-service:8001
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:?Set INTERNAL_SERVICE_API_KEY in deploy/oracle/.env}
+    expose:
+      - "5000"
+    depends_on:
+      - redis
+      - ai-service
+      - genai-service
+
+  ai-service:
+    build:
+      context: ../../ai_service
+    restart: unless-stopped
+    env_file: .env.ai
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+      # TensorFlow is memory-hungry; one worker is plenty for this workload.
+      WEB_CONCURRENCY: "1"
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:?Set INTERNAL_SERVICE_API_KEY in deploy/oracle/.env}
+    expose:
+      - "8000"
+
+  genai-service:
+    build:
+      context: ../../genai-service
+    restart: unless-stopped
+    env_file: .env.genai
+    environment:
+      NODE_ENV: production
+      PORT: "8001"
+      WEB_CONCURRENCY: "1"
+      INTERNAL_SERVICE_API_KEY: ${INTERNAL_SERVICE_API_KEY:?Set INTERNAL_SERVICE_API_KEY in deploy/oracle/.env}
+    expose:
+      - "8001"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Used for rate limiting and caches: bounded memory, oldest keys evicted first.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no"]
+    expose:
+      - "6379"
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,18 @@
+# Caddy obtains and renews the HTTPS certificate automatically (Let's Encrypt).
+# Requirements: the domain below must already point to this server's public IP,
+# and ports 80 and 443 must be open (Oracle security list + the server firewall).
+#
+# API_DOMAIN comes from deploy/oracle/.env (e.g. myapp.duckdns.org).
+{$API_DOMAIN} {
+	encode zstd gzip
+
+	# The backend serves both the REST API and Socket.IO (WebSocket upgrades are
+	# handled automatically). Caddy adds X-Forwarded-For, which the backend reads
+	# (trust proxy = 1) for rate limiting and audit-log IP addresses.
+	reverse_proxy backend:5000
+
+	log {
+		output stdout
+		format console
+	}
+}
