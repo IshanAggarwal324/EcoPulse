@@ -36,7 +36,47 @@ const listEscrows = asyncHandler(async (req, res) => {
     limit: req.query.limit,
   });
 
-  res.status(200).json({ success: true, data: result.data, meta: result.meta });
+  // Never show a state the contract has already moved past: re-read open
+  // escrows from the chain (bounded, best-effort) before answering.
+  let data = result.data;
+  if (String(req.query.refresh || 'true') !== 'false') {
+    try {
+      data = await escrowService.refreshOpenEscrows(data);
+    } catch {
+      data = result.data;
+    }
+  }
+
+  res.status(200).json({ success: true, data, meta: result.meta });
+});
+
+const TX_HASH_RE = /^0x[a-f0-9]{64}$/i;
+
+/**
+ * POST /api/v1/escrow/index
+ * Index the escrow events of a client-signed transaction right after the user
+ * sends it, so the UI does not have to wait for the background sync. Facts come
+ * from the confirmed receipt; the response is limited to the caller's own
+ * escrows (admins see all).
+ */
+const indexEscrowTransaction = asyncHandler(async (req, res) => {
+  const txHash = String(req.body?.txHash || '').toLowerCase();
+  if (!TX_HASH_RE.test(txHash)) {
+    return res.status(400).json({ success: false, message: 'Invalid txHash' });
+  }
+
+  const records = await escrowService.indexEscrowTx(txHash);
+  if (records.length === 0) {
+    return res.status(404).json({ success: false, message: 'No escrow events found in this transaction' });
+  }
+
+  const isAdmin = req.user?.role === 'admin' || req.user?.role === 'moderator';
+  const wallet = String(req.user?.walletAddress || '').toLowerCase();
+  const visible = isAdmin
+    ? records
+    : records.filter((r) => wallet && (r.buyer === wallet || r.seller === wallet));
+
+  res.status(200).json({ success: true, data: visible });
 });
 
 /**
@@ -84,4 +124,4 @@ const getEscrow = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: escrow });
 });
 
-module.exports = { listEscrows, getEscrow };
+module.exports = { listEscrows, getEscrow, indexEscrowTransaction };

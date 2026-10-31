@@ -9,7 +9,7 @@ import {
   DEV_MINT_ENABLED,
   createEscrow,
 } from '../utils/blockchain';
-import { marketplaceApi, tradesApi, analyticsApi, nodesApi, pricingApi } from '../utils/api';
+import { marketplaceApi, tradesApi, analyticsApi, nodesApi, pricingApi, escrowApi } from '../utils/api';
 import { useSocketEvent, useSocketReconnect } from '../context/SocketContext';
 import { SOCKET_EVENTS } from '../constants/socketEvents';
 import SectionTitle from '../components/ui/SectionTitle';
@@ -20,6 +20,7 @@ import RatingModal from '../components/ui/RatingModal';
 import SettlementStatusTimeline from '../components/settlement/SettlementStatusTimeline';
 import EnergyFlowSankey from '../components/trading/EnergyFlowSankey';
 import LiveTradeTicker from '../components/trading/LiveTradeTicker';
+import MyEscrowsPanel from '../components/trading/MyEscrowsPanel';
 import TransactionSummary from '../components/ui/TransactionSummary';
 import TransactionFilters from '../components/ui/TransactionFilters';
 import {
@@ -130,6 +131,7 @@ const Trading = () => {
   const toast = useToast();
   const [ratingTarget, setRatingTarget] = useState(null);
   const [settlementTarget, setSettlementTarget] = useState(null);
+  const [escrowRefreshKey, setEscrowRefreshKey] = useState(0);
   const [ratedTrades, setRatedTrades] = useState(() => new Set());
 
   const handleSubmitRating = async (body) => {
@@ -521,7 +523,8 @@ const Trading = () => {
   };
 
   // Module 5.1 — conditional settlement: lock funds in escrow instead of an
-  // instant transfer. The buyer can later release, dispute, or claim a refund.
+  // instant transfer. The buyer can later release, dispute, or claim a refund
+  // from the "My escrows" panel.
   const handlePurchaseViaEscrow = async (order) => {
     if (!(await requireWallet()) || !(await requireCorrectNetwork())) return;
 
@@ -529,14 +532,29 @@ const Trading = () => {
     try {
       toast.info('Confirm escrow funding in MetaMask (approval + deposit)...');
       const receipt = await createEscrow(order.listingId, order.seller, order.price);
-      toast.success('Funds locked in escrow. Confirm delivery before releasing.');
+      toast.success('Funds locked in escrow. Manage it under "My escrows" below.');
+      // Index the escrow right away so the panel and the order book reflect it
+      // without waiting for the background sync.
+      if (receipt?.hash) {
+        await escrowApi.indexTx(receipt.hash).catch(() => {});
+      }
       await afterChainTx(receipt);
-      setSettlementTarget({ txHash: receipt?.hash, listingId: order.listingId });
+      setEscrowRefreshKey((key) => key + 1);
+      setTimeout(() => {
+        document.getElementById('my-escrows')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      }, 150);
     } catch (err) {
-      toast.error(err.message || 'Escrow purchase failed');
+      toast.error(err.shortMessage || err.message || 'Escrow purchase failed');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Seller closes an order that was paid through escrow (the marketplace
+  // contract does not know about escrows, so the order stays open until closed).
+  const handleCloseListing = async (listingId) => {
+    await handleCancel(listingId);
+    setEscrowRefreshKey((key) => key + 1);
   };
 
   const handleCancel = async (id) => {
@@ -917,6 +935,20 @@ const Trading = () => {
             </div>
           )}
         </div>
+      </div>
+
+      <div id="my-escrows">
+        <MyEscrowsPanel
+          refreshKey={escrowRefreshKey}
+          activeListingIds={orders
+            .filter((o) => account && o.seller?.toLowerCase() === account.toLowerCase())
+            .map((o) => Number(o.listingId))}
+          onChanged={() => {
+            loadOrders();
+            refreshBalance();
+          }}
+          onCloseListing={handleCloseListing}
+        />
       </div>
 
       <div className="content-card">

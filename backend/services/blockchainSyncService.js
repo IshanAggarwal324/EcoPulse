@@ -1005,6 +1005,8 @@ const ESCROW_STATE_BY_EVENT = {
   DeliveryConfirmed: 'delivered',
   EscrowReleased: 'released',
   EscrowRefunded: 'refunded',
+  // A split settles the escrow on chain (state becomes Released).
+  EscrowSplit: 'released',
   DisputeOpened: 'disputed',
 };
 
@@ -1246,6 +1248,9 @@ module.exports = {
   syncEscrowEvents,
   listenToEscrowEvents,
   stopListeningToEscrowEvents,
+  // Shared with escrowService.indexEscrowTx (client-signs, backend-indexes).
+  indexEscrowLog,
+  ESCROW_EVENT_NAMES,
   // Exposed for tests only.
   _testing: {
     getAdaptiveChunkCap: () => adaptiveChunkCap,

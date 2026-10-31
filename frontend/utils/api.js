@@ -367,6 +367,24 @@ export const settlementsApi = {
   getForOrder: (listingId) => fetchApi(`/marketplace/orders/${listingId}/settlement`),
 };
 
+// Module 5.1 — escrow mirror. `indexTx` asks the backend to index the escrow
+// events of a transaction the user just signed (so the UI updates immediately
+// instead of waiting for the background sync).
+export const escrowApi = {
+  list: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return fetchApi(`/escrow${query ? `?${query}` : ''}`);
+  },
+  get: (escrowId) => fetchApi(`/escrow/${escrowId}`),
+  indexTx: (txHash) =>
+    fetchApi('/escrow/index', {
+      method: 'POST',
+      body: JSON.stringify({ txHash }),
+      timeoutMs: 30000,
+      retryOnColdStart: true,
+    }),
+};
+
 export const tradesApi = {
   getHistory: (params = {}) => {
     const query = new URLSearchParams(params).toString();

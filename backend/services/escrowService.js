@@ -4,6 +4,7 @@ const Escrow = require('../models/Escrow');
 const auditService = require('./auditService');
 const { parsePagination, paginateResults } = require('../utils/paginate');
 const { logger, logBackgroundError } = require('../utils/logger');
+const { compactUpdate } = require('../utils/compactUpdate');
 
 const STATE_INDEX = ['funded', 'delivered', 'released', 'disputed', 'refunded'];
 
@@ -31,27 +32,32 @@ async function readEscrowFromChain(escrowId) {
 
 /**
  * Upsert an escrow mirror record from a parsed on-chain event / read.
+ *
+ * Only fields the caller actually knows are written. Later events (delivered,
+ * released, disputed, refunded) carry just the escrow id and the new state, so
+ * they must not overwrite the buyer, seller, amount and listing id stored by the
+ * `EscrowCreated` event with nulls.
  */
 async function upsertEscrowFromEvent(payload) {
   const { chainId, contractAddress, ...data } = payload;
   if (chainId == null || !contractAddress || data.escrowId == null) return null;
 
-  const update = {
-    listingId: data.listingId ?? null,
+  const update = compactUpdate({
+    listingId: data.listingId,
     buyer: normalizeAddr(data.buyer),
     seller: normalizeAddr(data.seller),
     amount: data.amount,
-    amountEther: data.amountEther ?? null,
+    amountEther: data.amountEther,
     state: data.state,
-    createdAt: data.createdAt ?? null,
-    deliveredAt: data.deliveredAt ?? null,
-    evidenceCid: data.evidenceCid ?? null,
-    disputeId: data.disputeId ?? null,
+    createdAt: data.createdAt,
+    deliveredAt: data.deliveredAt,
+    evidenceCid: data.evidenceCid,
+    disputeId: data.disputeId,
     txHash: normalizeAddr(data.txHash),
-    blockNumber: data.blockNumber ?? null,
+    blockNumber: data.blockNumber,
     chainId,
     contractAddress: normalizeAddr(contractAddress),
-  };
+  });
 
   const result = await Escrow.findOneAndUpdate(
     { chainId, contractAddress: normalizeAddr(contractAddress), escrowId: data.escrowId },
@@ -60,7 +66,6 @@ async function upsertEscrowFromEvent(payload) {
   );
   return result;
 }
-
 async function getEscrowById({ escrowId, chainId, contractAddress }) {
   const filter = {};
   if (escrowId != null) filter.escrowId = Number(escrowId);
@@ -101,6 +106,97 @@ async function syncEscrowMirror(escrowId, { chainId, contractAddress } = {}) {
   });
 }
 
+const TX_NOT_FOUND = 'Transaction receipt not found';
+const TX_REVERTED = 'Transaction reverted on chain';
+
+/**
+ * Index every EnergyEscrow event in a client-signed transaction (same
+ * "client signs, backend indexes" flow as the bridge). The data comes from the
+ * confirmed receipt on chain, never from the request, so a caller cannot forge
+ * an escrow. Each touched escrow is then re-read from the chain so the stored
+ * state is exactly what the contract says. Returns the up-to-date records.
+ */
+async function indexEscrowTx(txHash) {
+  const escrowContract = BlockchainService.getEnergyEscrowContractReadOnly();
+  const provider = escrowContract.runner?.provider;
+  const { energyEscrowAddress } = BlockchainService.getEscrowAddresses();
+  if (!provider || !energyEscrowAddress) {
+    throw new Error('Escrow provider/address not configured');
+  }
+
+  const receipt = await provider.getTransactionReceipt(normalizeAddr(txHash));
+  if (!receipt) {
+    const err = new Error(TX_NOT_FOUND);
+    err.statusCode = 404;
+    throw err;
+  }
+  if (receipt.status !== 1) {
+    const err = new Error(TX_REVERTED);
+    err.statusCode = 422;
+    throw err;
+  }
+
+  // Lazy require: blockchainSyncService requires this module at call time.
+  const { indexEscrowLog, ESCROW_EVENT_NAMES } = require('./blockchainSyncService');
+  const target = normalizeAddr(energyEscrowAddress);
+  const network = await provider.getNetwork();
+  const chainId = Number(network.chainId);
+
+  const touched = new Set();
+  for (const log of receipt.logs) {
+    if (normalizeAddr(log.address) !== target) continue;
+    let parsed;
+    try {
+      parsed = escrowContract.interface.parseLog({ topics: log.topics, data: log.data });
+    } catch {
+      continue;
+    }
+    if (!parsed || !ESCROW_EVENT_NAMES.includes(parsed.name)) continue;
+    await indexEscrowLog(parsed.name, log, parsed, chainId, target, provider);
+    touched.add(Number(parsed.args.escrowId ?? parsed.args[0]));
+  }
+
+  const records = [];
+  for (const escrowId of touched) {
+    try {
+      await syncEscrowMirror(escrowId, { chainId, contractAddress: target });
+    } catch (error) {
+      logBackgroundError('escrow.indexTx.mirror', error, { escrowId });
+    }
+    const record = await getEscrowById({ escrowId, chainId, contractAddress: target });
+    if (record) records.push(record);
+  }
+  return records;
+}
+
+const TERMINAL_STATES = new Set(['released', 'refunded']);
+const REFRESH_TIMEOUT_MS = 4000;
+const REFRESH_MAX_ROWS = 25;
+
+/**
+ * Best-effort: re-read escrows that can still change (funded, delivered,
+ * disputed) from the chain, so a list never shows a state the contract has
+ * already moved past. Bounded in rows and time; any failure keeps the stored row.
+ */
+async function refreshOpenEscrows(rows) {
+  const open = rows.filter((row) => !TERMINAL_STATES.has(row.state)).slice(0, REFRESH_MAX_ROWS);
+  if (open.length === 0) return rows;
+
+  const refreshed = new Map();
+  const work = Promise.allSettled(
+    open.map(async (row) => {
+      const doc = await syncEscrowMirror(row.escrowId, {
+        chainId: row.chainId,
+        contractAddress: row.contractAddress,
+      });
+      if (doc) refreshed.set(row.escrowId, typeof doc.toObject === 'function' ? doc.toObject() : doc);
+    }),
+  );
+  await Promise.race([work, new Promise((resolve) => setTimeout(resolve, REFRESH_TIMEOUT_MS))]);
+
+  return rows.map((row) => refreshed.get(row.escrowId) || row);
+}
+
 module.exports = {
   STATE_INDEX,
   readEscrowFromChain,
@@ -108,4 +204,6 @@ module.exports = {
   getEscrowById,
   listEscrows,
   syncEscrowMirror,
+  indexEscrowTx,
+  refreshOpenEscrows,
 };

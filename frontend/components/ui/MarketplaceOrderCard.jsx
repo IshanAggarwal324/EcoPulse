@@ -32,9 +32,18 @@ const MarketplaceOrderCard = ({
             <span className="text-xs px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg font-medium border border-emerald-500/20">
               Order #{order.listingId}
             </span>
-            <span className="text-xs px-2 py-1 bg-slate-700/30 text-slate-500 rounded-lg border border-slate-700/20">
-              Active
-            </span>
+            {order.inEscrow ? (
+              <span
+                className="text-xs px-2 py-1 bg-amber-500/10 text-amber-300 rounded-lg font-medium border border-amber-500/20"
+                title="A buyer has locked funds in escrow for this order"
+              >
+                In escrow
+              </span>
+            ) : (
+              <span className="text-xs px-2 py-1 bg-slate-700/30 text-slate-500 rounded-lg border border-slate-700/20">
+                Active
+              </span>
+            )}
             <ReputationBadge reputation={order.reputation} />
           </div>
 
@@ -75,6 +84,10 @@ const MarketplaceOrderCard = ({
             >
               Cancel order
             </button>
+          ) : order.inEscrow ? (
+            <p className="text-xs text-amber-300/90 max-w-[11rem] text-right">
+              A buyer has funds locked in escrow for this order.
+            </p>
           ) : (
             <div className="flex flex-col gap-2 w-full sm:w-auto">
               <button

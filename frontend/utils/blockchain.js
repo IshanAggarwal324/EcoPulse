@@ -265,6 +265,24 @@ export const openDispute = async (escrowId, evidence) =>
     return tx.wait();
   });
 
+/**
+ * Length of the escrow dispute window in seconds (immutable on the contract).
+ * The buyer can open a dispute until createdAt + window, and can claim a
+ * timeout refund only after it. Returns null if it cannot be read.
+ */
+export const getEscrowDisputeWindow = async () => {
+  const provider = getProvider();
+  const address = getEscrowAddress();
+  if (!provider || !address) return null;
+  try {
+    const contract = new ethers.Contract(address, escrowAbi, provider);
+    return Number(await contract.disputeWindow());
+  } catch (error) {
+    logClientError("blockchain", error, { operation: "getEscrowDisputeWindow" });
+    return null;
+  }
+};
+
 export const getTokenAllowance = async (owner) => {
   const provider = getProvider();
   const address = getCcAddress();

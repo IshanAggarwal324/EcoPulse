@@ -4,6 +4,61 @@ const { currentTradingContractFilter } = require('../utils/currentContract');
 const { getCachedActiveListings } = require('./listingCache');
 const { getRedisClient, isRedisAvailable } = require('../config/redis');
 const { attachReputationSnapshots } = require('./reputationService');
+const Escrow = require('../models/Escrow');
+
+// Escrow states that still hold funds and so reserve a listing in the UI.
+const OPEN_ESCROW_STATES = ['funded', 'delivered', 'disputed'];
+
+/**
+ * Pure: mark orders whose listing has an open escrow. The EnergyTrading
+ * contract does not know about escrows, so without this flag a listing with
+ * funds locked in escrow would still look available to everyone.
+ *
+ * The escrow contract accepts any listing id from anyone, so an escrow only
+ * counts when it names this order's real seller and locks at least the full
+ * price. Otherwise a stray or hostile escrow could hide someone else's order.
+ */
+const applyEscrowFlags = (orders, escrowRows) => {
+  const rowsByListing = new Map();
+  for (const row of escrowRows || []) {
+    if (row.listingId === null || row.listingId === undefined) continue;
+    const key = Number(row.listingId);
+    if (!rowsByListing.has(key)) rowsByListing.set(key, []);
+    rowsByListing.get(key).push(row);
+  }
+  return orders.map((order) => {
+    const seller = String(order.seller || '').toLowerCase();
+    const price = Number(order.price) || 0;
+    const match = (rowsByListing.get(Number(order.listingId)) || []).find(
+      (row) =>
+        String(row.seller || '').toLowerCase() === seller &&
+        Number(row.amountEther) + 1e-9 >= price,
+    );
+    return { ...order, inEscrow: Boolean(match), escrowState: match ? match.state : null };
+  });
+};
+
+/**
+ * Attach `inEscrow` / `escrowState` to orders. Scoped to the current escrow
+ * contract (listing ids restart on redeploy). Degrades to "not in escrow" if the
+ * lookup fails: a database hiccup must never hide the order book.
+ */
+const attachEscrowStatus = async (orders) => {
+  const escrowAddress = String(process.env.ENERGY_ESCROW_ADDRESS || '').trim().toLowerCase();
+  if (!orders.length || !escrowAddress) return applyEscrowFlags(orders, []);
+  try {
+    const rows = await Escrow.find({
+      contractAddress: escrowAddress,
+      listingId: { $in: orders.map((order) => Number(order.listingId)) },
+      state: { $in: OPEN_ESCROW_STATES },
+    })
+      .select('listingId state seller amountEther')
+      .lean();
+    return applyEscrowFlags(orders, rows);
+  } catch {
+    return applyEscrowFlags(orders, []);
+  }
+};
 
 // Order-book depth config (Sub-module 6.1). Defaults keep the ladder compact;
 // the cap prevents a client from forcing an O(n*buckets) blowup.
@@ -113,9 +168,10 @@ const getActiveOrders = async ({
   const skip = (safePage - 1) * safeLimit;
   const paginated = orders.slice(skip, skip + safeLimit);
   const ordersWithReputation = await attachReputationSnapshots(paginated);
+  const ordersWithEscrow = await attachEscrowStatus(ordersWithReputation);
 
   return {
-    orders: ordersWithReputation,
+    orders: ordersWithEscrow,
     summary: {
       totalActive: orders.length,
       totalEnergy: orders.reduce((sum, o) => sum + o.energyAmount, 0),
@@ -473,6 +529,8 @@ const getOrderBookDepth = async ({ seller = null, buckets = DEFAULT_DEPTH_BUCKET
 };
 
 module.exports = {
+  applyEscrowFlags,
+  attachEscrowStatus,
   getActiveOrders,
   getMarketDepth,
   getOrderById,

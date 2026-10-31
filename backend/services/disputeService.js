@@ -7,6 +7,7 @@ const socketBroadcastService = require('./socketBroadcastService');
 const { parsePagination, paginateResults } = require('../utils/paginate');
 const { WALLET_REGEX } = require('../utils/validators');
 const { logBackgroundError } = require('../utils/logger');
+const { compactUpdate } = require('../utils/compactUpdate');
 
 const OUTCOME_MAP = { release: 0, refund: 1, split: 2 };
 const OUTCOME_INDEX = ['release', 'refund', 'split'];
@@ -38,25 +39,27 @@ async function upsertDisputeFromEvent(payload) {
   const { chainId, contractAddress, ...data } = payload;
   if (chainId == null || !contractAddress || data.disputeId == null) return null;
 
-  const update = {
+  const update = compactUpdate({
     escrowId: data.escrowId,
     buyer: normalizeAddr(data.buyer),
     seller: normalizeAddr(data.seller),
     amount: data.amount,
-    evidenceHash: data.evidenceHash ?? null,
-    evidenceCid: data.evidenceCid ?? null,
-    reason: data.reason ?? null,
-    resolved: data.resolved ?? false,
-    outcome: data.outcome ?? null,
-    buyerShareBps: data.buyerShareBps ?? null,
+    evidenceHash: data.evidenceHash,
+    evidenceCid: data.evidenceCid,
+    reason: data.reason,
+    // Only ever flip to resolved. Re-scanning the DisputeOpened event must not
+    // reset a dispute that DisputeResolved already closed.
+    resolved: data.resolved === true ? true : undefined,
+    outcome: data.outcome,
+    buyerShareBps: data.buyerShareBps,
     resolvedBy: normalizeAddr(data.resolvedBy),
-    resolvedAt: data.resolvedAt ?? null,
-    openedAt: data.openedAt ?? null,
+    resolvedAt: data.resolvedAt,
+    openedAt: data.openedAt,
     txHash: normalizeAddr(data.txHash),
-    blockNumber: data.blockNumber ?? null,
+    blockNumber: data.blockNumber,
     chainId,
     contractAddress: normalizeAddr(contractAddress),
-  };
+  });
 
   const result = await Dispute.findOneAndUpdate(
     { chainId, contractAddress: normalizeAddr(contractAddress), disputeId: data.disputeId },
