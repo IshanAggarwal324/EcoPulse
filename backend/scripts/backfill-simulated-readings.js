@@ -14,6 +14,9 @@
  *                         if such readings already exist, so it never creates duplicates.
  *   --no-backup           Skip the backup copy made by --replace (not recommended)
  *   --expect-db <name>    Refuse to run unless the connected database has this name
+ *   --new-nodes-only      Only fill nodes that have no readings at all (e.g. a node an admin
+ *                         just created). Never deletes or touches other nodes' readings, so
+ *                         it is safe to run any time. Cannot be combined with --replace.
  *
  * Only readings with source "simulated" or no source are ever removed. Device,
  * public_api and admin readings are never touched. Every active node (status not
@@ -40,6 +43,7 @@ const INTERVAL_MIN = parseInt(option('--interval-min', '15'), 10);
 const SEND = flag('--send');
 const REPLACE = flag('--replace');
 const NO_BACKUP = flag('--no-backup');
+const NEW_NODES_ONLY = flag('--new-nodes-only');
 const EXPECT_DB = option('--expect-db', null);
 const BATCH = 5000;
 
@@ -55,6 +59,7 @@ const fail = (msg) => {
   if (!Number.isFinite(DAYS) || DAYS < 1 || DAYS > 730) fail('--days must be between 1 and 730');
   if (!Number.isFinite(INTERVAL_MIN) || INTERVAL_MIN < 1 || INTERVAL_MIN > 240) fail('--interval-min must be between 1 and 240');
   if (!process.env.MONGO_URI) fail('MONGO_URI is not set');
+  if (NEW_NODES_ONLY && REPLACE) fail('--new-nodes-only cannot be combined with --replace.');
   if (isTimeseriesEnabled()) {
     fail('TIMESERIES_ENABLED=true: this script writes the legacy energyreadings collection only. Turn it off or extend the script first.');
   }
@@ -63,8 +68,19 @@ const fail = (msg) => {
   const dbName = mongoose.connection.db.databaseName;
   if (EXPECT_DB && EXPECT_DB !== dbName) fail(`Connected to database "${dbName}" but --expect-db is "${EXPECT_DB}". Nothing was changed.`);
 
-  const nodes = await EnergyNode.find({ status: { $ne: 'inactive' } }).lean();
+  let nodes = await EnergyNode.find({ status: { $ne: 'inactive' } }).lean();
   if (nodes.length === 0) fail(`No active nodes in database "${dbName}". Create nodes first.`);
+  if (NEW_NODES_ONLY) {
+    const withData = new Set(
+      (await EnergyReading.distinct('nodeId', { nodeId: { $in: nodes.map((n) => n._id) } })).map(String),
+    );
+    nodes = nodes.filter((node) => !withData.has(String(node._id)));
+    if (nodes.length === 0) {
+      console.log('Every active node already has readings. Nothing to do.');
+      await mongoose.disconnect();
+      return;
+    }
+  }
 
   const end = new Date();
   end.setSeconds(0, 0);
@@ -74,7 +90,8 @@ const fail = (msg) => {
   const totalRows = slots * nodes.length;
 
   const existingFilter = { ...SIMULATED_FILTER, timestamp: { $gte: start } };
-  const existingCount = await EnergyReading.countDocuments(existingFilter);
+  // With --new-nodes-only the selected nodes have no readings, so old rows of other nodes are irrelevant.
+  const existingCount = NEW_NODES_ONLY ? 0 : await EnergyReading.countDocuments(existingFilter);
   const allSimulatedCount = await EnergyReading.countDocuments(SIMULATED_FILTER);
   const otherSourceCount = await EnergyReading.countDocuments({ source: { $in: ['device', 'public_api', 'admin'] } });
 
@@ -84,7 +101,15 @@ const fail = (msg) => {
   console.log(`Rows to insert:      ${totalRows}`);
   console.log(`Existing simulated/untagged readings in window: ${existingCount} (all time: ${allSimulatedCount})`);
   console.log(`Device/public/admin readings (never touched):   ${otherSourceCount}`);
-  console.log(`Mode:                ${REPLACE ? 'REPLACE (backup, delete old simulated, insert new)' : 'ADD (insert only)'}\n`);
+  console.log(
+    `Mode:                ${
+      NEW_NODES_ONLY
+        ? 'NEW NODES ONLY (insert for nodes without readings)'
+        : REPLACE
+          ? 'REPLACE (backup, delete old simulated, insert new)'
+          : 'ADD (insert only)'
+    }\n`,
+  );
 
   if (existingCount > 0 && !REPLACE) {
     fail('Simulated readings already exist in this window. Re-run with --replace (a backup is taken first) so duplicates are not created.');

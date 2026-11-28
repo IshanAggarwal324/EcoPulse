@@ -44,7 +44,10 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefix ${{ matrix.dir }} || npm install --prefix ${{ matrix.dir }}
       - name: Audit dependencies
-        run: npm audit --audit-level=moderate --prefix ${{ matrix.dir }}
+        # Audit only what ships to users (production dependencies). Dev tooling
+        # (nodemon, eslint, vitest) never runs on a server; advisories there are
+        # tracked by Dependabot instead of failing every push.
+        run: npm audit --omit=dev --audit-level=moderate --prefix ${{ matrix.dir }}
 
   python-audit:
     name: Python Dependency Audit
