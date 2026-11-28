@@ -53,7 +53,10 @@ const listNodes = asyncHandler(async (req, res) => {
           from: 'energyreadings',
           let: { nodeId: '$_id' },
           pipeline: [
-            { $match: { nodeId: '$$nodeId' } },
+            // Variables from `let` are only evaluated inside $expr; a plain
+            // { nodeId: '$$nodeId' } compares against the literal text and never
+            // matches, which made every node show "Never" for its last reading.
+            { $match: { $expr: { $eq: ['$nodeId', '$$nodeId'] } } },
             { $sort: { timestamp: -1 } },
             { $limit: 1 },
             { $project: { _id: 0, timestamp: 1 } },
